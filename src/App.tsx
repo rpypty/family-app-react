@@ -11,7 +11,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { ThemeProvider, alpha, createTheme } from '@mui/material/styles'
 import ListAltRounded from '@mui/icons-material/ListAltRounded'
 import PieChartRounded from '@mui/icons-material/PieChartRounded'
 import BarChartRounded from '@mui/icons-material/BarChartRounded'
@@ -57,15 +57,15 @@ function App() {
   const [state, setState] = useState<StorageState>(() => loadState())
   const [activeTab, setActiveTab] = useState<TabId>('expenses')
 
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode: state.settings.themeMode,
-          primary: {
-            main: '#1f6b63',
-          },
+  const theme = useMemo(() => {
+    const primaryMain = state.settings.themeMode === 'dark' ? '#4db6ac' : '#1f6b63'
+    return createTheme({
+      palette: {
+        mode: state.settings.themeMode,
+        primary: {
+          main: primaryMain,
         },
+      },
         shape: {
           borderRadius: 16,
         },
@@ -90,6 +90,10 @@ function App() {
                 borderRadius: 999,
                 fontWeight: 500,
               },
+              outlined: {
+                borderColor: alpha(primaryMain, 0.5),
+                backgroundColor: alpha(primaryMain, 0.08),
+              },
             },
           },
           MuiCard: {
@@ -100,9 +104,8 @@ function App() {
             },
           },
         },
-      }),
-    [state.settings.themeMode],
-  )
+      })
+    }, [state.settings.themeMode])
 
   const updateState = (updater: (prev: StorageState) => StorageState) => {
     setState((prev) => {
@@ -242,6 +245,7 @@ function App() {
             value={activeTab}
             onChange={(_, value) => setActiveTab(value)}
             showLabels
+            sx={{ height: 82 }}
           >
             <BottomNavigationAction
               label="Список"

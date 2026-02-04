@@ -44,10 +44,14 @@ export function ExpensesScreen({
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const maxTagVisible = isSmall ? 2 : 3
 
+  const compareByDateAndId = (a: Expense, b: Expense) => {
+    const dateDiff = parseDate(b.date).getTime() - parseDate(a.date).getTime()
+    if (dateDiff !== 0) return dateDiff
+    return (b.id ?? '').localeCompare(a.id ?? '')
+  }
+
   const { groupedByDay, dayKeys } = useMemo(() => {
-    const sorted = [...expenses].sort(
-      (a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime(),
-    )
+    const sorted = [...expenses].sort(compareByDateAndId)
     const grouped: Record<string, Expense[]> = {}
     sorted.forEach((expense) => {
       grouped[expense.date] = grouped[expense.date] ?? []
@@ -116,7 +120,9 @@ export function ExpensesScreen({
                       </Typography>
                     </Stack>
                     <Stack spacing={1}>
-                      {dayExpenses.map((expense) => {
+                      {[...dayExpenses]
+                        .sort((a, b) => (b.id ?? '').localeCompare(a.id ?? ''))
+                        .map((expense) => {
                         const tagNames = expense.tagIds
                           .map((id) => tagMap.get(id))
                           .filter((name): name is string => Boolean(name))

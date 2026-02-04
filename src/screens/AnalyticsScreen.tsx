@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  FormControlLabel,
   Divider,
   Stack,
   TextField,
   Typography,
+  Checkbox,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import type { Expense, Tag } from '../data/types'
 import { aggregateByTag } from '../utils/analytics'
 import {
@@ -50,6 +53,8 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
   const [toDate, setToDate] = useState<string | null>(null)
   const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
+  const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
+  const [onlySelectedTags, setOnlySelectedTags] = useState(false)
 
   const hasFilters = fromDate !== null || toDate !== null || filterTagIds.size > 0
 
@@ -94,13 +99,35 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
     })
   }, [expenses, fromDate, toDate, filterTagIds])
 
+  useEffect(() => {
+    setShowAllTagBreakdown(false)
+  }, [fromDate, toDate, filterTagIds])
+
   const filteredSorted = useMemo(
-    () => [...filtered].sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime()),
+    () =>
+      [...filtered].sort((a, b) => {
+        const dateDiff = parseDate(b.date).getTime() - parseDate(a.date).getTime()
+        if (dateDiff !== 0) return dateDiff
+        return (b.id ?? '').localeCompare(a.id ?? '')
+      }),
     [filtered],
   )
 
   const totalsByCurrency = useMemo(() => aggregateByCurrency(filtered), [filtered])
-  const totalsByTag = useMemo(() => aggregateByTag(filtered), [filtered])
+  const totalsByTag = useMemo(() => {
+    if (!onlySelectedTags || filterTagIds.size === 0) {
+      return aggregateByTag(filtered)
+    }
+    const totals: Record<string, number> = {}
+    filtered.forEach((expense) => {
+      const eligible = expense.tagIds.filter((id) => filterTagIds.has(id))
+      if (eligible.length === 0) return
+      eligible.forEach((tagId) => {
+        totals[tagId] = (totals[tagId] ?? 0) + expense.amount
+      })
+    })
+    return totals
+  }, [filtered, filterTagIds, onlySelectedTags])
 
   const slices = useMemo(() => {
     const entries = Object.entries(totalsByTag).sort((a, b) => b[1] - a[1])
@@ -113,12 +140,24 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
 
   const totalByTags = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = Object.keys(totalsByCurrency).length === 1 ? Object.keys(totalsByCurrency)[0] : ''
+  const breakdownVisible = showAllTagBreakdown ? slices : slices.slice(0, 5)
+  const breakdownRemaining = slices.length - breakdownVisible.length
 
   const selectedTagList = selectedTags(tags, filterTagIds)
 
+  const pluralCategory = (count: number) => {
+    const mod10 = count % 10
+    const mod100 = count % 100
+    if (mod10 === 1 && mod100 !== 11) return 'категорию'
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'категории'
+    }
+    return 'категорий'
+  }
+
   return (
-    <Stack spacing={2}>
-      <Card elevation={0}>
+    <Stack spacing={1}>
+      <Card elevation={0} sx={{ mt: 0.25 }}>
         <CardContent>
           <Stack spacing={2}>
             <Typography variant="subtitle1" fontWeight={600}>
@@ -152,7 +191,20 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
               <Typography variant="subtitle2" color="text.secondary">
                 Теги
               </Typography>
-              <TagPickerInput label="Выбрать тег" onClick={() => setTagDialogOpen(true)} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+                <Box sx={{ flex: 1, width: '100%' }}>
+                  <TagPickerInput label="Выбрать тег" onClick={() => setTagDialogOpen(true)} />
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={onlySelectedTags}
+                      onChange={(event) => setOnlySelectedTags(event.target.checked)}
+                    />
+                  }
+                  label="Только выбранные теги"
+                />
+              </Stack>
               {selectedTagList.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   Теги не выбраны
@@ -188,22 +240,41 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
         elevation={0}
         sx={{
           border: 1,
-          borderColor: 'divider',
-          bgcolor: 'action.hover',
+          borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
+          bgcolor: 'background.paper',
+          backgroundImage: (theme) =>
+            `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.18)} 0%, ${alpha(
+              theme.palette.primary.main,
+              0.04,
+            )} 60%, transparent 100%)`,
+          boxShadow: (theme) => `0 12px 24px ${alpha(theme.palette.primary.main, 0.12)}`,
         }}
       >
-        <CardContent>
+        <CardContent sx={{ px: 2, py: 1.5, '&:last-child': { pb: 1.5 } }}>
           {Object.keys(totalsByCurrency).length === 0 ? (
-            <Typography variant="subtitle1" fontWeight={600}>
-              Сумма по фильтрам: 0
-            </Typography>
-          ) : (
-            <Stack spacing={0.5}>
-              <Typography variant="subtitle1" fontWeight={700}>
-                Сумма по фильтрам
+            <Stack spacing={0.5} alignItems="center">
+              <Chip
+                label="Итого"
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: 600 }}
+              />
+              <Typography variant="h5" fontWeight={700}>
+                0
               </Typography>
+            </Stack>
+          ) : (
+            <Stack spacing={0.75} alignItems="center">
+              <Chip
+                label="Итого"
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: 600 }}
+              />
               {Object.entries(totalsByCurrency).map(([currency, value]) => (
-                <Typography key={currency} variant="h6" fontWeight={700}>
+                <Typography key={currency} variant="h4" fontWeight={800}>
                   {formatAmount(value)} {currency}
                 </Typography>
               ))}
@@ -215,9 +286,6 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
       <Card elevation={0}>
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="subtitle1" fontWeight={600}>
-              Траты по тегам
-            </Typography>
             {slices.length === 0 ? (
               <Typography color="text.secondary">Нет данных для диаграммы</Typography>
             ) : (
@@ -226,7 +294,7 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
                   <PieChart slices={slices} size={180} />
                 </Box>
                 <Stack spacing={1}>
-                  {slices.map((slice) => (
+                  {breakdownVisible.map((slice) => (
                     <Stack
                       key={slice.label}
                       direction="row"
@@ -257,6 +325,11 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
                       </Stack>
                     </Stack>
                   ))}
+                  {breakdownRemaining > 0 ? (
+                    <Button size="small" onClick={() => setShowAllTagBreakdown(true)}>
+                      Показать еще {breakdownRemaining} {pluralCategory(breakdownRemaining)}
+                    </Button>
+                  ) : null}
                 </Stack>
               </Stack>
             )}

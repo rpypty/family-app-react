@@ -117,7 +117,7 @@ export function ReportsScreen({ expenses }: ReportsScreenProps) {
                   viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                   width="100%"
                   height={chartHeight}
-                  preserveAspectRatio="none"
+                  preserveAspectRatio="xMinYMin meet"
                 >
                   {legendValues.map((value, index) => {
                     const ratio = (value - minValue) / valueRange

@@ -14,7 +14,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import type { Currency, Expense, Tag } from '../data/types'
 import { formatDate } from '../utils/formatters'
 import { selectedTags } from '../utils/tagUtils'
@@ -102,8 +102,18 @@ export function ExpenseFormModal({
         maxWidth="sm"
         fullScreen={fullScreen}
       >
-        <DialogTitle>{expense ? 'Редактирование' : 'Новый расход'}</DialogTitle>
-        <DialogContent dividers>
+        <DialogTitle
+          sx={{
+            bgcolor: 'background.paper',
+            color: 'text.secondary',
+            borderBottom: 1,
+            borderColor: 'divider',
+            py: 1.5,
+          }}
+        >
+          {expense ? 'Редактирование' : 'Новый расход'}
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
             <TextField
               type="date"
@@ -157,7 +167,7 @@ export function ExpenseFormModal({
                   Теги не выбраны
                 </Typography>
               ) : (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
                   {selectedTagList.map((tag) => (
                     <Chip
                       key={tag.id}
@@ -177,14 +187,34 @@ export function ExpenseFormModal({
             {error ? <Alert severity="error">{error}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>Отмена</Button>
+        <DialogActions sx={{ bgcolor: 'background.paper', py: 2 }}>
+          <Button color="inherit" onClick={onClose}>
+            Отмена
+          </Button>
           {expense ? (
             <Button color="error" onClick={() => setConfirmOpen(true)}>
               Удалить
             </Button>
           ) : null}
-          <Button variant="contained" onClick={handleSave}>
+          <Button
+            variant="outlined"
+            onClick={handleSave}
+            sx={(theme) => ({
+              color: theme.palette.primary.main,
+              borderColor: alpha(theme.palette.primary.main, 0.4),
+              backgroundColor: alpha(
+                theme.palette.background.paper,
+                theme.palette.mode === 'dark' ? 0.2 : 0.7,
+              ),
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              fontWeight: 600,
+              '&:hover': {
+                borderColor: theme.palette.primary.main,
+                backgroundColor: alpha(theme.palette.primary.main, 0.12),
+              },
+            })}
+          >
             Сохранить
           </Button>
         </DialogActions>
