@@ -40,7 +40,7 @@ import {
 } from './data/auth'
 import type { Family } from './data/families'
 import { getCurrentFamily, leaveFamily } from './data/families'
-import { listExpenses, createExpense, updateExpense, deleteExpense } from './data/expenses'
+import { listExpensePage, createExpense, updateExpense, deleteExpense } from './data/expenses'
 import { listTags, createTag } from './data/tags'
 import { findTagByName } from './utils/tagUtils'
 import { copyToClipboard } from './utils/clipboard'
@@ -80,6 +80,8 @@ const TABS: Array<{
   },
 ]
 
+const EXPENSES_PAGE_SIZE = 30
+
 function App() {
   const [state, setState] = useState<StorageState>(() => loadState())
   const [activeTab, setActiveTab] = useState<TabId>('expenses')
@@ -89,6 +91,9 @@ function App() {
   const [family, setFamily] = useState<Family | null>(null)
   const [isBootstrapping, setBootstrapping] = useState(true)
   const [isDataLoading, setDataLoading] = useState(false)
+  const [expensesTotal, setExpensesTotal] = useState(0)
+  const [expensesOffset, setExpensesOffset] = useState(0)
+  const [isExpensesLoadingMore, setExpensesLoadingMore] = useState(false)
   const [isCopyingFamilyCode, setCopyingFamilyCode] = useState(false)
   const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
@@ -195,14 +200,24 @@ function App() {
     const loadData = async () => {
       if (!authSession || !familyId) return
       setDataLoading(true)
+      setExpensesTotal(0)
+      setExpensesOffset(0)
+      setExpensesLoadingMore(false)
       updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
       try {
-        const [expenses, tags] = await Promise.all([listExpenses(), listTags()])
+        const [expensePage, tags] = await Promise.all([
+          listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
+          listTags(),
+        ])
         if (!isActive) return
-        updateState((prev) => ({ ...prev, expenses, tags }))
+        updateState((prev) => ({ ...prev, expenses: expensePage.items, tags }))
+        setExpensesTotal(expensePage.total)
+        setExpensesOffset(expensePage.items.length)
       } catch {
         if (!isActive) return
         updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+        setExpensesTotal(0)
+        setExpensesOffset(0)
       } finally {
         if (isActive) setDataLoading(false)
       }
@@ -259,6 +274,9 @@ function App() {
     setFamilyId(null)
     setFamily(null)
     setDataLoading(false)
+    setExpensesTotal(0)
+    setExpensesOffset(0)
+    setExpensesLoadingMore(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
     setUnauthStep('welcome')
     setMenuAnchorEl(null)
@@ -273,6 +291,9 @@ function App() {
     setFamilyId(null)
     setFamily(null)
     setDataLoading(false)
+    setExpensesTotal(0)
+    setExpensesOffset(0)
+    setExpensesLoadingMore(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
     setMenuAnchorEl(null)
   }
@@ -296,6 +317,8 @@ function App() {
       ...prev,
       expenses: [...prev.expenses, created],
     }))
+    setExpensesTotal((prev) => prev + 1)
+    setExpensesOffset((prev) => prev + 1)
   }
 
   const handleUpdateExpense = async (expense: Expense) => {
@@ -312,6 +335,28 @@ function App() {
       ...prev,
       expenses: prev.expenses.filter((expense) => expense.id !== expenseId),
     }))
+    setExpensesTotal((prev) => Math.max(0, prev - 1))
+    setExpensesOffset((prev) => Math.max(0, prev - 1))
+  }
+
+  const handleLoadMoreExpenses = async () => {
+    if (isExpensesLoadingMore) return
+    if (state.expenses.length >= expensesTotal) return
+    setExpensesLoadingMore(true)
+    try {
+      const page = await listExpensePage({
+        limit: EXPENSES_PAGE_SIZE,
+        offset: expensesOffset,
+      })
+      updateState((prev) => ({
+        ...prev,
+        expenses: [...prev.expenses, ...page.items],
+      }))
+      setExpensesTotal(page.total)
+      setExpensesOffset((prev) => prev + page.items.length)
+    } finally {
+      setExpensesLoadingMore(false)
+    }
   }
 
   const handleCreateTag = async (name: string): Promise<Tag> => {
@@ -459,23 +504,27 @@ function App() {
 
       <Container maxWidth="md" sx={{ pt: 2, pb: 12 }}>
         <Stack spacing={3}>
-          {activeTab === 'expenses' && (
-            <ExpensesScreen
-              expenses={state.expenses}
-              tags={state.tags}
-              onCreateExpense={handleCreateExpense}
-              onUpdateExpense={handleUpdateExpense}
-              onDeleteExpense={handleDeleteExpense}
-              onCreateTag={handleCreateTag}
-            />
+            {activeTab === 'expenses' && (
+              <ExpensesScreen
+                expenses={state.expenses}
+                tags={state.tags}
+                total={expensesTotal}
+                hasMore={state.expenses.length < expensesTotal}
+                isLoadingMore={isExpensesLoadingMore}
+                onLoadMore={handleLoadMoreExpenses}
+                onCreateExpense={handleCreateExpense}
+                onUpdateExpense={handleUpdateExpense}
+                onDeleteExpense={handleDeleteExpense}
+                onCreateTag={handleCreateTag}
+              />
           )}
 
           {activeTab === 'analytics' && (
-            <AnalyticsScreen expenses={state.expenses} tags={state.tags} />
+            <AnalyticsScreen tags={state.tags} />
           )}
 
           {activeTab === 'reports' && (
-            <ReportsScreen expenses={state.expenses} />
+            <ReportsScreen />
           )}
         </Stack>
       </Container>

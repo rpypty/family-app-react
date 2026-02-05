@@ -20,10 +20,15 @@ import {
   formatAmount,
 } from '../utils/formatters'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll'
 
 type ExpensesScreenProps = {
   expenses: Expense[]
   tags: Tag[]
+  total: number
+  hasMore: boolean
+  isLoadingMore: boolean
+  onLoadMore: () => Promise<void>
   onCreateExpense: (expense: Expense) => Promise<void>
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
@@ -33,6 +38,10 @@ type ExpensesScreenProps = {
 export function ExpensesScreen({
   expenses,
   tags,
+  total,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   onCreateExpense,
   onUpdateExpense,
   onDeleteExpense,
@@ -43,6 +52,12 @@ export function ExpensesScreen({
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const maxTagVisible = isSmall ? 2 : 3
+  const sentinelRef = useInfiniteScroll({
+    enabled: hasMore,
+    loading: isLoadingMore,
+    onLoadMore,
+    rootMargin: '240px',
+  })
 
   const compareByDateAndId = (a: Expense, b: Expense) => {
     const dateDiff = parseDate(b.date).getTime() - parseDate(a.date).getTime()
@@ -75,16 +90,16 @@ export function ExpensesScreen({
     setFormOpen(true)
   }
 
-  const handleSave = (expense: Expense) => {
+  const handleSave = async (expense: Expense) => {
     if (editingExpense) {
-      onUpdateExpense(expense)
+      await onUpdateExpense(expense)
     } else {
-      onCreateExpense(expense)
+      await onCreateExpense(expense)
     }
   }
 
-  const handleDelete = (expenseId: string) => {
-    onDeleteExpense(expenseId)
+  const handleDelete = async (expenseId: string) => {
+    await onDeleteExpense(expenseId)
     setFormOpen(false)
   }
 
@@ -226,6 +241,21 @@ export function ExpensesScreen({
                   </Stack>
                 )
               })}
+              <Stack spacing={0.5} alignItems="center" sx={{ pt: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Показано {expenses.length} из {total}
+                </Typography>
+                {hasMore ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {isLoadingMore ? 'Загружаем…' : 'Прокрутите вниз для загрузки'}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Все записи загружены
+                  </Typography>
+                )}
+                <div ref={sentinelRef} />
+              </Stack>
             </Stack>
           )}
         </CardContent>

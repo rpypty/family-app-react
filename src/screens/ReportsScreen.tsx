@@ -1,27 +1,86 @@
-import { useMemo, useState } from 'react'
-import { Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { useEffect, useMemo, useState } from 'react'
+import { Box, Card, CardContent, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
-import type { Expense } from '../data/types'
-import { groupByMonth, percentChange } from '../utils/analytics'
+import { percentChange } from '../utils/analytics'
 import { formatAmount, formatMonthHeader, parseDate } from '../utils/formatters'
+import { getReportsMonthly } from '../data/reports'
 
-type ReportsScreenProps = {
-  expenses: Expense[]
+type RangeOption = '3m' | '6m' | '1y' | 'all'
+
+type MonthRange = {
+  fromMonth: string
+  toMonth: string
 }
 
-export function ReportsScreen({ expenses }: ReportsScreenProps) {
+const formatMonthValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+const resolveRange = (range: RangeOption): MonthRange => {
+  const now = new Date()
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  if (range === 'all') {
+    return { fromMonth: '2000-01', toMonth: formatMonthValue(currentMonth) }
+  }
+  const offset = range === '3m' ? 2 : range === '6m' ? 5 : 11
+  const fromMonthDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset, 1)
+  return {
+    fromMonth: formatMonthValue(fromMonthDate),
+    toMonth: formatMonthValue(currentMonth),
+  }
+}
+
+export function ReportsScreen() {
   const theme = useTheme()
-  const [range, setRange] = useState<'3m' | '6m' | '1y' | 'all'>('all')
-  const grouped = groupByMonth(expenses)
+  const [range, setRange] = useState<RangeOption>('all')
+  const [rows, setRows] = useState<Array<{ month: string; total: number; count: number }>>([])
+  const [isLoading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const monthRange = useMemo(() => resolveRange(range), [range])
+
+  useEffect(() => {
+    let isActive = true
+    const loadReport = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await getReportsMonthly({
+          fromMonth: monthRange.fromMonth,
+          toMonth: monthRange.toMonth,
+        })
+        if (!isActive) return
+        setRows(response)
+      } catch {
+        if (!isActive) return
+        setError('Не удалось загрузить отчет. Попробуйте ещё раз.')
+        setRows([])
+      } finally {
+        if (isActive) setLoading(false)
+      }
+    }
+
+    void loadReport()
+    return () => {
+      isActive = false
+    }
+  }, [monthRange.fromMonth, monthRange.toMonth])
+
+  const grouped = useMemo(() => {
+    const result: Record<string, number> = {}
+    rows.forEach((row) => {
+      result[`${row.month}-01`] = row.total
+    })
+    return result
+  }, [rows])
+
   const months = Object.keys(grouped)
     .map((key) => parseDate(key))
     .sort((a, b) => b.getTime() - a.getTime())
   const monthKeysAsc = Object.keys(grouped).sort()
-  const chartKeys = useMemo(() => {
-    if (range === 'all') return monthKeysAsc
-    const count = range === '3m' ? 3 : range === '6m' ? 6 : 12
-    return monthKeysAsc.slice(-count)
-  }, [monthKeysAsc, range])
+  const chartKeys = monthKeysAsc
   const chartValues = chartKeys.map((key) => grouped[key] ?? 0)
   const chartHeight = 120
   const chartWidth = 320
@@ -67,6 +126,29 @@ export function ReportsScreen({ expenses }: ReportsScreenProps) {
           chartHeight - chartPaddingY
         } Z`
       : ''
+
+  if (isLoading) {
+    return (
+      <Card elevation={0}>
+        <CardContent>
+          <Stack spacing={1} alignItems="center">
+            <CircularProgress size={24} />
+            <Typography color="text.secondary">Загружаем отчет…</Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card elevation={0}>
+        <CardContent>
+          <Typography color="error">{error}</Typography>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (months.length === 0) {
     return (
@@ -143,11 +225,7 @@ export function ReportsScreen({ expenses }: ReportsScreenProps) {
                       </g>
                     )
                   })}
-                  <path
-                    d={areaPath}
-                    fill={theme.palette.primary.main}
-                    opacity={0.12}
-                  />
+                  <path d={areaPath} fill={theme.palette.primary.main} opacity={0.12} />
                   <polyline
                     points={points}
                     fill="none"
@@ -199,9 +277,7 @@ export function ReportsScreen({ expenses }: ReportsScreenProps) {
 
         let changeText = '—'
         if (percent !== null) {
-          changeText = `На ${Math.abs(percent).toFixed(0)}% ${
-            percent < 0 ? 'меньше' : 'больше'
-          }`
+          changeText = `На ${Math.abs(percent).toFixed(0)}% ${percent < 0 ? 'меньше' : 'больше'}`
         }
 
         return (

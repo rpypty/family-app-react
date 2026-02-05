@@ -19,7 +19,7 @@ type ExpenseListResponse = {
   total: number
 }
 
-type ExpenseListParams = {
+export type ExpenseListParams = {
   from?: string
   to?: string
   tagId?: string
@@ -47,9 +47,19 @@ const buildQuery = (params: ExpenseListParams): string => {
   return query ? `?${query}` : ''
 }
 
-export const listExpenses = async (params: ExpenseListParams = {}): Promise<Expense[]> => {
+export const listExpensePage = async (
+  params: ExpenseListParams = {},
+): Promise<{ items: Expense[]; total: number }> => {
   const response = await apiFetch<ExpenseListResponse>(`/expenses${buildQuery(params)}`)
-  return response.items.map(mapExpense)
+  return {
+    items: response.items.map(mapExpense),
+    total: response.total,
+  }
+}
+
+export const listExpenses = async (params: ExpenseListParams = {}): Promise<Expense[]> => {
+  const response = await listExpensePage(params)
+  return response.items
 }
 
 export const createExpense = async (expense: Expense): Promise<Expense> => {
