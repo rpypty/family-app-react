@@ -27,6 +27,7 @@ import LightModeRounded from '@mui/icons-material/LightModeRounded'
 import AccountCircleRounded from '@mui/icons-material/AccountCircleRounded'
 import GroupRounded from '@mui/icons-material/GroupRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
+import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import type { StorageState, Expense, Tag } from './data/types'
 import { loadState, saveState } from './data/storage'
 import type { AuthSession, AuthUser } from './data/auth'
@@ -38,9 +39,11 @@ import {
   isSupabaseConfigured,
 } from './data/auth'
 import type { Family } from './data/families'
-import { getFamilyById, getUserFamilyId, leaveFamily } from './data/families'
+import { getCurrentFamily, leaveFamily } from './data/families'
+import { listExpenses, createExpense, updateExpense, deleteExpense } from './data/expenses'
+import { listTags, createTag } from './data/tags'
 import { findTagByName } from './utils/tagUtils'
-import { createId } from './utils/uuid'
+import { copyToClipboard } from './utils/clipboard'
 import { ExpensesScreen } from './screens/ExpensesScreen'
 import { AnalyticsScreen } from './screens/AnalyticsScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
@@ -85,6 +88,8 @@ function App() {
   const [familyId, setFamilyId] = useState<string | null>(null)
   const [family, setFamily] = useState<Family | null>(null)
   const [isBootstrapping, setBootstrapping] = useState(true)
+  const [isDataLoading, setDataLoading] = useState(false)
+  const [isCopyingFamilyCode, setCopyingFamilyCode] = useState(false)
   const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
 
@@ -101,9 +106,15 @@ function App() {
         setMenuAnchorEl(null)
         return
       }
-      const storedFamilyId = await getUserFamilyId(user.id)
+      let currentFamily: Family | null = null
+      try {
+        currentFamily = await getCurrentFamily()
+      } catch {
+        currentFamily = null
+      }
       if (!isActive) return
-      setFamilyId(storedFamilyId)
+      setFamily(currentFamily)
+      setFamilyId(currentFamily?.id ?? null)
     }
     const bootstrap = async () => {
       const snapshot = await getSession()
@@ -120,23 +131,6 @@ function App() {
       unsubscribe()
     }
   }, [])
-
-  useEffect(() => {
-    let isActive = true
-    const loadFamily = async () => {
-      if (!familyId) {
-        setFamily(null)
-        return
-      }
-      const storedFamily = await getFamilyById(familyId)
-      if (!isActive) return
-      setFamily(storedFamily)
-    }
-    loadFamily()
-    return () => {
-      isActive = false
-    }
-  }, [familyId])
 
   const theme = useMemo(() => {
     const primaryMain = state.settings.themeMode === 'dark' ? '#4db6ac' : '#1f6b63'
@@ -196,6 +190,33 @@ function App() {
     })
   }
 
+  useEffect(() => {
+    let isActive = true
+    const loadData = async () => {
+      if (!authSession || !familyId) return
+      setDataLoading(true)
+      updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+      try {
+        const [expenses, tags] = await Promise.all([listExpenses(), listTags()])
+        if (!isActive) return
+        updateState((prev) => ({ ...prev, expenses, tags }))
+      } catch {
+        if (!isActive) return
+        updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+      } finally {
+        if (isActive) setDataLoading(false)
+      }
+    }
+
+    if (authSession && familyId) {
+      void loadData()
+    }
+
+    return () => {
+      isActive = false
+    }
+  }, [authSession, familyId])
+
   const active = useMemo(
     () => TABS.find((tab) => tab.id === activeTab) ?? TABS[0],
     [activeTab],
@@ -218,8 +239,9 @@ function App() {
     await signInWithGoogle()
   }
 
-  const handleFamilyComplete = (nextFamilyId: string) => {
-    setFamilyId(nextFamilyId)
+  const handleFamilyComplete = (nextFamily: Family) => {
+    setFamily(nextFamily)
+    setFamilyId(nextFamily.id)
   }
 
   const handleMenuOpen = (event: MouseEvent<HTMLElement>) => {
@@ -236,6 +258,8 @@ function App() {
     setAuthUser(null)
     setFamilyId(null)
     setFamily(null)
+    setDataLoading(false)
+    updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
     setUnauthStep('welcome')
     setMenuAnchorEl(null)
   }
@@ -245,49 +269,61 @@ function App() {
       setMenuAnchorEl(null)
       return
     }
-    await leaveFamily({ familyId, userId: authUser.id })
+    await leaveFamily()
     setFamilyId(null)
     setFamily(null)
+    setDataLoading(false)
+    updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
     setMenuAnchorEl(null)
   }
 
-  const handleCreateExpense = (expense: Expense) => {
+  const handleCopyFamilyCode = async (event?: MouseEvent<HTMLElement>) => {
+    if (event) {
+      event.stopPropagation()
+    }
+    if (!family?.code) return
+    setCopyingFamilyCode(true)
+    try {
+      await copyToClipboard(family.code)
+    } finally {
+      setCopyingFamilyCode(false)
+    }
+  }
+
+  const handleCreateExpense = async (expense: Expense) => {
+    const created = await createExpense(expense)
     updateState((prev) => ({
       ...prev,
-      expenses: [...prev.expenses, expense],
+      expenses: [...prev.expenses, created],
     }))
   }
 
-  const handleUpdateExpense = (expense: Expense) => {
+  const handleUpdateExpense = async (expense: Expense) => {
+    const updated = await updateExpense(expense)
     updateState((prev) => ({
       ...prev,
-      expenses: prev.expenses.map((item) => (item.id === expense.id ? expense : item)),
+      expenses: prev.expenses.map((item) => (item.id === updated.id ? updated : item)),
     }))
   }
 
-  const handleDeleteExpense = (expenseId: string) => {
+  const handleDeleteExpense = async (expenseId: string) => {
+    await deleteExpense(expenseId)
     updateState((prev) => ({
       ...prev,
       expenses: prev.expenses.filter((expense) => expense.id !== expenseId),
     }))
   }
 
-  const handleCreateTag = (name: string): Tag => {
+  const handleCreateTag = async (name: string): Promise<Tag> => {
     const trimmed = name.trim()
     const existing = findTagByName(state.tags, trimmed)
     if (existing) return existing
-
-    const newTag: Tag = {
-      id: createId(),
-      name: trimmed,
-    }
-
+    const created = await createTag(trimmed)
     updateState((prev) => ({
       ...prev,
-      tags: [...prev.tags, newTag],
+      tags: [...prev.tags, created],
     }))
-
-    return newTag
+    return created
   }
 
   const mainApp = (
@@ -315,7 +351,17 @@ function App() {
               aria-label="Открыть меню пользователя"
               sx={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}
             >
-              <AccountCircleRounded />
+              {authUser ? (
+                <Avatar
+                  src={authUser.avatarUrl}
+                  alt={authUser.name ?? 'Пользователь'}
+                  sx={{ width: 32, height: 32 }}
+                >
+                  {authUser.name?.slice(0, 1).toUpperCase()}
+                </Avatar>
+              ) : (
+                <AccountCircleRounded />
+              )}
             </IconButton>
           </Tooltip>
         </Box>
@@ -353,14 +399,36 @@ function App() {
             </Stack>
           </MenuItem>
           <Divider />
-          <MenuItem disabled>
-            <ListItemIcon>
-              <GroupRounded />
-            </ListItemIcon>
-            <ListItemText
-              primary={family?.name ?? 'Семья'}
-              secondary={family?.code ? `Код: ${family.code}` : undefined}
-            />
+          <MenuItem
+            disableRipple
+            sx={{
+              cursor: 'default',
+              '&:hover': { backgroundColor: 'transparent' },
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <GroupRounded />
+              </ListItemIcon>
+              <Box sx={{ flex: 1 }}>
+                <ListItemText
+                  primary={family?.name ?? 'Семья'}
+                  secondary={family?.code ? `Код: ${family.code}` : undefined}
+                />
+              </Box>
+              <Tooltip title="Скопировать код">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={handleCopyFamilyCode}
+                    disabled={!family?.code || isCopyingFamilyCode}
+                    aria-label="Скопировать код семьи"
+                  >
+                    <ContentCopyRounded fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
           </MenuItem>
           <Divider />
           <MenuItem
@@ -467,7 +535,10 @@ function App() {
       )
     }
     if (!familyId) {
-      return <FamilyScreen user={authUser} onComplete={handleFamilyComplete} />
+      return <FamilyScreen onComplete={handleFamilyComplete} />
+    }
+    if (isDataLoading) {
+      return <AppLoadingScreen label="Загружаем данные…" />
     }
     return mainApp
   })()

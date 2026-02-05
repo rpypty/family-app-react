@@ -25,7 +25,7 @@ type TagSearchDialogProps = {
   initialSelected: string[]
   onClose: () => void
   onConfirm: (selected: string[]) => void
-  onCreateTag?: (name: string) => Tag
+  onCreateTag?: (name: string) => Promise<Tag>
   title?: string
 }
 
@@ -40,6 +40,8 @@ export function TagSearchDialog({
 }: TagSearchDialogProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected))
+  const [isCreating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -47,6 +49,8 @@ export function TagSearchDialog({
     if (isOpen) {
       setQuery('')
       setSelected(new Set(initialSelected))
+      setCreateError('')
+      setCreating(false)
     }
   }, [isOpen, initialSelected])
 
@@ -68,14 +72,25 @@ export function TagSearchDialog({
     })
   }
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!onCreateTag) return
     const name = query.trim()
     if (!name) return
     const existing = findTagByName(tags, name)
-    const tag = existing ?? onCreateTag(name)
-    if (!tag) return
-    setSelected((prev) => new Set(prev).add(tag.id))
+    if (existing) {
+      setSelected((prev) => new Set(prev).add(existing.id))
+      return
+    }
+    setCreating(true)
+    setCreateError('')
+    try {
+      const tag = await onCreateTag(name)
+      setSelected((prev) => new Set(prev).add(tag.id))
+    } catch {
+      setCreateError('Не удалось создать тег. Попробуйте ещё раз.')
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -99,9 +114,14 @@ export function TagSearchDialog({
             <Stack spacing={1}>
               <Typography color="text.secondary">Ничего не найдено</Typography>
               {onCreateTag && query.trim() ? (
-                <Button variant="contained" onClick={handleCreate}>
-                  Добавить тег "{query.trim()}"
+                <Button variant="contained" onClick={handleCreate} disabled={isCreating}>
+                  {isCreating ? 'Создаём…' : `Добавить тег "${query.trim()}"`}
                 </Button>
+              ) : null}
+              {createError ? (
+                <Typography color="error" variant="body2">
+                  {createError}
+                </Typography>
               ) : null}
             </Stack>
           ) : (

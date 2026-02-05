@@ -29,9 +29,9 @@ type ExpenseFormModalProps = {
   expense?: Expense | null
   tags: Tag[]
   onClose: () => void
-  onSave: (expense: Expense) => void
-  onDelete: (expenseId: string) => void
-  onCreateTag: (name: string) => Tag
+  onSave: (expense: Expense) => Promise<void>
+  onDelete: (expenseId: string) => Promise<void>
+  onCreateTag: (name: string) => Promise<Tag>
 }
 
 export function ExpenseFormModal({
@@ -51,6 +51,8 @@ export function ExpenseFormModal({
   const [error, setError] = useState('')
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
   const [isConfirmOpen, setConfirmOpen] = useState(false)
+  const [isSaving, setSaving] = useState(false)
+  const [isDeleting, setDeleting] = useState(false)
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -63,6 +65,8 @@ export function ExpenseFormModal({
     setSelectedTagIds(new Set(expense?.tagIds ?? []))
     setError('')
     setConfirmOpen(false)
+    setSaving(false)
+    setDeleting(false)
   }, [expense, isOpen])
 
   const selectedTagList = useMemo(
@@ -70,7 +74,7 @@ export function ExpenseFormModal({
     [tags, selectedTagIds],
   )
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const normalizedAmount = amount.replace(/\s/g, '').replace(',', '.')
     const parsedAmount = Number.parseFloat(normalizedAmount)
     const trimmedTitle = title.trim()
@@ -88,9 +92,15 @@ export function ExpenseFormModal({
       title: trimmedTitle,
       tagIds: Array.from(selectedTagIds),
     }
-
-    onSave(payload)
-    onClose()
+    setSaving(true)
+    try {
+      await onSave(payload)
+      onClose()
+    } catch {
+      setError('Не удалось сохранить расход. Попробуйте ещё раз.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -188,17 +198,22 @@ export function ExpenseFormModal({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ bgcolor: 'background.paper', py: 2 }}>
-          <Button color="inherit" onClick={onClose}>
+          <Button color="inherit" onClick={onClose} disabled={isSaving || isDeleting}>
             Отмена
           </Button>
           {expense ? (
-            <Button color="error" onClick={() => setConfirmOpen(true)}>
+            <Button
+              color="error"
+              onClick={() => setConfirmOpen(true)}
+              disabled={isSaving || isDeleting}
+            >
               Удалить
             </Button>
           ) : null}
           <Button
             variant="outlined"
             onClick={handleSave}
+            disabled={isSaving || isDeleting}
             sx={(theme) => ({
               color: theme.palette.primary.main,
               borderColor: alpha(theme.palette.primary.main, 0.4),
@@ -215,7 +230,7 @@ export function ExpenseFormModal({
               },
             })}
           >
-            Сохранить
+            {isSaving ? 'Сохраняем…' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -228,19 +243,29 @@ export function ExpenseFormModal({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)}>Отмена</Button>
+          <Button onClick={() => setConfirmOpen(false)} disabled={isDeleting}>
+            Отмена
+          </Button>
           <Button
             color="error"
             variant="contained"
-            onClick={() => {
-              if (expense) {
-                onDelete(expense.id)
+            disabled={isDeleting}
+            onClick={async () => {
+              if (!expense) return
+              setDeleting(true)
+              try {
+                await onDelete(expense.id)
+                setConfirmOpen(false)
+                onClose()
+              } catch {
+                setError('Не удалось удалить расход. Попробуйте ещё раз.')
+                setConfirmOpen(false)
+              } finally {
+                setDeleting(false)
               }
-              setConfirmOpen(false)
-              onClose()
             }}
           >
-            Удалить
+            {isDeleting ? 'Удаляем…' : 'Удалить'}
           </Button>
         </DialogActions>
       </Dialog>

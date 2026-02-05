@@ -13,36 +13,41 @@ import {
   Typography,
 } from '@mui/material'
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded'
-import type { AuthUser } from '../data/auth'
+import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import type { Family } from '../data/families'
+import { isApiError } from '../api/client'
 import { createFamily, joinFamilyByCode } from '../data/families'
+import { copyToClipboard } from '../utils/clipboard'
 
 type FamilyScreenProps = {
-  user: AuthUser
-  onComplete: (familyId: string) => void
+  onComplete: (family: Family) => void
 }
 
 type FamilyTab = 'create' | 'join'
 
 const resolveJoinError = (error: unknown) => {
-  if (error instanceof Error) {
-    if (error.message === 'family_code_not_found') {
+  if (isApiError(error)) {
+    if (error.code === 'family_code_not_found') {
       return 'Код не найден. Проверьте правильность и попробуйте снова.'
     }
-    if (error.message === 'family_missing') {
+    if (error.code === 'already_in_family') {
+      return 'Вы уже состоите в семье.'
+    }
+    if (error.code === 'family_not_found') {
       return 'Семья по этому коду недоступна. Попробуйте другой код.'
     }
   }
   return 'Не удалось подключиться. Попробуйте ещё раз.'
 }
 
-export function FamilyScreen({ user, onComplete }: FamilyScreenProps) {
+export function FamilyScreen({ onComplete }: FamilyScreenProps) {
   const [tab, setTab] = useState<FamilyTab>('create')
   const [familyName, setFamilyName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setLoading] = useState(false)
   const [createdFamily, setCreatedFamily] = useState<Family | null>(null)
+  const [isCopying, setCopying] = useState(false)
 
   const normalizedJoinCode = useMemo(() => joinCode.replace(/\s+/g, '').toUpperCase(), [joinCode])
 
@@ -50,7 +55,7 @@ export function FamilyScreen({ user, onComplete }: FamilyScreenProps) {
     setLoading(true)
     setError(null)
     try {
-      const family = await createFamily({ name: familyName, ownerId: user.id })
+      const family = await createFamily({ name: familyName })
       setCreatedFamily(family)
     } catch {
       setError('Не удалось создать семью. Попробуйте ещё раз.')
@@ -63,12 +68,21 @@ export function FamilyScreen({ user, onComplete }: FamilyScreenProps) {
     setLoading(true)
     setError(null)
     try {
-      const family = await joinFamilyByCode({ code: normalizedJoinCode, userId: user.id })
-      onComplete(family.id)
+      const family = await joinFamilyByCode({ code: normalizedJoinCode })
+      onComplete(family)
     } catch (joinError) {
       setError(resolveJoinError(joinError))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCopyCode = async (code: string) => {
+    setCopying(true)
+    try {
+      await copyToClipboard(code)
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -106,6 +120,15 @@ export function FamilyScreen({ user, onComplete }: FamilyScreenProps) {
                     {createdFamily.code}
                   </Typography>
                 </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ContentCopyRounded />}
+                  onClick={() => handleCopyCode(createdFamily.code)}
+                  disabled={isCopying}
+                >
+                  {isCopying ? 'Копируем…' : 'Скопировать код'}
+                </Button>
                 <Typography variant="body2" color="text.secondary" textAlign="center">
                   Семья “{createdFamily.name}” готова. Можно сразу переходить в приложение.
                 </Typography>
@@ -117,7 +140,7 @@ export function FamilyScreen({ user, onComplete }: FamilyScreenProps) {
             size="large"
             variant="contained"
             endIcon={<ArrowForwardRounded />}
-            onClick={() => onComplete(createdFamily.id)}
+            onClick={() => onComplete(createdFamily)}
           >
             Перейти в приложение
           </Button>

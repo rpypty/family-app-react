@@ -1,4 +1,4 @@
-import { createId } from '../utils/uuid'
+import { apiFetch, isApiError } from '../api/client'
 
 export type Family = {
   id: string
@@ -6,156 +6,96 @@ export type Family = {
   code: string
   ownerId: string
   createdAt: string
-  memberIds: string[]
 }
 
-type FamilyStore = {
-  families: Record<string, Family>
-  codeIndex: Record<string, string>
-  memberships: Record<string, string>
+export type FamilyMember = {
+  userId: string
+  role: 'owner' | 'member'
+  joinedAt: string
 }
 
-const FAMILY_STORAGE_KEY = 'family-app-families-v1'
+type ApiFamily = {
+  id: string
+  name: string
+  code: string
+  owner_id: string
+  created_at: string
+}
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+type ApiFamilyMember = {
+  user_id: string
+  role: 'owner' | 'member'
+  joined_at: string
+}
 
-const createEmptyStore = (): FamilyStore => ({
-  families: {},
-  codeIndex: {},
-  memberships: {},
+const mapFamily = (family: ApiFamily): Family => ({
+  id: family.id,
+  name: family.name,
+  code: family.code,
+  ownerId: family.owner_id,
+  createdAt: family.created_at,
 })
 
-const loadStore = (): FamilyStore => {
-  if (typeof localStorage === 'undefined') return createEmptyStore()
+const mapFamilyMember = (member: ApiFamilyMember): FamilyMember => ({
+  userId: member.user_id,
+  role: member.role,
+  joinedAt: member.joined_at,
+})
+
+export const getCurrentFamily = async (): Promise<Family | null> => {
   try {
-    const raw = localStorage.getItem(FAMILY_STORAGE_KEY)
-    if (!raw) return createEmptyStore()
-    const parsed = JSON.parse(raw) as unknown
-    if (!isPlainObject(parsed)) return createEmptyStore()
-    const families = isPlainObject(parsed.families) ? parsed.families : {}
-    const codeIndex = isPlainObject(parsed.codeIndex) ? parsed.codeIndex : {}
-    const memberships = isPlainObject(parsed.memberships) ? parsed.memberships : {}
-    return {
-      families: families as Record<string, Family>,
-      codeIndex: codeIndex as Record<string, string>,
-      memberships: memberships as Record<string, string>,
+    const family = await apiFetch<ApiFamily>('/families/me')
+    return mapFamily(family)
+  } catch (error) {
+    if (isApiError(error) && (error.status === 404 || error.code === 'family_not_found')) {
+      return null
     }
-  } catch {
-    return createEmptyStore()
+    throw error
   }
 }
 
-const saveStore = (store: FamilyStore) => {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(FAMILY_STORAGE_KEY, JSON.stringify(store))
-  } catch {
-    // Ignore storage errors to avoid blocking UI updates.
-  }
-}
-
-const normalizeCode = (code: string) => code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-
-const generateFamilyCode = (existing: Set<string>): string => {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    let value = ''
-    for (let i = 0; i < 6; i += 1) {
-      value += alphabet[Math.floor(Math.random() * alphabet.length)]
-    }
-    if (!existing.has(value)) return value
-  }
-  const fallback = normalizeCode(createId()).slice(0, 6)
-  return fallback.padEnd(6, 'X')
-}
-
-export const getUserFamilyId = async (userId: string): Promise<string | null> => {
-  const store = loadStore()
-  const familyId = store.memberships[userId]
-  if (!familyId) return null
-  if (!store.families[familyId]) {
-    delete store.memberships[userId]
-    saveStore(store)
-    return null
-  }
-  return familyId
+export const getUserFamilyId = async (_userId: string): Promise<string | null> => {
+  const family = await getCurrentFamily()
+  return family?.id ?? null
 }
 
 export const getFamilyById = async (familyId: string): Promise<Family | null> => {
-  const store = loadStore()
-  return store.families[familyId] ?? null
+  const family = await getCurrentFamily()
+  if (!family) return null
+  return family.id === familyId ? family : null
 }
 
-export const createFamily = async ({
-  name,
-  ownerId,
-}: {
-  name: string
-  ownerId: string
-}): Promise<Family> => {
-  const store = loadStore()
-  const id = createId()
-  const code = generateFamilyCode(new Set(Object.keys(store.codeIndex)))
-  const trimmedName = name.trim() || 'Моя семья'
-  const family: Family = {
-    id,
-    name: trimmedName,
-    code,
-    ownerId,
-    createdAt: new Date().toISOString(),
-    memberIds: [ownerId],
-  }
-  store.families[id] = family
-  store.codeIndex[code] = id
-  store.memberships[ownerId] = id
-  saveStore(store)
-  return family
+export const createFamily = async ({ name }: { name: string }): Promise<Family> => {
+  const family = await apiFetch<ApiFamily>('/families', {
+    method: 'POST',
+    body: JSON.stringify({ name: name.trim() || 'Моя семья' }),
+  })
+  return mapFamily(family)
 }
 
-export const joinFamilyByCode = async ({
-  code,
-  userId,
-}: {
-  code: string
-  userId: string
-}): Promise<Family> => {
-  const store = loadStore()
-  const normalized = normalizeCode(code)
-  const familyId = store.codeIndex[normalized]
-  if (!familyId) {
-    throw new Error('family_code_not_found')
-  }
-  const family = store.families[familyId]
-  if (!family) {
-    throw new Error('family_missing')
-  }
-  if (!family.memberIds.includes(userId)) {
-    family.memberIds = [...family.memberIds, userId]
-  }
-  store.families[familyId] = family
-  store.memberships[userId] = familyId
-  saveStore(store)
-  return family
+export const joinFamilyByCode = async ({ code }: { code: string }): Promise<Family> => {
+  const family = await apiFetch<ApiFamily>('/families/join', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+  return mapFamily(family)
 }
 
-export const leaveFamily = async ({
-  familyId,
-  userId,
-}: {
-  familyId: string
-  userId: string
-}): Promise<void> => {
-  const store = loadStore()
-  const family = store.families[familyId]
-  if (!family) {
-    delete store.memberships[userId]
-    saveStore(store)
-    return
-  }
+export const leaveFamily = async (): Promise<void> => {
+  await apiFetch<void>('/families/leave', {
+    method: 'POST',
+  })
+}
 
-  family.memberIds = family.memberIds.filter((memberId) => memberId !== userId)
-  store.families[familyId] = family
-  delete store.memberships[userId]
-  saveStore(store)
+export const updateFamilyName = async (name: string): Promise<Family> => {
+  const family = await apiFetch<ApiFamily>('/families/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+  return mapFamily(family)
+}
+
+export const listFamilyMembers = async (): Promise<FamilyMember[]> => {
+  const members = await apiFetch<ApiFamilyMember[]>('/families/me/members')
+  return members.map(mapFamilyMember)
 }

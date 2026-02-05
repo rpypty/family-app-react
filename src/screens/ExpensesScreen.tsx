@@ -24,10 +24,10 @@ import { ExpenseFormModal } from '../components/ExpenseFormModal'
 type ExpensesScreenProps = {
   expenses: Expense[]
   tags: Tag[]
-  onCreateExpense: (expense: Expense) => void
-  onUpdateExpense: (expense: Expense) => void
-  onDeleteExpense: (expenseId: string) => void
-  onCreateTag: (name: string) => Tag
+  onCreateExpense: (expense: Expense) => Promise<void>
+  onUpdateExpense: (expense: Expense) => Promise<void>
+  onDeleteExpense: (expenseId: string) => Promise<void>
+  onCreateTag: (name: string) => Promise<Tag>
 }
 
 export function ExpensesScreen({
