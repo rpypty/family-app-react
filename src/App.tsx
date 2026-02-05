@@ -1,18 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import {
+  Alert,
+  Avatar,
   Box,
   BottomNavigation,
   BottomNavigationAction,
+  Button,
+  Chip,
+  CircularProgress,
   Container,
   CssBaseline,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
+  List,
+  ListItem,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
-  Avatar,
   Paper,
   Stack,
   Tooltip,
@@ -38,8 +48,8 @@ import {
   signOut,
   isSupabaseConfigured,
 } from './data/auth'
-import type { Family } from './data/families'
-import { getCurrentFamily, leaveFamily } from './data/families'
+import type { Family, FamilyMember } from './data/families'
+import { getCurrentFamily, leaveFamily, listFamilyMembers, removeFamilyMember } from './data/families'
 import { listExpensePage, createExpense, updateExpense, deleteExpense } from './data/expenses'
 import { listTags, createTag } from './data/tags'
 import { findTagByName } from './utils/tagUtils'
@@ -95,6 +105,11 @@ function App() {
   const [expensesOffset, setExpensesOffset] = useState(0)
   const [isExpensesLoadingMore, setExpensesLoadingMore] = useState(false)
   const [isCopyingFamilyCode, setCopyingFamilyCode] = useState(false)
+  const [isFamilyDialogOpen, setFamilyDialogOpen] = useState(false)
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  const [familyMembersLoading, setFamilyMembersLoading] = useState(false)
+  const [familyMembersError, setFamilyMembersError] = useState<string | null>(null)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
 
@@ -136,6 +151,31 @@ function App() {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    let isActive = true
+    const loadMembers = async () => {
+      if (!isFamilyDialogOpen) return
+      setFamilyMembersLoading(true)
+      setFamilyMembersError(null)
+      try {
+        const members = await listFamilyMembers()
+        if (!isActive) return
+        setFamilyMembers(members)
+      } catch {
+        if (!isActive) return
+        setFamilyMembersError('Не удалось загрузить список участников.')
+        setFamilyMembers([])
+      } finally {
+        if (isActive) setFamilyMembersLoading(false)
+      }
+    }
+
+    void loadMembers()
+    return () => {
+      isActive = false
+    }
+  }, [isFamilyDialogOpen])
 
   const theme = useMemo(() => {
     const primaryMain = state.settings.themeMode === 'dark' ? '#4db6ac' : '#1f6b63'
@@ -239,6 +279,7 @@ function App() {
 
   const themeMode = state.settings.themeMode
   const themeLabel = themeMode === 'dark' ? 'Светлая тема' : 'Тёмная тема'
+  const isOwner = family?.ownerId === authUser?.id
 
   const toggleTheme = () => {
     updateState((prev) => ({
@@ -308,6 +349,29 @@ function App() {
       await copyToClipboard(family.code)
     } finally {
       setCopyingFamilyCode(false)
+    }
+  }
+
+  const handleOpenFamilyDialog = () => {
+    setMenuAnchorEl(null)
+    setFamilyDialogOpen(true)
+  }
+
+  const handleCloseFamilyDialog = () => {
+    setFamilyDialogOpen(false)
+  }
+
+  const handleRemoveMember = async (member: FamilyMember) => {
+    if (!family || member.role === 'owner') return
+    setRemovingMemberId(member.userId)
+    setFamilyMembersError(null)
+    try {
+      await removeFamilyMember(member.userId)
+      setFamilyMembers((prev) => prev.filter((item) => item.userId !== member.userId))
+    } catch {
+      setFamilyMembersError('Не удалось исключить участника.')
+    } finally {
+      setRemovingMemberId(null)
     }
   }
 
@@ -444,21 +508,19 @@ function App() {
             </Stack>
           </MenuItem>
           <Divider />
-          <MenuItem
-            disableRipple
-            sx={{
-              cursor: 'default',
-              '&:hover': { backgroundColor: 'transparent' },
-            }}
-          >
+          <MenuItem onClick={handleOpenFamilyDialog}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
               <ListItemIcon sx={{ minWidth: 36 }}>
                 <GroupRounded />
               </ListItemIcon>
               <Box sx={{ flex: 1 }}>
                 <ListItemText
-                  primary={family?.name ?? 'Семья'}
-                  secondary={family?.code ? `Код: ${family.code}` : undefined}
+                  primary="Моя семья"
+                  secondary={
+                    family
+                      ? `${family.name}${family.code ? ` · Код: ${family.code}` : ''}`
+                      : '—'
+                  }
                 />
               </Box>
               <Tooltip title="Скопировать код">
@@ -502,21 +564,123 @@ function App() {
         </Menu>
       </Paper>
 
+      <Dialog
+        open={isFamilyDialogOpen}
+        onClose={handleCloseFamilyDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Моя семья</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {family?.name ?? 'Семья'}
+              </Typography>
+              {family?.code ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Код: {family.code}
+                  </Typography>
+                  <Tooltip title="Скопировать код">
+                    <span>
+                      <IconButton
+                        size="small"
+                        onClick={handleCopyFamilyCode}
+                        disabled={!family?.code || isCopyingFamilyCode}
+                        aria-label="Скопировать код семьи"
+                      >
+                        <ContentCopyRounded fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Stack>
+              ) : null}
+            </Stack>
+
+            {familyMembersError ? (
+              <Alert severity="error">{familyMembersError}</Alert>
+            ) : null}
+
+            {familyMembersLoading ? (
+              <Stack alignItems="center" sx={{ py: 3 }}>
+                <CircularProgress size={28} />
+              </Stack>
+            ) : familyMembersError ? null : familyMembers.length === 0 ? (
+              <Alert severity="info">Пока нет участников.</Alert>
+            ) : (
+              <List disablePadding>
+                {familyMembers.map((member, index) => {
+                  const isOwnerMember = member.role === 'owner'
+                  const isSelf = member.userId === authUser?.id
+                  const canRemove = Boolean(isOwner && !isOwnerMember && !isSelf)
+                  const displayEmail = member.email ?? 'Без почты'
+                  const initial = (member.email ?? member.userId).slice(0, 1).toUpperCase()
+
+                  return (
+                    <ListItem
+                      key={member.userId}
+                      divider={index < familyMembers.length - 1}
+                      sx={{ alignItems: 'center', py: 1.5 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 48 }}>
+                        <Avatar src={member.avatarUrl ?? undefined} alt={displayEmail}>
+                          {initial}
+                        </Avatar>
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={displayEmail}
+                        secondary={isSelf ? 'Это вы' : undefined}
+                        primaryTypographyProps={{ fontWeight: 600 }}
+                      />
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{ ml: 'auto' }}
+                      >
+                        {isOwnerMember ? (
+                          <Chip label="Владелец" size="small" variant="outlined" />
+                        ) : null}
+                        {canRemove ? (
+                          <Button
+                            size="small"
+                            color="error"
+                            variant="text"
+                            onClick={() => handleRemoveMember(member)}
+                            disabled={removingMemberId === member.userId}
+                          >
+                            {removingMemberId === member.userId ? 'Исключаем…' : 'Исключить'}
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </ListItem>
+                  )
+                })}
+              </List>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseFamilyDialog}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
       <Container maxWidth="md" sx={{ pt: 2, pb: 12 }}>
         <Stack spacing={3}>
-            {activeTab === 'expenses' && (
-              <ExpensesScreen
-                expenses={state.expenses}
-                tags={state.tags}
-                total={expensesTotal}
-                hasMore={state.expenses.length < expensesTotal}
-                isLoadingMore={isExpensesLoadingMore}
-                onLoadMore={handleLoadMoreExpenses}
-                onCreateExpense={handleCreateExpense}
-                onUpdateExpense={handleUpdateExpense}
-                onDeleteExpense={handleDeleteExpense}
-                onCreateTag={handleCreateTag}
-              />
+          {activeTab === 'expenses' && (
+            <ExpensesScreen
+              expenses={state.expenses}
+              tags={state.tags}
+              total={expensesTotal}
+              hasMore={state.expenses.length < expensesTotal}
+              isLoadingMore={isExpensesLoadingMore}
+              onLoadMore={handleLoadMoreExpenses}
+              onCreateExpense={handleCreateExpense}
+              onUpdateExpense={handleUpdateExpense}
+              onDeleteExpense={handleDeleteExpense}
+              onCreateTag={handleCreateTag}
+            />
           )}
 
           {activeTab === 'analytics' && (

@@ -12,6 +12,8 @@ export type FamilyMember = {
   userId: string
   role: 'owner' | 'member'
   joinedAt: string
+  email: string | null
+  avatarUrl: string | null
 }
 
 type ApiFamily = {
@@ -26,6 +28,8 @@ type ApiFamilyMember = {
   user_id: string
   role: 'owner' | 'member'
   joined_at: string
+  email?: string | null
+  avatar_url?: string | null
 }
 
 const mapFamily = (family: ApiFamily): Family => ({
@@ -40,6 +44,8 @@ const mapFamilyMember = (member: ApiFamilyMember): FamilyMember => ({
   userId: member.user_id,
   role: member.role,
   joinedAt: member.joined_at,
+  email: member.email ?? null,
+  avatarUrl: member.avatar_url ?? null,
 })
 
 export const getCurrentFamily = async (): Promise<Family | null> => {
@@ -98,4 +104,8 @@ export const updateFamilyName = async (name: string): Promise<Family> => {
 export const listFamilyMembers = async (): Promise<FamilyMember[]> => {
   const members = await apiFetch<ApiFamilyMember[]>('/families/me/members')
   return members.map(mapFamilyMember)
+}
+
+export const removeFamilyMember = async (userId: string): Promise<void> => {
+  await apiFetch<void>(`/families/me/members/${userId}`, { method: 'DELETE' })
 }
