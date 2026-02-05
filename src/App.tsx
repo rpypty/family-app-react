@@ -7,7 +7,6 @@ import {
   BottomNavigation,
   BottomNavigationAction,
   Button,
-  Chip,
   CircularProgress,
   Container,
   CssBaseline,
@@ -38,6 +37,7 @@ import AccountCircleRounded from '@mui/icons-material/AccountCircleRounded'
 import GroupRounded from '@mui/icons-material/GroupRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
+import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import type { StorageState, Expense, Tag } from './data/types'
 import { loadState, saveState } from './data/storage'
 import type { AuthSession, AuthUser } from './data/auth'
@@ -629,29 +629,44 @@ function App() {
                         </Avatar>
                       </ListItemIcon>
                       <ListItemText
-                        primary={displayEmail}
-                        secondary={isSelf ? 'Это вы' : undefined}
-                        primaryTypographyProps={{ fontWeight: 600 }}
+                        sx={{ mr: 2, minWidth: 0 }}
+                        primary={
+                          <Typography
+                            variant="body1"
+                            fontWeight={600}
+                            noWrap
+                            title={displayEmail}
+                          >
+                            {displayEmail}
+                          </Typography>
+                        }
+                        secondary={undefined}
                       />
                       <Stack
-                        direction="row"
-                        spacing={1}
+                        direction="column"
+                        spacing={0.5}
                         alignItems="center"
                         sx={{ ml: 'auto' }}
                       >
                         {isOwnerMember ? (
-                          <Chip label="Владелец" size="small" variant="outlined" />
+                          <Typography component="span" sx={{ fontSize: 18 }} aria-label="Владелец">
+                            👑
+                          </Typography>
                         ) : null}
                         {canRemove ? (
-                          <Button
-                            size="small"
-                            color="error"
-                            variant="text"
-                            onClick={() => handleRemoveMember(member)}
-                            disabled={removingMemberId === member.userId}
-                          >
-                            {removingMemberId === member.userId ? 'Исключаем…' : 'Исключить'}
-                          </Button>
+                          <Tooltip title="Исключить">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleRemoveMember(member)}
+                                disabled={removingMemberId === member.userId}
+                                aria-label="Исключить участника"
+                              >
+                                <DeleteOutlineRounded fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         ) : null}
                       </Stack>
                     </ListItem>
