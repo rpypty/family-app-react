@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   FormControlLabel,
   Divider,
   Stack,
@@ -14,9 +16,7 @@ import {
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import type { Expense, Tag } from '../data/types'
-import { aggregateByTag } from '../utils/analytics'
 import {
-  aggregateByCurrency,
   dateOnly,
   formatAmount,
   formatDate,
@@ -31,9 +31,10 @@ import { QuickFilterChip } from '../components/QuickFilterChip'
 import { TagPickerInput } from '../components/TagPickerInput'
 import { TagRow } from '../components/TagRow'
 import { TagSearchDialog } from '../components/TagSearchDialog'
+import { getAnalyticsByTag, getAnalyticsSummary } from '../data/analytics'
+import { listExpensePage } from '../data/expenses'
 
 type AnalyticsScreenProps = {
-  expenses: Expense[]
   tags: Tag[]
 }
 
@@ -48,15 +49,50 @@ const PALETTE = [
   '#00838f',
 ]
 
-export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
+const FALLBACK_FROM = '2000-01-01'
+
+export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
   const [fromDate, setFromDate] = useState<string | null>(null)
   const [toDate, setToDate] = useState<string | null>(null)
   const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
   const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
   const [onlySelectedTags, setOnlySelectedTags] = useState(false)
+  const [summary, setSummary] = useState<{
+    totalAmount: number
+    currency: string
+    count: number
+    avgPerDay: number
+    from: string
+    to: string
+  } | null>(null)
+  const [byTagRows, setByTagRows] = useState<
+    Array<{ tagId: string; tagName: string; total: number; count: number }>
+  >([])
+  const [isLoading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
+  const [isListLoading, setListLoading] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
 
   const hasFilters = fromDate !== null || toDate !== null || filterTagIds.size > 0
+
+  const range = useMemo(() => {
+    const today = dateOnly(new Date())
+    const fallbackFrom = dateOnly(parseDate(FALLBACK_FROM))
+    let from = fromDate ? dateOnly(parseDate(fromDate)) : fallbackFrom
+    let to = toDate ? dateOnly(parseDate(toDate)) : today
+    if (from.getTime() > to.getTime()) {
+      const temp = from
+      from = to
+      to = temp
+    }
+    return { from: formatDate(from), to: formatDate(to) }
+  }, [fromDate, toDate])
+
+  const tagIds = useMemo(() => Array.from(filterTagIds), [filterTagIds])
+  const tagIdsKey = tagIds.join(',')
+  const tagIdsForApi = tagIds.length > 0 ? tagIds : undefined
 
   const applyQuickRange = (days: number) => {
     const today = dateOnly(new Date())
@@ -79,67 +115,122 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
     setFilterTagIds(new Set())
   }
 
-  const filtered = useMemo(() => {
-    return expenses.filter((expense) => {
-      const date = dateOnly(parseDate(expense.date))
-      let from = fromDate ? dateOnly(parseDate(fromDate)) : null
-      let to = toDate ? dateOnly(parseDate(toDate)) : null
-      if (from && to && from.getTime() > to.getTime()) {
-        const temp = from
-        from = to
-        to = temp
-      }
-      if (from && date < from) return false
-      if (to && date > to) return false
-      if (filterTagIds.size > 0) {
-        const hasAny = expense.tagIds.some((id) => filterTagIds.has(id))
-        if (!hasAny) return false
-      }
-      return true
-    })
-  }, [expenses, fromDate, toDate, filterTagIds])
-
   useEffect(() => {
     setShowAllTagBreakdown(false)
   }, [fromDate, toDate, filterTagIds])
 
+  useEffect(() => {
+    let isActive = true
+    const loadAnalytics = async () => {
+      setLoading(true)
+      setLoadError(null)
+      try {
+        const [summaryResponse, byTagResponse] = await Promise.all([
+          getAnalyticsSummary({
+            from: range.from,
+            to: range.to,
+            tagIds: tagIdsForApi,
+          }),
+          getAnalyticsByTag({
+            from: range.from,
+            to: range.to,
+            tagIds: tagIdsForApi,
+            limit: 50,
+          }),
+        ])
+        if (!isActive) return
+        setSummary(summaryResponse)
+        setByTagRows(byTagResponse)
+      } catch {
+        if (!isActive) return
+        setLoadError('Не удалось загрузить аналитику. Попробуйте ещё раз.')
+        setSummary(null)
+        setByTagRows([])
+      } finally {
+        if (isActive) setLoading(false)
+      }
+    }
+
+    void loadAnalytics()
+    return () => {
+      isActive = false
+    }
+  }, [range.from, range.to, tagIdsKey])
+
+  useEffect(() => {
+    let isActive = true
+    if (!hasFilters) {
+      setFilteredExpenses([])
+      setListError(null)
+      return () => {
+        isActive = false
+      }
+    }
+
+    if (tagIds.length > 1) {
+      setFilteredExpenses([])
+      setListError('Для списка выберите один тег.')
+      return () => {
+        isActive = false
+      }
+    }
+
+    const loadList = async () => {
+      setListLoading(true)
+      setListError(null)
+      try {
+        const response = await listExpensePage({
+          from: range.from,
+          to: range.to,
+          tagId: tagIds.length === 1 ? tagIds[0] : undefined,
+          limit: 50,
+          offset: 0,
+        })
+        if (!isActive) return
+        setFilteredExpenses(response.items)
+      } catch {
+        if (!isActive) return
+        setListError('Не удалось загрузить список по фильтрам.')
+        setFilteredExpenses([])
+      } finally {
+        if (isActive) setListLoading(false)
+      }
+    }
+
+    void loadList()
+    return () => {
+      isActive = false
+    }
+  }, [hasFilters, range.from, range.to, tagIds, tagIdsKey])
+
   const filteredSorted = useMemo(
     () =>
-      [...filtered].sort((a, b) => {
+      [...filteredExpenses].sort((a, b) => {
         const dateDiff = parseDate(b.date).getTime() - parseDate(a.date).getTime()
         if (dateDiff !== 0) return dateDiff
         return (b.id ?? '').localeCompare(a.id ?? '')
       }),
-    [filtered],
+    [filteredExpenses],
   )
 
-  const totalsByCurrency = useMemo(() => aggregateByCurrency(filtered), [filtered])
-  const totalsByTag = useMemo(() => {
-    if (!onlySelectedTags || filterTagIds.size === 0) {
-      return aggregateByTag(filtered)
+  const rowsForBreakdown = useMemo(() => {
+    if (onlySelectedTags && filterTagIds.size > 0) {
+      return byTagRows.filter((row) => filterTagIds.has(row.tagId))
     }
-    const totals: Record<string, number> = {}
-    filtered.forEach((expense) => {
-      const eligible = expense.tagIds.filter((id) => filterTagIds.has(id))
-      if (eligible.length === 0) return
-      eligible.forEach((tagId) => {
-        totals[tagId] = (totals[tagId] ?? 0) + expense.amount
-      })
-    })
-    return totals
-  }, [filtered, filterTagIds, onlySelectedTags])
+    return byTagRows
+  }, [byTagRows, filterTagIds, onlySelectedTags])
 
   const slices = useMemo(() => {
-    const entries = Object.entries(totalsByTag).sort((a, b) => b[1] - a[1])
-    return entries.map(([tagId, value], index) => ({
-      label: tags.find((tag) => tag.id === tagId)?.name ?? 'Без тега',
-      value,
+    const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
+    return entries.map((row, index) => ({
+      label: row.tagName || tags.find((tag) => tag.id === row.tagId)?.name || 'Без тега',
+      value: row.total,
       color: PALETTE[index % PALETTE.length],
     }))
-  }, [totalsByTag, tags])
+  }, [rowsForBreakdown, tags])
 
   const totalByTags = slices.reduce((sum, slice) => sum + slice.value, 0)
-  const currencyLabel = Object.keys(totalsByCurrency).length === 1 ? Object.keys(totalsByCurrency)[0] : ''
+  const currencyLabel = summary?.currency ?? ''
   const breakdownVisible = showAllTagBreakdown ? slices : slices.slice(0, 5)
   const breakdownRemaining = slices.length - breakdownVisible.length
 
@@ -236,6 +327,8 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
         </CardContent>
       </Card>
 
+      {loadError ? <Alert severity="error">{loadError}</Alert> : null}
+
       <Card
         elevation={0}
         sx={{
@@ -251,7 +344,27 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
         }}
       >
         <CardContent sx={{ px: 2, py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          {Object.keys(totalsByCurrency).length === 0 ? (
+          {isLoading ? (
+            <Stack spacing={1} alignItems="center">
+              <CircularProgress size={24} />
+              <Typography variant="body2" color="text.secondary">
+                Загружаем аналитику…
+              </Typography>
+            </Stack>
+          ) : summary ? (
+            <Stack spacing={0.75} alignItems="center">
+              <Chip
+                label="Итого"
+                size="small"
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: 600 }}
+              />
+              <Typography variant="h4" fontWeight={800}>
+                {formatAmount(summary.totalAmount)} {summary.currency}
+              </Typography>
+            </Stack>
+          ) : (
             <Stack spacing={0.5} alignItems="center">
               <Chip
                 label="Итого"
@@ -263,21 +376,6 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
               <Typography variant="h5" fontWeight={700}>
                 0
               </Typography>
-            </Stack>
-          ) : (
-            <Stack spacing={0.75} alignItems="center">
-              <Chip
-                label="Итого"
-                size="small"
-                color="primary"
-                variant="outlined"
-                sx={{ fontWeight: 600 }}
-              />
-              {Object.entries(totalsByCurrency).map(([currency, value]) => (
-                <Typography key={currency} variant="h4" fontWeight={800}>
-                  {formatAmount(value)} {currency}
-                </Typography>
-              ))}
             </Stack>
           )}
         </CardContent>
@@ -344,7 +442,11 @@ export function AnalyticsScreen({ expenses, tags }: AnalyticsScreenProps) {
               <Typography variant="subtitle1" fontWeight={600}>
                 Список по фильтрам
               </Typography>
-              {filteredSorted.length === 0 ? (
+              {listError ? (
+                <Typography color="error">{listError}</Typography>
+              ) : isListLoading ? (
+                <Typography color="text.secondary">Загружаем список…</Typography>
+              ) : filteredSorted.length === 0 ? (
                 <Typography color="text.secondary">Нет подходящих записей</Typography>
               ) : (
                 <Stack spacing={1}>

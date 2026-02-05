@@ -56,7 +56,7 @@ const TITLES = [
   'Связь',
 ]
 
-const DEFAULT_TARGET_COUNT = 220
+const DEFAULT_TARGET_COUNT = 50
 const MONTHS_TO_GENERATE = 16
 
 const createDateKey = (date: Date) => {
