@@ -187,6 +187,7 @@ export const createSeedState = (
   return {
     expenses,
     tags,
+    todoLists: [],
     settings: { themeMode: 'light' },
   }
 }

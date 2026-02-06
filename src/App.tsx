@@ -31,6 +31,7 @@ import { ThemeProvider, alpha, createTheme } from '@mui/material/styles'
 import ListAltRounded from '@mui/icons-material/ListAltRounded'
 import PieChartRounded from '@mui/icons-material/PieChartRounded'
 import BarChartRounded from '@mui/icons-material/BarChartRounded'
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded'
 import LightModeRounded from '@mui/icons-material/LightModeRounded'
 import AccountCircleRounded from '@mui/icons-material/AccountCircleRounded'
@@ -38,7 +39,7 @@ import GroupRounded from '@mui/icons-material/GroupRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
-import type { StorageState, Expense, Tag } from './data/types'
+import type { StorageState, Expense, Tag, TodoList } from './data/types'
 import { loadState, saveState } from './data/storage'
 import type { AuthSession, AuthUser } from './data/auth'
 import {
@@ -61,8 +62,11 @@ import { WelcomeScreen } from './screens/WelcomeScreen'
 import { AuthScreen } from './screens/AuthScreen'
 import { FamilyScreen } from './screens/FamilyScreen'
 import { AppLoadingScreen } from './screens/AppLoadingScreen'
+import { MiniAppsScreen } from './screens/MiniAppsScreen'
+import { TodoScreen } from './screens/TodoScreen'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
+type AppId = 'home' | 'expenses' | 'todo'
 
 const TABS: Array<{
   id: TabId
@@ -95,6 +99,7 @@ const EXPENSES_PAGE_SIZE = 30
 function App() {
   const [state, setState] = useState<StorageState>(() => loadState())
   const [activeTab, setActiveTab] = useState<TabId>('expenses')
+  const [activeApp, setActiveApp] = useState<AppId>('home')
   const [authSession, setAuthSession] = useState<AuthSession | null>(null)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [familyId, setFamilyId] = useState<string | null>(null)
@@ -124,6 +129,7 @@ function App() {
         setFamily(null)
         setUnauthStep('welcome')
         setMenuAnchorEl(null)
+        setActiveApp('home')
         return
       }
       let currentFamily: Family | null = null
@@ -235,6 +241,13 @@ function App() {
     })
   }
 
+  const updateTodoLists = (updater: (prev: TodoList[]) => TodoList[]) => {
+    updateState((prev) => ({
+      ...prev,
+      todoLists: updater(prev.todoLists),
+    }))
+  }
+
   useEffect(() => {
     let isActive = true
     const loadData = async () => {
@@ -277,6 +290,13 @@ function App() {
     [activeTab],
   )
 
+  const headerTitle =
+    activeApp === 'expenses'
+      ? active.title
+      : activeApp === 'todo'
+        ? 'To Do листы'
+        : 'Миниаппы'
+
   const themeMode = state.settings.themeMode
   const themeLabel = themeMode === 'dark' ? 'Светлая тема' : 'Тёмная тема'
   const isOwner = family?.ownerId === authUser?.id
@@ -298,6 +318,7 @@ function App() {
   const handleFamilyComplete = (nextFamily: Family) => {
     setFamily(nextFamily)
     setFamilyId(nextFamily.id)
+    setActiveApp('home')
   }
 
   const handleMenuOpen = (event: MouseEvent<HTMLElement>) => {
@@ -314,6 +335,7 @@ function App() {
     setAuthUser(null)
     setFamilyId(null)
     setFamily(null)
+    setActiveApp('home')
     setDataLoading(false)
     setExpensesTotal(0)
     setExpensesOffset(0)
@@ -331,6 +353,7 @@ function App() {
     await leaveFamily()
     setFamilyId(null)
     setFamily(null)
+    setActiveApp('home')
     setDataLoading(false)
     setExpensesTotal(0)
     setExpensesOffset(0)
@@ -435,7 +458,7 @@ function App() {
     return created
   }
 
-  const mainApp = (
+  const appShell = (
     <>
       <Paper
         elevation={0}
@@ -450,8 +473,20 @@ function App() {
         }}
       >
         <Box sx={{ position: 'relative', py: 1.5, px: 2, textAlign: 'center' }}>
+          {activeApp !== 'home' ? (
+            <Tooltip title="На главный экран">
+              <IconButton
+                color="inherit"
+                onClick={() => setActiveApp('home')}
+                aria-label="На главный экран"
+                sx={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}
+              >
+                <ArrowBackRounded />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           <Typography variant="subtitle1" color="text.secondary">
-            {active.title}
+            {headerTitle}
           </Typography>
           <Tooltip title="Профиль и настройки">
             <IconButton
@@ -681,9 +716,24 @@ function App() {
         </DialogActions>
       </Dialog>
 
-      <Container maxWidth="md" sx={{ pt: 2, pb: 12 }}>
+      <Container maxWidth="md" sx={{ pt: 2, pb: activeApp === 'expenses' ? 12 : 6 }}>
         <Stack spacing={3}>
-          {activeTab === 'expenses' && (
+          {activeApp === 'home' && (
+            <MiniAppsScreen
+              onOpenExpenses={() => setActiveApp('expenses')}
+              onOpenTodo={() => setActiveApp('todo')}
+            />
+          )}
+
+          {activeApp === 'todo' && authUser ? (
+            <TodoScreen
+              lists={state.todoLists}
+              authUser={authUser}
+              onUpdateLists={updateTodoLists}
+            />
+          ) : null}
+
+          {activeApp === 'expenses' && activeTab === 'expenses' ? (
             <ExpensesScreen
               expenses={state.expenses}
               tags={state.tags}
@@ -696,54 +746,56 @@ function App() {
               onDeleteExpense={handleDeleteExpense}
               onCreateTag={handleCreateTag}
             />
-          )}
+          ) : null}
 
-          {activeTab === 'analytics' && (
+          {activeApp === 'expenses' && activeTab === 'analytics' ? (
             <AnalyticsScreen tags={state.tags} />
-          )}
+          ) : null}
 
-          {activeTab === 'reports' && (
+          {activeApp === 'expenses' && activeTab === 'reports' ? (
             <ReportsScreen />
-          )}
+          ) : null}
         </Stack>
       </Container>
 
-      <Paper
-        elevation={0}
-        square
-        sx={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          borderTop: 1,
-          borderColor: 'divider',
-          pb: 'env(safe-area-inset-bottom)',
-        }}
-      >
-        <BottomNavigation
-          value={activeTab}
-          onChange={(_, value) => setActiveTab(value)}
-          showLabels
-          sx={{ height: 82 }}
+      {activeApp === 'expenses' ? (
+        <Paper
+          elevation={0}
+          square
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            borderTop: 1,
+            borderColor: 'divider',
+            pb: 'env(safe-area-inset-bottom)',
+          }}
         >
-          <BottomNavigationAction
-            label="Список"
-            value="expenses"
-            icon={<ListAltRounded />}
-          />
-          <BottomNavigationAction
-            label="Аналитика"
-            value="analytics"
-            icon={<PieChartRounded />}
-          />
-          <BottomNavigationAction
-            label="Отчеты"
-            value="reports"
-            icon={<BarChartRounded />}
-          />
-        </BottomNavigation>
-      </Paper>
+          <BottomNavigation
+            value={activeTab}
+            onChange={(_, value) => setActiveTab(value)}
+            showLabels
+            sx={{ height: 82 }}
+          >
+            <BottomNavigationAction
+              label="Список"
+              value="expenses"
+              icon={<ListAltRounded />}
+            />
+            <BottomNavigationAction
+              label="Аналитика"
+              value="analytics"
+              icon={<PieChartRounded />}
+            />
+            <BottomNavigationAction
+              label="Отчеты"
+              value="reports"
+              icon={<BarChartRounded />}
+            />
+          </BottomNavigation>
+        </Paper>
+      ) : null}
     </>
   )
 
@@ -768,7 +820,7 @@ function App() {
     if (isDataLoading) {
       return <AppLoadingScreen label="Загружаем данные…" />
     }
-    return mainApp
+    return appShell
   })()
 
   return (
