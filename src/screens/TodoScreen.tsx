@@ -27,24 +27,27 @@ import AddRounded from '@mui/icons-material/AddRounded'
 import ArchiveRounded from '@mui/icons-material/ArchiveRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
-import type { AuthUser } from '../data/auth'
-import type { TodoItem, TodoList, TodoUser } from '../data/types'
-import { createId } from '../utils/uuid'
+import type { TodoList, TodoUser } from '../data/types'
 
 type TodoScreenProps = {
   lists: TodoList[]
-  authUser: AuthUser
-  onUpdateLists: (updater: (prev: TodoList[]) => TodoList[]) => void
+  onCreateList: (title: string) => Promise<void>
+  onDeleteList: (listId: string) => Promise<void>
+  onToggleArchiveSetting: (listId: string, archiveCompleted: boolean) => Promise<void>
+  onCreateItem: (listId: string, title: string) => Promise<void>
+  onToggleItem: (listId: string, itemId: string, isCompleted: boolean) => Promise<void>
+  onDeleteItem: (listId: string, itemId: string) => Promise<void>
 }
 
-const buildUserSnapshot = (user: AuthUser): TodoUser => ({
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  avatarUrl: user.avatarUrl,
-})
-
-export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) {
+export function TodoScreen({
+  lists,
+  onCreateList,
+  onDeleteList,
+  onToggleArchiveSetting,
+  onCreateItem,
+  onToggleItem,
+  onDeleteItem,
+}: TodoScreenProps) {
   const [listQuery, setListQuery] = useState('')
   const [isCreateOpen, setCreateOpen] = useState(false)
   const [newListTitle, setNewListTitle] = useState('')
@@ -56,96 +59,31 @@ export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) 
   const [userAnchorEl, setUserAnchorEl] = useState<HTMLElement | null>(null)
   const [activeUser, setActiveUser] = useState<TodoUser | null>(null)
 
-  const userSnapshot = useMemo(() => buildUserSnapshot(authUser), [authUser])
-
-  const updateList = (listId: string, updater: (list: TodoList) => TodoList) => {
-    onUpdateLists((prev) => prev.map((list) => (list.id === listId ? updater(list) : list)))
-  }
-
-  const handleCreateList = () => {
+  const handleCreateList = async () => {
     const title = newListTitle.trim()
     if (!title) return
-    const now = new Date().toISOString()
-    const newList: TodoList = {
-      id: createId(),
-      title,
-      createdAt: now,
-      settings: { archiveCompleted: false },
-      items: [],
-    }
-    onUpdateLists((prev) => [newList, ...prev])
+    await onCreateList(title)
     setNewListTitle('')
     setCreateOpen(false)
   }
 
-  const handleAddItem = (listId: string) => {
+  const handleAddItem = async (listId: string) => {
     const title = (draftItems[listId] ?? '').trim()
     if (!title) return
-    const now = new Date().toISOString()
-    const newItem: TodoItem = {
-      id: createId(),
-      title,
-      isCompleted: false,
-      isArchived: false,
-      createdAt: now,
-    }
-    updateList(listId, (list) => ({
-      ...list,
-      items: [...list.items, newItem],
-    }))
+    await onCreateItem(listId, title)
     setDraftItems((prev) => ({ ...prev, [listId]: '' }))
   }
 
-  const handleToggleItem = (listId: string, itemId: string) => {
-    const now = new Date().toISOString()
-    updateList(listId, (list) => ({
-      ...list,
-      items: list.items.map((item) => {
-        if (item.id !== itemId) return item
-        if (item.isCompleted) {
-          return {
-            ...item,
-            isCompleted: false,
-            isArchived: false,
-            completedAt: undefined,
-            completedBy: undefined,
-          }
-        }
-        const shouldArchive = list.settings.archiveCompleted
-        return {
-          ...item,
-          isCompleted: true,
-          isArchived: shouldArchive,
-          completedAt: now,
-          completedBy: userSnapshot,
-        }
-      }),
-    }))
+  const handleToggleItem = async (listId: string, itemId: string, isCompleted: boolean) => {
+    await onToggleItem(listId, itemId, isCompleted)
   }
 
-  const handleDeleteItem = (listId: string, itemId: string) => {
-    updateList(listId, (list) => ({
-      ...list,
-      items: list.items.filter((item) => item.id !== itemId),
-    }))
+  const handleDeleteItem = async (listId: string, itemId: string) => {
+    await onDeleteItem(listId, itemId)
   }
 
-  const handleToggleArchiveSetting = (listId: string) => {
-    updateList(listId, (list) => {
-      const nextValue = !list.settings.archiveCompleted
-      const updatedItems = list.items.map((item) => {
-        if (!item.isCompleted) return item
-        return {
-          ...item,
-          isArchived: nextValue ? true : false,
-        }
-      })
-      return {
-        ...list,
-        settings: { ...list.settings, archiveCompleted: nextValue },
-        items: updatedItems,
-      }
-    })
+  const handleToggleArchiveSetting = async (listId: string, nextValue: boolean) => {
+    await onToggleArchiveSetting(listId, nextValue)
   }
 
   const handleOpenSettings = (event: MouseEvent<HTMLElement>, listId: string) => {
@@ -163,9 +101,9 @@ export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) 
     handleCloseSettings()
   }
 
-  const handleConfirmDeleteList = () => {
+  const handleConfirmDeleteList = async () => {
     if (!deleteListId) return
-    onUpdateLists((prev) => prev.filter((list) => list.id !== deleteListId))
+    await onDeleteList(deleteListId)
     setDeleteListId(null)
   }
 
@@ -311,7 +249,7 @@ export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) 
                       <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <Checkbox
                           checked={item.isCompleted}
-                          onChange={() => handleToggleItem(list.id, item.id)}
+                          onChange={() => handleToggleItem(list.id, item.id, item.isCompleted)}
                           inputProps={{ 'aria-label': 'Отметить пункт' }}
                           sx={{ p: 0.5 }}
                         />
@@ -413,7 +351,7 @@ export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) 
               control={
                 <Switch
                   checked={settingsList.settings.archiveCompleted}
-                  onChange={() => handleToggleArchiveSetting(settingsList.id)}
+                  onChange={(_, checked) => handleToggleArchiveSetting(settingsList.id, checked)}
                 />
               }
               label="Архивировать отмеченные"
@@ -498,7 +436,9 @@ export function TodoScreen({ lists, authUser, onUpdateLists }: TodoScreenProps) 
                   <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <Checkbox
                       checked={item.isCompleted}
-                      onChange={() => handleToggleItem(archiveList!.id, item.id)}
+                      onChange={() =>
+                        handleToggleItem(archiveList!.id, item.id, item.isCompleted)
+                      }
                       inputProps={{ 'aria-label': 'Снять отметку' }}
                       sx={{ p: 0.5 }}
                     />

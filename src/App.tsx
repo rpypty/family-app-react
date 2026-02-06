@@ -55,6 +55,15 @@ import { listExpensePage, createExpense, updateExpense, deleteExpense } from './
 import { listTags, createTag } from './data/tags'
 import { findTagByName } from './utils/tagUtils'
 import { copyToClipboard } from './utils/clipboard'
+import {
+  listTodoLists,
+  createTodoList,
+  updateTodoList,
+  deleteTodoList,
+  createTodoItem,
+  updateTodoItem,
+  deleteTodoItem,
+} from './data/todos'
 import { ExpensesScreen } from './screens/ExpensesScreen'
 import { AnalyticsScreen } from './screens/AnalyticsScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
@@ -256,19 +265,25 @@ function App() {
       setExpensesTotal(0)
       setExpensesOffset(0)
       setExpensesLoadingMore(false)
-      updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+      updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
       try {
-        const [expensePage, tags] = await Promise.all([
+        const [expensePage, tags, todoListPage] = await Promise.all([
           listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
           listTags(),
+          listTodoLists({ includeItems: true, itemsArchived: 'all' }),
         ])
         if (!isActive) return
-        updateState((prev) => ({ ...prev, expenses: expensePage.items, tags }))
+        updateState((prev) => ({
+          ...prev,
+          expenses: expensePage.items,
+          tags,
+          todoLists: todoListPage.items,
+        }))
         setExpensesTotal(expensePage.total)
         setExpensesOffset(expensePage.items.length)
       } catch {
         if (!isActive) return
-        updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+        updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
         setExpensesTotal(0)
         setExpensesOffset(0)
       } finally {
@@ -340,7 +355,7 @@ function App() {
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
-    updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+    updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setUnauthStep('welcome')
     setMenuAnchorEl(null)
   }
@@ -358,7 +373,7 @@ function App() {
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
-    updateState((prev) => ({ ...prev, expenses: [], tags: [] }))
+    updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setMenuAnchorEl(null)
   }
 
@@ -456,6 +471,77 @@ function App() {
       tags: [...prev.tags, created],
     }))
     return created
+  }
+
+  const handleCreateTodoList = async (title: string) => {
+    const created = await createTodoList(title)
+    updateTodoLists((prev) => [created, ...prev])
+  }
+
+  const handleUpdateTodoListArchiveSetting = async (
+    listId: string,
+    archiveCompleted: boolean,
+  ) => {
+    const updated = await updateTodoList(listId, {
+      settings: { archiveCompleted },
+    })
+    updateTodoLists((prev) =>
+      prev.map((list) => {
+        if (list.id !== listId) return list
+        const updatedItems = list.items.map((item) => {
+          if (!item.isCompleted) return item
+          return { ...item, isArchived: archiveCompleted }
+        })
+        return {
+          ...list,
+          title: updated.title,
+          settings: updated.settings,
+          items: updatedItems,
+        }
+      }),
+    )
+  }
+
+  const handleDeleteTodoList = async (listId: string) => {
+    await deleteTodoList(listId)
+    updateTodoLists((prev) => prev.filter((list) => list.id !== listId))
+  }
+
+  const handleCreateTodoItem = async (listId: string, title: string) => {
+    const created = await createTodoItem(listId, title)
+    updateTodoLists((prev) =>
+      prev.map((list) =>
+        list.id === listId ? { ...list, items: [...list.items, created] } : list,
+      ),
+    )
+  }
+
+  const handleToggleTodoItem = async (
+    listId: string,
+    itemId: string,
+    isCompleted: boolean,
+  ) => {
+    const updated = await updateTodoItem(itemId, { isCompleted: !isCompleted })
+    updateTodoLists((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== listId) return entry
+        return {
+          ...entry,
+          items: entry.items.map((current) => (current.id === itemId ? updated : current)),
+        }
+      }),
+    )
+  }
+
+  const handleDeleteTodoItem = async (listId: string, itemId: string) => {
+    await deleteTodoItem(itemId)
+    updateTodoLists((prev) =>
+      prev.map((list) =>
+        list.id === listId
+          ? { ...list, items: list.items.filter((item) => item.id !== itemId) }
+          : list,
+      ),
+    )
   }
 
   const appShell = (
@@ -725,11 +811,15 @@ function App() {
             />
           )}
 
-          {activeApp === 'todo' && authUser ? (
+          {activeApp === 'todo' ? (
             <TodoScreen
               lists={state.todoLists}
-              authUser={authUser}
-              onUpdateLists={updateTodoLists}
+              onCreateList={handleCreateTodoList}
+              onDeleteList={handleDeleteTodoList}
+              onToggleArchiveSetting={handleUpdateTodoListArchiveSetting}
+              onCreateItem={handleCreateTodoItem}
+              onToggleItem={handleToggleTodoItem}
+              onDeleteItem={handleDeleteTodoItem}
             />
           ) : null}
 
