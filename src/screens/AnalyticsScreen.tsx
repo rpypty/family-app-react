@@ -22,7 +22,6 @@ import {
   formatDate,
   formatDateDots,
   formatPercent,
-  latestDayOfMonth,
   parseDate,
 } from '../utils/formatters'
 import { selectedTags } from '../utils/tagUtils'
@@ -50,6 +49,32 @@ const PALETTE = [
 ]
 
 const FALLBACK_FROM = '2000-01-01'
+
+type DayRange = {
+  from: Date
+  to: Date
+}
+
+const resolveSameMonthRange = (startDay: number, endDay: number, today: Date): DayRange => {
+  const monthOffset = today.getDate() < startDay ? -1 : 0
+  const baseMonth = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  const from = dateOnly(new Date(baseMonth.getFullYear(), baseMonth.getMonth(), startDay))
+  const to = dateOnly(new Date(baseMonth.getFullYear(), baseMonth.getMonth(), endDay))
+  return { from, to }
+}
+
+const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): DayRange => {
+  if (today.getDate() >= startDay) {
+    const from = dateOnly(new Date(today.getFullYear(), today.getMonth(), startDay))
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const to = dateOnly(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), endDay))
+    return { from, to }
+  }
+  const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const from = dateOnly(new Date(prevMonth.getFullYear(), prevMonth.getMonth(), startDay))
+  const to = dateOnly(new Date(today.getFullYear(), today.getMonth(), endDay))
+  return { from, to }
+}
 
 export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
   const [fromDate, setFromDate] = useState<string | null>(null)
@@ -102,11 +127,14 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
     setToDate(formatDate(today))
   }
 
-  const applyFromDay = (dayOfMonth: number) => {
+  const applyDayRange = (startDay: number, endDay: number) => {
     const today = dateOnly(new Date())
-    const start = latestDayOfMonth(dayOfMonth, today)
-    setFromDate(formatDate(start))
-    setToDate(formatDate(today))
+    const range =
+      startDay <= endDay
+        ? resolveSameMonthRange(startDay, endDay, today)
+        : resolveCrossMonthRange(startDay, endDay, today)
+    setFromDate(formatDate(range.from))
+    setToDate(formatDate(range.to))
   }
 
   const resetFilters = () => {
@@ -275,8 +303,8 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <QuickFilterChip label="За неделю" onClick={() => applyQuickRange(7)} />
               <QuickFilterChip label="За месяц" onClick={() => applyQuickRange(30)} />
-              <QuickFilterChip label="От 5 числа" onClick={() => applyFromDay(5)} />
-              <QuickFilterChip label="От 20 числа" onClick={() => applyFromDay(20)} />
+              <QuickFilterChip label="От 5 до 20" onClick={() => applyDayRange(5, 20)} />
+              <QuickFilterChip label="От 20 до 5" onClick={() => applyDayRange(20, 5)} />
             </Stack>
             <Stack spacing={1}>
               <Typography variant="subtitle2" color="text.secondary">

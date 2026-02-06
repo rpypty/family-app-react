@@ -117,6 +117,7 @@ export function ReportsScreen() {
   const legendMin = Math.floor(minValue / legendStep) * legendStep
   const legendMid = (legendMax + legendMin) / 2
   const legendValues = [legendMax, legendMid, legendMin]
+  const showChart = chartKeys.length > 1
   const areaPath =
     points && chartValues.length > 0
       ? `M ${chartPaddingX} ${chartHeight - chartPaddingY} L ${points.replace(
@@ -194,72 +195,83 @@ export function ReportsScreen() {
                   ))}
                 </Stack>
               </Stack>
-              <Box sx={{ width: '100%', overflow: 'hidden' }}>
-                <svg
-                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  width="100%"
-                  height={chartHeight}
-                  preserveAspectRatio="xMinYMin meet"
-                >
-                  {legendValues.map((value, index) => {
-                    const ratio = (value - minValue) / valueRange
-                    const y = chartHeight - chartPaddingY - ratio * (chartHeight - chartPaddingY * 2)
-                    return (
-                      <g key={`legend-${index}`}>
-                        <line
-                          x1={chartPaddingX}
-                          x2={chartWidth}
-                          y1={y}
-                          y2={y}
-                          stroke={theme.palette.divider}
-                          strokeDasharray="3 3"
-                        />
+              {showChart ? (
+                <Box sx={{ width: '100%', overflow: 'hidden' }}>
+                  <svg
+                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                    width="100%"
+                    height={chartHeight}
+                    preserveAspectRatio="xMinYMin meet"
+                  >
+                    {legendValues.map((value, index) => {
+                      const ratio = (value - minValue) / valueRange
+                      const y =
+                        chartHeight - chartPaddingY - ratio * (chartHeight - chartPaddingY * 2)
+                      return (
+                        <g key={`legend-${index}`}>
+                          <line
+                            x1={chartPaddingX}
+                            x2={chartWidth}
+                            y1={y}
+                            y2={y}
+                            stroke={theme.palette.divider}
+                            strokeDasharray="3 3"
+                          />
+                          <text
+                            x={8}
+                            y={y + 3}
+                            fill={theme.palette.text.secondary}
+                            fontSize={10}
+                          >
+                            {Math.round(value)}
+                          </text>
+                        </g>
+                      )
+                    })}
+                    <path d={areaPath} fill={theme.palette.primary.main} opacity={0.12} />
+                    <polyline
+                      points={points}
+                      fill="none"
+                      stroke={theme.palette.primary.main}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {monthLabels.map((label, index) => {
+                      if (
+                        index % labelStep !== 0 &&
+                        index !== 0 &&
+                        index !== monthLabels.length - 1
+                      ) {
+                        return null
+                      }
+                      const x = chartPaddingX + index * step
+                      const textAnchor =
+                        index === 0
+                          ? 'start'
+                          : index === monthLabels.length - 1
+                            ? 'end'
+                            : 'middle'
+                      return (
                         <text
-                          x={8}
-                          y={y + 3}
+                          key={label}
+                          x={x}
+                          y={chartHeight - 4}
+                          textAnchor={textAnchor}
                           fill={theme.palette.text.secondary}
-                          fontSize={10}
+                          fontSize={9}
                         >
-                          {Math.round(value)}
+                          {label}
                         </text>
-                      </g>
-                    )
-                  })}
-                  <path d={areaPath} fill={theme.palette.primary.main} opacity={0.12} />
-                  <polyline
-                    points={points}
-                    fill="none"
-                    stroke={theme.palette.primary.main}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {monthLabels.map((label, index) => {
-                    if (
-                      index % labelStep !== 0 &&
-                      index !== 0 &&
-                      index !== monthLabels.length - 1
-                    ) {
-                      return null
-                    }
-                    const x = chartPaddingX + index * step
-                    const textAnchor =
-                      index === 0 ? 'start' : index === monthLabels.length - 1 ? 'end' : 'middle'
-                    return (
-                      <text
-                        key={label}
-                        x={x}
-                        y={chartHeight - 4}
-                        textAnchor={textAnchor}
-                        fill={theme.palette.text.secondary}
-                        fontSize={9}
-                      >
-                        {label}
-                      </text>
-                    )
-                  })}
-                </svg>
-              </Box>
+                      )
+                    })}
+                  </svg>
+                </Box>
+              ) : (
+                <Typography color="text.secondary">
+                  Динамика будет показана при наличии трат в разных месяцах
+                </Typography>
+              )}
             </Stack>
           </CardContent>
         </Card>
