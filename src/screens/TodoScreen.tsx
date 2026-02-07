@@ -27,7 +27,7 @@ import AddRounded from '@mui/icons-material/AddRounded'
 import ArchiveRounded from '@mui/icons-material/ArchiveRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
-import type { TodoList, TodoUser } from '../data/types'
+import type { TodoItem, TodoList, TodoUser } from '../data/types'
 
 type TodoScreenProps = {
   lists: TodoList[]
@@ -134,11 +134,22 @@ export function TodoScreen({
     ? lists.find((list) => list.id === settingsListId) ?? null
     : null
 
+  const sortItems = (items: TodoItem[]) => {
+    return [...items].sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) {
+        return a.isCompleted ? 1 : -1
+      }
+      const aTime = a.createdAt ?? ''
+      const bTime = b.createdAt ?? ''
+      return bTime.localeCompare(aTime)
+    })
+  }
+
   const archiveList = archiveListId
     ? lists.find((list) => list.id === archiveListId) ?? null
     : null
 
-  const archivedItems = archiveList?.items.filter((item) => item.isArchived) ?? []
+  const archivedItems = sortItems(archiveList?.items.filter((item) => item.isArchived) ?? [])
   const normalizedQuery = listQuery.trim().toLocaleLowerCase()
   const visibleLists = useMemo(() => {
     if (!normalizedQuery) return lists
@@ -185,7 +196,7 @@ export function TodoScreen({
       ) : null}
 
       {visibleLists.map((list) => {
-        const visibleItems = list.items.filter((item) => !item.isArchived)
+        const visibleItems = sortItems(list.items.filter((item) => !item.isArchived))
         const archivedCount = list.items.filter((item) => item.isArchived).length
         const completedCount = list.items.filter((item) => item.isCompleted).length
         const totalCount = list.items.length
