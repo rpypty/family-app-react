@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import type { MouseEvent } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import type { MouseEvent, TouchEvent } from 'react'
 import {
   Avatar,
   Badge,
@@ -14,6 +14,8 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  Menu,
+  MenuItem,
   Paper,
   Popover,
   Stack,
@@ -22,10 +24,19 @@ import {
   Tooltip,
   Typography,
   Checkbox,
+  Collapse,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
 import AddRounded from '@mui/icons-material/AddRounded'
 import ArchiveRounded from '@mui/icons-material/ArchiveRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
+import EditOutlined from '@mui/icons-material/EditOutlined'
+import ExpandLessRounded from '@mui/icons-material/ExpandLessRounded'
+import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded'
+import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
+import ArrowUpwardRounded from '@mui/icons-material/ArrowUpwardRounded'
+import ArrowDownwardRounded from '@mui/icons-material/ArrowDownwardRounded'
 import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import type { TodoItem, TodoList, TodoUser } from '../data/types'
 
@@ -34,8 +45,11 @@ type TodoScreenProps = {
   onCreateList: (title: string) => Promise<void>
   onDeleteList: (listId: string) => Promise<void>
   onToggleArchiveSetting: (listId: string, archiveCompleted: boolean) => Promise<void>
+  onToggleCollapsed: (listId: string, isCollapsed: boolean) => Promise<void>
+  onMoveList: (listId: string, direction: 'up' | 'down') => Promise<void>
   onCreateItem: (listId: string, title: string) => Promise<void>
   onToggleItem: (listId: string, itemId: string, isCompleted: boolean) => Promise<void>
+  onUpdateItemTitle: (listId: string, itemId: string, title: string) => Promise<void>
   onDeleteItem: (listId: string, itemId: string) => Promise<void>
 }
 
@@ -44,8 +58,11 @@ export function TodoScreen({
   onCreateList,
   onDeleteList,
   onToggleArchiveSetting,
+  onToggleCollapsed,
+  onMoveList,
   onCreateItem,
   onToggleItem,
+  onUpdateItemTitle,
   onDeleteItem,
 }: TodoScreenProps) {
   const [listQuery, setListQuery] = useState('')
@@ -56,8 +73,22 @@ export function TodoScreen({
   const [settingsAnchorEl, setSettingsAnchorEl] = useState<HTMLElement | null>(null)
   const [settingsListId, setSettingsListId] = useState<string | null>(null)
   const [deleteListId, setDeleteListId] = useState<string | null>(null)
+  const [itemMenuAnchorEl, setItemMenuAnchorEl] = useState<HTMLElement | null>(null)
+  const [itemMenuTarget, setItemMenuTarget] = useState<{
+    listId: string
+    item: TodoItem
+  } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ listId: string; item: TodoItem } | null>(
+    null,
+  )
+  const [editItemTitle, setEditItemTitle] = useState('')
+  const [deleteItemTarget, setDeleteItemTarget] = useState<{
+    listId: string
+    item: TodoItem
+  } | null>(null)
   const [userAnchorEl, setUserAnchorEl] = useState<HTMLElement | null>(null)
   const [activeUser, setActiveUser] = useState<TodoUser | null>(null)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleCreateList = async () => {
     const title = newListTitle.trim()
@@ -130,9 +161,88 @@ export function TodoScreen({
     setActiveUser(null)
   }
 
+  const handleOpenItemMenu = (anchor: HTMLElement, listId: string, item: TodoItem) => {
+    setItemMenuAnchorEl(anchor)
+    setItemMenuTarget({ listId, item })
+  }
+
+  const handleCloseItemMenu = () => {
+    setItemMenuAnchorEl(null)
+    setItemMenuTarget(null)
+  }
+
+  const handleEditItem = () => {
+    if (!itemMenuTarget) return
+    setEditingItem(itemMenuTarget)
+    setEditItemTitle(itemMenuTarget.item.title)
+    handleCloseItemMenu()
+  }
+
+  const handleSaveItemEdit = async () => {
+    if (!editingItem) return
+    const title = editItemTitle.trim()
+    if (!title) return
+    await onUpdateItemTitle(editingItem.listId, editingItem.item.id, title)
+    setEditingItem(null)
+    setEditItemTitle('')
+  }
+
+  const handleDeleteItemRequest = () => {
+    if (!itemMenuTarget) return
+    setDeleteItemTarget(itemMenuTarget)
+    handleCloseItemMenu()
+  }
+
+  const handleConfirmDeleteItem = async () => {
+    if (!deleteItemTarget) return
+    await onDeleteItem(deleteItemTarget.listId, deleteItemTarget.item.id)
+    setDeleteItemTarget(null)
+  }
+
+  const handleCancelDeleteItem = () => {
+    setDeleteItemTarget(null)
+  }
+
+  const handleStartLongPress = (event: TouchEvent<HTMLElement>, listId: string, item: TodoItem) => {
+    const target = event.currentTarget
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+    }
+    longPressTimerRef.current = window.setTimeout(() => {
+      handleOpenItemMenu(target, listId, item)
+    }, 500)
+  }
+
+  const handleCancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  const sortedLists = useMemo(() => {
+    return [...lists].sort((a, b) => {
+      const aOrder = a.order ?? Number.MAX_SAFE_INTEGER
+      const bOrder = b.order ?? Number.MAX_SAFE_INTEGER
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return a.createdAt.localeCompare(b.createdAt)
+    })
+  }, [lists])
+
+  const listIndexMap = useMemo(() => {
+    return new Map(sortedLists.map((list, index) => [list.id, index]))
+  }, [sortedLists])
+
   const settingsList = settingsListId
     ? lists.find((list) => list.id === settingsListId) ?? null
     : null
+  const settingsListIndex =
+    settingsList && listIndexMap.has(settingsList.id)
+      ? (listIndexMap.get(settingsList.id) as number)
+      : -1
+  const canMoveSettingsUp = settingsListIndex > 0
+  const canMoveSettingsDown =
+    settingsListIndex >= 0 && settingsListIndex < sortedLists.length - 1
 
   const sortItems = (items: TodoItem[]) => {
     return [...items].sort((a, b) => {
@@ -152,11 +262,11 @@ export function TodoScreen({
   const archivedItems = sortItems(archiveList?.items.filter((item) => item.isArchived) ?? [])
   const normalizedQuery = listQuery.trim().toLocaleLowerCase()
   const visibleLists = useMemo(() => {
-    if (!normalizedQuery) return lists
-    return lists.filter((list) =>
+    if (!normalizedQuery) return sortedLists
+    return sortedLists.filter((list) =>
       list.title.toLocaleLowerCase().includes(normalizedQuery),
     )
-  }, [lists, normalizedQuery])
+  }, [sortedLists, normalizedQuery])
 
   const deleteList = deleteListId
     ? lists.find((list) => list.id === deleteListId) ?? null
@@ -200,11 +310,27 @@ export function TodoScreen({
         const archivedCount = list.items.filter((item) => item.isArchived).length
         const completedCount = list.items.filter((item) => item.isCompleted).length
         const totalCount = list.items.length
+        const listIndex = listIndexMap.get(list.id) ?? 0
+        const canMoveUp = listIndex > 0
+        const canMoveDown = listIndex < sortedLists.length - 1
 
         return (
-          <Card key={list.id} variant="outlined" sx={{ borderRadius: 3 }}>
+          <Card key={list.id} variant="outlined" sx={{ borderRadius: 2 }}>
             <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Stack direction="row" spacing={1} alignItems="center">
+                <Tooltip title={list.isCollapsed ? 'Развернуть' : 'Свернуть'}>
+                  <IconButton
+                    size="small"
+                    onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
+                    aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
+                  >
+                    {list.isCollapsed ? (
+                      <ExpandMoreRounded fontSize="small" />
+                    ) : (
+                      <ExpandLessRounded fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
                 <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ flex: 1 }}>
                   {list.title}
                 </Typography>
@@ -222,124 +348,136 @@ export function TodoScreen({
                       badgeContent={archivedCount}
                       invisible={archivedCount === 0}
                     >
-                      <ArchiveRounded fontSize="small" />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Настройки">
-                  <IconButton
-                    size="small"
-                    onClick={(event) => handleOpenSettings(event, list.id)}
-                    aria-label="Настройки списка"
-                  >
-                    <SettingsRounded fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
+                  <ArchiveRounded fontSize="small" />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Настройки">
+              <IconButton
+                size="small"
+                onClick={(event) => handleOpenSettings(event, list.id)}
+                aria-label="Настройки списка"
+              >
+                <SettingsRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
-              <Divider />
+              <Collapse in={!list.isCollapsed} timeout="auto" unmountOnExit>
+                <Stack spacing={1.5} sx={{ pt: 1.5 }}>
+                  <Divider />
 
-              {visibleItems.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Пока нет пунктов. Добавьте первый ниже.
-                </Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {visibleItems.map((item) => (
-                    <Paper
-                      key={item.id}
-                      variant="outlined"
-                      sx={{
-                        px: 1,
-                        py: 0.5,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                      }}
-                    >
-                      <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Checkbox
-                          checked={item.isCompleted}
-                          onChange={() => handleToggleItem(list.id, item.id, item.isCompleted)}
-                          inputProps={{ 'aria-label': 'Отметить пункт' }}
-                          sx={{ p: 0.5 }}
-                        />
-                        {item.completedBy ? (
-                          <Tooltip title="Кто отметил">
+                  {visibleItems.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Пока нет пунктов. Добавьте первый ниже.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      {visibleItems.map((item) => (
+                        <Paper
+                          key={item.id}
+                          variant="outlined"
+                          sx={{
+                            px: 1,
+                            py: 0.5,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            borderRadius: 1.5,
+                          }}
+                          onTouchStart={(event) => handleStartLongPress(event, list.id, item)}
+                          onTouchEnd={handleCancelLongPress}
+                          onTouchMove={handleCancelLongPress}
+                        >
+                          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Checkbox
+                              checked={item.isCompleted}
+                              onChange={() =>
+                                handleToggleItem(list.id, item.id, item.isCompleted)
+                              }
+                              inputProps={{ 'aria-label': 'Отметить пункт' }}
+                              sx={{ p: 0.5 }}
+                            />
+                            {item.completedBy ? (
+                              <Tooltip title="Кто отметил">
+                                <IconButton
+                                  size="small"
+                                  onClick={(event) => handleOpenUserPopover(event, item.completedBy!)}
+                                  sx={{
+                                    position: 'absolute',
+                                    right: -6,
+                                    top: 6,
+                                    bgcolor: 'background.paper',
+                                    border: 1,
+                                    borderColor: 'divider',
+                                    p: 0.25,
+                                  }}
+                                  aria-label="Кто отметил"
+                                >
+                                  <Avatar
+                                    src={item.completedBy.avatarUrl}
+                                    alt={item.completedBy.name}
+                                    sx={{ width: 18, height: 18 }}
+                                  >
+                                    {item.completedBy.name.slice(0, 1).toUpperCase()}
+                                  </Avatar>
+                                </IconButton>
+                              </Tooltip>
+                            ) : null}
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              flex: 1,
+                              color: item.isCompleted ? 'text.secondary' : 'text.primary',
+                              textDecoration: item.isCompleted ? 'line-through' : 'none',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {item.title}
+                          </Typography>
+                          <Tooltip title="Действия">
                             <IconButton
                               size="small"
-                              onClick={(event) => handleOpenUserPopover(event, item.completedBy!)}
-                              sx={{
-                                position: 'absolute',
-                                right: -6,
-                                top: 6,
-                                bgcolor: 'background.paper',
-                                border: 1,
-                                borderColor: 'divider',
-                                p: 0.25,
-                              }}
-                              aria-label="Кто отметил"
+                              onClick={(event) =>
+                                handleOpenItemMenu(event.currentTarget, list.id, item)
+                              }
+                              aria-label="Открыть меню"
                             >
-                              <Avatar
-                                src={item.completedBy.avatarUrl}
-                                alt={item.completedBy.name}
-                                sx={{ width: 18, height: 18 }}
-                              >
-                                {item.completedBy.name.slice(0, 1).toUpperCase()}
-                              </Avatar>
+                              <MoreHorizRounded fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                        ) : null}
-                      </Box>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          flex: 1,
-                          color: item.isCompleted ? 'text.secondary' : 'text.primary',
-                          textDecoration: item.isCompleted ? 'line-through' : 'none',
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {item.title}
-                      </Typography>
-                      <Tooltip title="Удалить">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteItem(list.id, item.id)}
-                          aria-label="Удалить пункт"
-                        >
-                          <DeleteOutlineRounded fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Paper>
-                  ))}
-                </Stack>
-              )}
+                        </Paper>
+                      ))}
+                    </Stack>
+                  )}
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="stretch">
-                <TextField
-                  value={draftItems[list.id] ?? ''}
-                  onChange={(event) =>
-                    setDraftItems((prev) => ({ ...prev, [list.id]: event.target.value }))
-                  }
-                  placeholder="Новый пункт"
-                  size="small"
-                  fullWidth
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      handleAddItem(list.id)
-                    }
-                  }}
-                />
-                <Button
-                  variant="outlined"
-                  startIcon={<AddRounded />}
-                  onClick={() => handleAddItem(list.id)}
-                >
-                  Добавить
-                </Button>
-              </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="stretch">
+                    <TextField
+                      value={draftItems[list.id] ?? ''}
+                      onChange={(event) =>
+                        setDraftItems((prev) => ({ ...prev, [list.id]: event.target.value }))
+                      }
+                      placeholder="Новый пункт"
+                      size="small"
+                      fullWidth
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleAddItem(list.id)
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddRounded />}
+                      onClick={() => handleAddItem(list.id)}
+                    >
+                      Добавить
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Collapse>
             </CardContent>
           </Card>
         )
@@ -370,6 +508,33 @@ export function TodoScreen({
             <Typography variant="caption" color="text.secondary">
               Если включено, отмеченные пункты сразу переносятся в архив.
             </Typography>
+            <Divider />
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={async () => {
+                  await onMoveList(settingsList.id, 'up')
+                  handleCloseSettings()
+                }}
+                disabled={!canMoveSettingsUp}
+                startIcon={<ArrowUpwardRounded fontSize="small" />}
+              >
+                Вверх
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={async () => {
+                  await onMoveList(settingsList.id, 'down')
+                  handleCloseSettings()
+                }}
+                disabled={!canMoveSettingsDown}
+                startIcon={<ArrowDownwardRounded fontSize="small" />}
+              >
+                Вниз
+              </Button>
+            </Stack>
             <Divider />
             <Button
               variant="outlined"
@@ -423,6 +588,88 @@ export function TodoScreen({
         </DialogActions>
       </Dialog>
 
+      <Menu
+        anchorEl={itemMenuAnchorEl}
+        open={Boolean(itemMenuAnchorEl)}
+        onClose={handleCloseItemMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={handleEditItem}>
+          <ListItemIcon>
+            <EditOutlined fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Редактировать" />
+        </MenuItem>
+        <MenuItem onClick={handleDeleteItemRequest}>
+          <ListItemIcon>
+            <DeleteOutlineRounded fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Удалить" />
+        </MenuItem>
+      </Menu>
+
+      <Dialog
+        open={Boolean(editingItem)}
+        onClose={() => {
+          setEditingItem(null)
+          setEditItemTitle('')
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Редактировать пункт</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            value={editItemTitle}
+            onChange={(event) => setEditItemTitle(event.target.value)}
+            placeholder="Текст пункта"
+            size="small"
+            fullWidth
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                void handleSaveItemEdit()
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setEditingItem(null)
+              setEditItemTitle('')
+            }}
+          >
+            Отмена
+          </Button>
+          <Button variant="contained" onClick={handleSaveItemEdit}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteItemTarget)}
+        onClose={handleCancelDeleteItem}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Удалить пункт?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            Пункт <strong>{deleteItemTarget?.item.title}</strong> будет удален.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDeleteItem}>Отмена</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmDeleteItem}>
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={Boolean(archiveList)} onClose={handleCloseArchive} fullWidth maxWidth="sm">
         <DialogTitle>Архив · {archiveList?.title ?? ''}</DialogTitle>
         <DialogContent dividers>
@@ -442,7 +689,11 @@ export function TodoScreen({
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1,
+                    borderRadius: 1.5,
                   }}
+                  onTouchStart={(event) => handleStartLongPress(event, archiveList!.id, item)}
+                  onTouchEnd={handleCancelLongPress}
+                  onTouchMove={handleCancelLongPress}
                 >
                   <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <Checkbox
@@ -491,13 +742,15 @@ export function TodoScreen({
                   >
                     {item.title}
                   </Typography>
-                  <Tooltip title="Удалить">
+                  <Tooltip title="Действия">
                     <IconButton
                       size="small"
-                      onClick={() => handleDeleteItem(archiveList!.id, item.id)}
-                      aria-label="Удалить пункт"
+                      onClick={(event) =>
+                        handleOpenItemMenu(event.currentTarget, archiveList!.id, item)
+                      }
+                      aria-label="Открыть меню"
                     >
-                      <DeleteOutlineRounded fontSize="small" />
+                      <MoreHorizRounded fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </Paper>

@@ -11,7 +11,19 @@ type MiniAppsScreenProps = {
 export function MiniAppsScreen({ onOpenExpenses, onOpenTodo }: MiniAppsScreenProps) {
   return (
     <Stack spacing={3}>
-      <Card variant="outlined" sx={{ borderRadius: 3 }}>
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          cursor: 'pointer',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
+          '&:hover': {
+            borderColor: 'primary.main',
+            boxShadow: 3,
+          },
+        }}
+        onClick={onOpenExpenses}
+      >
         <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <Box
             sx={{
@@ -35,13 +47,31 @@ export function MiniAppsScreen({ onOpenExpenses, onOpenTodo }: MiniAppsScreenPro
               Быстрые записи, теги и аналитика.
             </Typography>
           </Stack>
-          <Button variant="contained" onClick={onOpenExpenses}>
+          <Button
+            variant="contained"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenExpenses()
+            }}
+          >
             Открыть
           </Button>
         </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ borderRadius: 3 }}>
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          cursor: 'pointer',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
+          '&:hover': {
+            borderColor: 'primary.main',
+            boxShadow: 3,
+          },
+        }}
+        onClick={onOpenTodo}
+      >
         <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <Box
             sx={{
@@ -65,7 +95,13 @@ export function MiniAppsScreen({ onOpenExpenses, onOpenTodo }: MiniAppsScreenPro
               Списки, отметки и архив выполненного.
             </Typography>
           </Stack>
-          <Button variant="outlined" onClick={onOpenTodo}>
+          <Button
+            variant="outlined"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenTodo()
+            }}
+          >
             Открыть
           </Button>
         </CardContent>

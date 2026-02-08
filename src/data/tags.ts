@@ -25,6 +25,14 @@ export const createTag = async (name: string): Promise<Tag> => {
   return mapTag(response)
 }
 
+export const updateTag = async (tagId: string, name: string): Promise<Tag> => {
+  const response = await apiFetch<ApiTag>(`/tags/${tagId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+  return mapTag(response)
+}
+
 export const deleteTag = async (tagId: string): Promise<void> => {
   await apiFetch<void>(`/tags/${tagId}`, { method: 'DELETE' })
 }

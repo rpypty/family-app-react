@@ -42,6 +42,8 @@ export type TodoList = {
   title: string
   createdAt: string
   settings: TodoListSettings
+  isCollapsed: boolean
+  order?: number
   items: TodoItem[]
 }
 

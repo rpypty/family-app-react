@@ -35,6 +35,8 @@ import { listExpensePage } from '../data/expenses'
 
 type AnalyticsScreenProps = {
   tags: Tag[]
+  onUpdateTag?: (tagId: string, name: string) => Promise<Tag>
+  onDeleteTag?: (tagId: string) => Promise<void>
 }
 
 const PALETTE = [
@@ -76,7 +78,7 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
   return { from, to }
 }
 
-export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
+export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScreenProps) {
   const [fromDate, setFromDate] = useState<string | null>(null)
   const [toDate, setToDate] = useState<string | null>(null)
   const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
@@ -195,14 +197,6 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
       }
     }
 
-    if (tagIds.length > 1) {
-      setFilteredExpenses([])
-      setListError('Для списка выберите один тег.')
-      return () => {
-        isActive = false
-      }
-    }
-
     const loadList = async () => {
       setListLoading(true)
       setListError(null)
@@ -210,7 +204,7 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
         const response = await listExpensePage({
           from: range.from,
           to: range.to,
-          tagId: tagIds.length === 1 ? tagIds[0] : undefined,
+          tagIds: tagIds.length > 0 ? tagIds : undefined,
           limit: 50,
           offset: 0,
         })
@@ -231,15 +225,7 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
     }
   }, [hasFilters, range.from, range.to, tagIds, tagIdsKey])
 
-  const filteredSorted = useMemo(
-    () =>
-      [...filteredExpenses].sort((a, b) => {
-        const dateDiff = parseDate(b.date).getTime() - parseDate(a.date).getTime()
-        if (dateDiff !== 0) return dateDiff
-        return (b.id ?? '').localeCompare(a.id ?? '')
-      }),
-    [filteredExpenses],
-  )
+  const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
 
   const rowsForBreakdown = useMemo(() => {
     if (onlySelectedTags && filterTagIds.size > 0) {
@@ -518,6 +504,8 @@ export function AnalyticsScreen({ tags }: AnalyticsScreenProps) {
           setFilterTagIds(new Set(selected))
           setTagDialogOpen(false)
         }}
+        onUpdateTag={onUpdateTag}
+        onDeleteTag={onDeleteTag}
       />
     </Stack>
   )

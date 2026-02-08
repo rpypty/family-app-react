@@ -29,6 +29,8 @@ type ApiTodoList = {
   title: string
   created_at: string
   settings: ApiTodoListSettings
+  is_collapsed?: boolean
+  order?: number
   items_total: number
   items_completed: number
   items_archived: number
@@ -77,6 +79,8 @@ const mapTodoList = (list: ApiTodoList): TodoList => ({
   settings: {
     archiveCompleted: list.settings?.archive_completed ?? false,
   },
+  isCollapsed: list.is_collapsed ?? false,
+  order: list.order ?? undefined,
   items: list.items ? list.items.map(mapTodoItem) : [],
 })
 
@@ -121,7 +125,12 @@ export const createTodoList = async (
 
 export const updateTodoList = async (
   listId: string,
-  payload: { title?: string; settings?: TodoListSettings },
+  payload: {
+    title?: string
+    settings?: TodoListSettings
+    isCollapsed?: boolean
+    order?: number
+  },
 ): Promise<TodoList> => {
   const response = await apiFetch<ApiTodoList>(`/todo-lists/${listId}`, {
     method: 'PATCH',
@@ -130,6 +139,8 @@ export const updateTodoList = async (
       settings: payload.settings
         ? { archive_completed: payload.settings.archiveCompleted }
         : undefined,
+      is_collapsed: payload.isCollapsed,
+      order: payload.order,
     }),
   })
   return mapTodoList(response)

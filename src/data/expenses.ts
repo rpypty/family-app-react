@@ -23,6 +23,7 @@ export type ExpenseListParams = {
   from?: string
   to?: string
   tagId?: string
+  tagIds?: string[]
   limit?: number
   offset?: number
 }
@@ -40,7 +41,11 @@ const buildQuery = (params: ExpenseListParams): string => {
   const search = new URLSearchParams()
   if (params.from) search.set('from', params.from)
   if (params.to) search.set('to', params.to)
-  if (params.tagId) search.set('tag_id', params.tagId)
+  if (params.tagIds && params.tagIds.length > 0) {
+    search.set('tag_ids', params.tagIds.join(','))
+  } else if (params.tagId) {
+    search.set('tag_id', params.tagId)
+  }
   if (params.limit !== undefined) search.set('limit', String(params.limit))
   if (params.offset !== undefined) search.set('offset', String(params.offset))
   const query = search.toString()

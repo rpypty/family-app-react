@@ -32,6 +32,8 @@ type ExpenseFormModalProps = {
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<Tag>
+  onUpdateTag: (tagId: string, name: string) => Promise<Tag>
+  onDeleteTag: (tagId: string) => Promise<void>
 }
 
 export function ExpenseFormModal({
@@ -42,6 +44,8 @@ export function ExpenseFormModal({
   onSave,
   onDelete,
   onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
 }: ExpenseFormModalProps) {
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
@@ -280,6 +284,8 @@ export function ExpenseFormModal({
           setTagDialogOpen(false)
         }}
         onCreateTag={onCreateTag}
+        onUpdateTag={onUpdateTag}
+        onDeleteTag={onDeleteTag}
       />
     </>
   )
