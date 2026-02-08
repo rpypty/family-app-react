@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Autocomplete,
   Box,
@@ -16,6 +16,8 @@ import {
 import { alpha } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import type { ExerciseOption, TemplateExercise, Workout, WorkoutTemplate } from '../types'
 import { exerciseKey } from '../api/gymStore'
 
@@ -60,6 +62,8 @@ export function LogTab({
   selectedWorkoutGroups,
   selectedWorkoutTotalVolume,
   onDeleteOneSet,
+  templateExercises,
+  allWorkouts,
 }: LogTabProps) {
   const [exercise, setExercise] = useState<ExerciseOption>('')
   const [query, setQuery] = useState('')
@@ -77,6 +81,68 @@ export function LogTab({
         : ''
     return fromSelected || query.trim()
   }, [exercise, query])
+
+  // Auto-fill reps/sets from template when exercise is selected
+  useEffect(() => {
+    if (!activeExerciseName || !templateExercises) return
+    const templateEx = templateExercises.find(
+      (te) => exerciseKey(te.name) === exerciseKey(activeExerciseName)
+    )
+    if (templateEx) {
+      setReps(String(templateEx.reps))
+      setSetsCount(String(templateEx.sets))
+    }
+  }, [activeExerciseName, templateExercises])
+
+  // Compute last exercise stats (weight, volume)
+  const lastExerciseStats = useMemo(() => {
+    if (!activeExerciseName || !selectedWorkout) return null
+    
+    const key = exerciseKey(activeExerciseName)
+    const currentDate = selectedWorkout.date
+    
+    // Find last workout with this exercise before current date
+    const previousWorkouts = allWorkouts
+      .filter(w => w.date < currentDate)
+      .sort((a, b) => b.date.localeCompare(a.date))
+    
+    let lastWeight = 0
+    let lastVolume = 0
+    let found = false
+    
+    for (const workout of previousWorkouts) {
+      const sets = workout.sets?.filter(s => exerciseKey(s.exercise) === key) || []
+      if (sets.length > 0) {
+        // Calculate average weight and total volume from last workout
+        lastWeight = sets.reduce((sum, s) => sum + (s.weightKg || 0), 0) / sets.length
+        lastVolume = sets.reduce((sum, s) => sum + (s.weightKg || 0) * s.reps, 0)
+        found = true
+        break
+      }
+    }
+    
+    if (!found) return null
+    
+    const currentWeight = Number(weightKg) || 0
+    const currentReps = Number(reps) || 0
+    const currentSets = Number(setsCount) || 1
+    const currentVolume = currentWeight * currentReps * currentSets
+    
+    const weightChange = lastWeight > 0 && currentWeight > 0
+      ? ((currentWeight - lastWeight) / lastWeight) * 100
+      : null
+    
+    const volumeChange = lastVolume > 0 && currentVolume > 0
+      ? ((currentVolume - lastVolume) / lastVolume) * 100
+      : null
+    
+    return {
+      lastWeight,
+      lastVolume,
+      weightChange,
+      volumeChange,
+    }
+  }, [activeExerciseName, selectedWorkout, allWorkouts, weightKg, reps, setsCount])
 
   const workoutOptions: WorkoutOption[] = useMemo(() => {
     const opts: WorkoutOption[] = [...workoutsForDate]
@@ -220,6 +286,59 @@ export function LogTab({
                         onInputChange={(_, val) => setQuery(val)}
                         renderInput={(params) => <TextField {...params} label="Упражнение" size="small" />}
                       />
+
+                      {lastExerciseStats && (
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            bgcolor: (theme) => alpha(theme.palette.info.main, 0.08),
+                            borderRadius: 1,
+                            border: 1,
+                            borderColor: 'divider',
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" gutterBottom>
+                            Прошлый раз
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <Box>
+                              <Typography variant="body2" fontWeight={700}>
+                                {lastExerciseStats.lastWeight.toFixed(1)} кг
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                вес
+                              </Typography>
+                            </Box>
+                            {lastExerciseStats.weightChange !== null && weightKg && (
+                              <Chip
+                                size="small"
+                                icon={lastExerciseStats.weightChange >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                label={`${lastExerciseStats.weightChange >= 0 ? '+' : ''}${lastExerciseStats.weightChange.toFixed(1)}%`}
+                                color={lastExerciseStats.weightChange >= 0 ? 'success' : 'error'}
+                                sx={{ fontWeight: 600 }}
+                              />
+                            )}
+                            <Divider orientation="vertical" flexItem />
+                            <Box>
+                              <Typography variant="body2" fontWeight={700}>
+                                {formatVolume(lastExerciseStats.lastVolume)}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                объём
+                              </Typography>
+                            </Box>
+                            {lastExerciseStats.volumeChange !== null && weightKg && reps && (
+                              <Chip
+                                size="small"
+                                icon={lastExerciseStats.volumeChange >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                label={`${lastExerciseStats.volumeChange >= 0 ? '+' : ''}${lastExerciseStats.volumeChange.toFixed(1)}%`}
+                                color={lastExerciseStats.volumeChange >= 0 ? 'success' : 'error'}
+                                sx={{ fontWeight: 600 }}
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      )}
 
                       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
                         <TextField
