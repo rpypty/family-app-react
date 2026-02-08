@@ -7,14 +7,17 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  FormControlLabel,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Stack,
   TextField,
   Typography,
-  Checkbox,
+  useMediaQuery,
 } from '@mui/material'
-import { alpha } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import type { Expense, Tag } from '../data/types'
 import {
   dateOnly,
@@ -79,6 +82,8 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
 }
 
 export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScreenProps) {
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const [fromDate, setFromDate] = useState<string | null>(null)
   const [toDate, setToDate] = useState<string | null>(null)
   const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
@@ -100,6 +105,10 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
   const [isListLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
+  const [drilldownTag, setDrilldownTag] = useState<{ id: string; name: string } | null>(null)
+  const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
+  const [drilldownLoading, setDrilldownLoading] = useState(false)
+  const [drilldownError, setDrilldownError] = useState<string | null>(null)
 
   const hasFilters = fromDate !== null || toDate !== null || filterTagIds.size > 0
 
@@ -233,6 +242,7 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   const slices = useMemo(() => {
     const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
     return entries.map((row, index) => ({
+      id: row.tagId,
       label: row.tagName || tags.find((tag) => tag.id === row.tagId)?.name || 'Без тега',
       value: row.total,
       color: PALETTE[index % PALETTE.length],
@@ -245,6 +255,38 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   const breakdownRemaining = slices.length - breakdownVisible.length
 
   const selectedTagList = selectedTags(tags, filterTagIds)
+  const activeSliceId = drilldownTag?.id ?? null
+
+  useEffect(() => {
+    if (!drilldownTag) return
+    let isActive = true
+    const loadDrilldown = async () => {
+      setDrilldownLoading(true)
+      setDrilldownError(null)
+      try {
+        const response = await listExpensePage({
+          from: range.from,
+          to: range.to,
+          tagIds: [drilldownTag.id],
+          limit: 50,
+          offset: 0,
+        })
+        if (!isActive) return
+        setDrilldownExpenses(response.items)
+      } catch {
+        if (!isActive) return
+        setDrilldownError('Не удалось загрузить список по тегу.')
+        setDrilldownExpenses([])
+      } finally {
+        if (isActive) setDrilldownLoading(false)
+      }
+    }
+
+    void loadDrilldown()
+    return () => {
+      isActive = false
+    }
+  }, [drilldownTag, range.from, range.to])
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -390,7 +432,17 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
             ) : (
               <Stack spacing={2}>
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <PieChart slices={slices} size={180} />
+                  <PieChart
+                    slices={slices}
+                    size={180}
+                    activeSliceId={activeSliceId}
+                    onSliceClick={(slice) => {
+                      if (!slice.id) return
+                      setDrilldownTag({ id: slice.id, name: slice.label })
+                      setDrilldownExpenses([])
+                      setDrilldownError(null)
+                    }}
+                  />
                 </Box>
                 <Stack spacing={1}>
                   {breakdownVisible.map((slice) => (
@@ -494,6 +546,81 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
         onUpdateTag={onUpdateTag}
         onDeleteTag={onDeleteTag}
       />
+
+      <Dialog
+        open={Boolean(drilldownTag)}
+        onClose={() => {
+          setDrilldownTag(null)
+          setDrilldownExpenses([])
+          setDrilldownError(null)
+        }}
+        fullScreen={fullScreen}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {drilldownTag ? `Траты по тегу: ${drilldownTag.name}` : 'Траты'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {drilldownLoading ? (
+            <Stack alignItems="center" sx={{ py: 3 }}>
+              <CircularProgress size={28} />
+            </Stack>
+          ) : drilldownError ? (
+            <Alert severity="error">{drilldownError}</Alert>
+          ) : drilldownExpenses.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Нет трат по выбранному тегу.
+            </Typography>
+          ) : (
+            <Stack spacing={1.5}>
+              {drilldownExpenses.map((expense) => {
+                const tagNames = expense.tagIds
+                  .map((id) => tags.find((tag) => tag.id === id)?.name)
+                  .filter((name): name is string => Boolean(name))
+                return (
+                  <Box
+                    key={expense.id}
+                    sx={{
+                      p: 1.5,
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 0.5,
+                    }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" spacing={1}>
+                      <Typography variant="subtitle2" fontWeight={600} noWrap>
+                        {expense.title}
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight={600}>
+                        {formatAmount(expense.amount)} {expense.currency}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {formatDateDots(parseDate(expense.date))}
+                    </Typography>
+                    {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                  </Box>
+                )
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDrilldownTag(null)
+              setDrilldownExpenses([])
+              setDrilldownError(null)
+            }}
+          >
+            Закрыть
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   )
 }
