@@ -196,85 +196,22 @@ export function GymScreen({ onBack }: GymScreenProps) {
       >
         <Box sx={{ maxWidth: (theme) => theme.breakpoints.values.sm, mx: 'auto' }}>
           <BottomNavigation
-            showLabels={false}
+            showLabels
             value={tab}
             onChange={(_, v) => setTab(v)}
-            sx={{ bgcolor: 'transparent', height: 76 }}
+            sx={{ bgcolor: 'transparent' }}
           >
             <BottomNavigationAction
               label="Журнал"
-              icon={<EditNoteIcon sx={{ fontSize: 34 }} />}
-              showLabel={tab === 0}
-              sx={{
-                minWidth: 0,
-                px: 2,
-                py: 1.25,
-                transition: 'transform 160ms ease',
-                '& .MuiBottomNavigationAction-label': {
-                  transition: 'opacity 160ms ease, transform 160ms ease',
-                  opacity: 0,
-                  transform: 'translateY(-4px)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                },
-                '&.Mui-selected': {
-                  transform: 'translateY(-4px)',
-                },
-                '&.Mui-selected .MuiBottomNavigationAction-label': {
-                  opacity: 1,
-                  transform: 'translateY(0px)',
-                },
-              }}
+              icon={<EditNoteIcon />}
             />
             <BottomNavigationAction
               label="История"
-              icon={<ViewListIcon sx={{ fontSize: 34 }} />}
-              showLabel={tab === 1}
-              sx={{
-                minWidth: 0,
-                px: 2,
-                py: 1.25,
-                transition: 'transform 160ms ease',
-                '& .MuiBottomNavigationAction-label': {
-                  transition: 'opacity 160ms ease, transform 160ms ease',
-                  opacity: 0,
-                  transform: 'translateY(-4px)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                },
-                '&.Mui-selected': {
-                  transform: 'translateY(-4px)',
-                },
-                '&.Mui-selected .MuiBottomNavigationAction-label': {
-                  opacity: 1,
-                  transform: 'translateY(0px)',
-                },
-              }}
+              icon={<ViewListIcon />}
             />
             <BottomNavigationAction
               label="Аналитика"
-              icon={<AnalyticsIcon sx={{ fontSize: 34 }} />}
-              showLabel={tab === 2}
-              sx={{
-                minWidth: 0,
-                px: 2,
-                py: 1.25,
-                transition: 'transform 160ms ease',
-                '& .MuiBottomNavigationAction-label': {
-                  transition: 'opacity 160ms ease, transform 160ms ease',
-                  opacity: 0,
-                  transform: 'translateY(-4px)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                },
-                '&.Mui-selected': {
-                  transform: 'translateY(-4px)',
-                },
-                '&.Mui-selected .MuiBottomNavigationAction-label': {
-                  opacity: 1,
-                  transform: 'translateY(0px)',
-                },
-              }}
+              icon={<AnalyticsIcon />}
             />
           </BottomNavigation>
         </Box>

@@ -324,8 +324,19 @@ export function WorkoutsTab({
                 onChange={(_, val) => {
                   if (typeof val === 'string') handleAddExercise(val)
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && exerciseQuery.trim()) {
+                    e.preventDefault()
+                    handleAddExercise(exerciseQuery)
+                  }
+                }}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Добавить упражнение" size="small" />
+                  <TextField 
+                    {...params} 
+                    placeholder="Добавить упражнение" 
+                    size="small"
+                    helperText="Нажмите Enter для добавления"
+                  />
                 )}
               />
             </Box>

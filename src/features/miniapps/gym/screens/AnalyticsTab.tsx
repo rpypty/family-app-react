@@ -128,7 +128,14 @@ export function AnalyticsTab({ entries, periodDays, onPeriodChange }: AnalyticsT
                       borderRadius: 2,
                       mb: index < analytics.list.length - 1 ? 2 : 0,
                       overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                        boxShadow: 1,
+                      },
                     }}
+                    onClick={() => setExpandedKey(isExpanded ? '' : item.key)}
                   >
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       <Stack spacing={1.5}>
@@ -137,9 +144,7 @@ export function AnalyticsTab({ entries, periodDays, onPeriodChange }: AnalyticsT
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            cursor: 'pointer',
                           }}
-                          onClick={() => setExpandedKey(isExpanded ? '' : item.key)}
                         >
                           <Typography variant="subtitle1" fontWeight={700}>
                             {item.exercise}
@@ -198,6 +203,33 @@ export function AnalyticsTab({ entries, periodDays, onPeriodChange }: AnalyticsT
                                   </Typography>
                                 </Box>
                               )}
+                            </Box>
+                            <Divider />
+                            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  Средний вес
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {item.bestSet ? `${item.bestSet.weightKg} кг` : '—'}
+                                </Typography>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  Частота
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {periodDays > 0 ? `${(item.sets / (periodDays / 7)).toFixed(1)}/нед` : '—'}
+                                </Typography>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  Объём/подход
+                                </Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {item.sets > 0 ? `${Math.round(item.totalVolume / item.sets)} кг` : '—'}
+                                </Typography>
+                              </Box>
                             </Box>
                           </>
                         )}
