@@ -1,9 +1,26 @@
 import type { GymEntry, Workout, WorkoutSet, WorkoutTemplate } from '../types'
+import * as gymApi from './gymApi'
 
 const ENTRIES_KEY = 'gym:entries:v1'
 const WORKOUTS_KEY = 'gym:workouts:v1'
 const EXERCISES_KEY = 'gym:exercises:v1'
 const TEMPLATES_KEY = 'gym:templates:v1'
+const PENDING_SYNC_KEY = 'gym:pendingSync:v1'
+const LAST_SYNC_KEY = 'gym:lastSync:v1'
+
+// Offline sync queue
+type PendingAction =
+  | { type: 'createEntry'; entry: GymEntry }
+  | { type: 'updateEntry'; entry: GymEntry }
+  | { type: 'deleteEntry'; id: string }
+  | { type: 'createWorkout'; workout: Workout }
+  | { type: 'updateWorkout'; workout: Workout }
+  | { type: 'deleteWorkout'; id: string }
+  | { type: 'createTemplate'; template: WorkoutTemplate }
+  | { type: 'updateTemplate'; template: WorkoutTemplate }
+  | { type: 'deleteTemplate'; id: string }
+
+let syncInProgress = false
 
 export function exerciseKey(name: string): string {
   return (name || '').trim().toLowerCase()
@@ -96,6 +113,102 @@ async function setJSON(key: string, value: unknown): Promise<boolean> {
   }
 }
 
+// Pending sync actions
+async function loadPendingActions(): Promise<PendingAction[]> {
+  const data = await getJSON<PendingAction[]>(PENDING_SYNC_KEY)
+  return Array.isArray(data) ? data : []
+}
+
+async function savePendingActions(actions: PendingAction[]): Promise<void> {
+  await setJSON(PENDING_SYNC_KEY, actions)
+}
+
+async function addPendingAction(action: PendingAction): Promise<void> {
+  const actions = await loadPendingActions()
+  actions.push(action)
+  await savePendingActions(actions)
+}
+
+// Sync with backend
+export async function syncWithBackend(): Promise<void> {
+  if (syncInProgress) return
+  syncInProgress = true
+
+  try {
+    const actions = await loadPendingActions()
+    if (actions.length === 0) {
+      // Fetch from backend if no pending changes
+      try {
+        const [entries, workouts, templates] = await Promise.all([
+          gymApi.listGymEntries({ limit: 1000 }),
+          gymApi.listWorkouts({ limit: 1000 }),
+          gymApi.listTemplates(),
+        ])
+        await saveGymEntries(entries)
+        await saveWorkouts(workouts)
+        await saveWorkoutTemplates(templates)
+        await setJSON(LAST_SYNC_KEY, Date.now())
+      } catch (error) {
+        console.error('Failed to fetch from backend:', error)
+      }
+      return
+    }
+
+    // Process pending actions
+    const remaining: PendingAction[] = []
+    for (const action of actions) {
+      try {
+        await processPendingAction(action)
+      } catch (error) {
+        console.error('Failed to sync action:', action, error)
+        remaining.push(action)
+      }
+    }
+
+    await savePendingActions(remaining)
+    await setJSON(LAST_SYNC_KEY, Date.now())
+  } finally {
+    syncInProgress = false
+  }
+}
+
+async function processPendingAction(action: PendingAction): Promise<void> {
+  switch (action.type) {
+    case 'createEntry':
+      await gymApi.createGymEntry(action.entry)
+      break
+    case 'updateEntry':
+      await gymApi.updateGymEntry(action.entry)
+      break
+    case 'deleteEntry':
+      await gymApi.deleteGymEntry(action.id)
+      break
+    case 'createWorkout':
+      await gymApi.createWorkout(action.workout)
+      break
+    case 'updateWorkout':
+      await gymApi.updateWorkout(action.workout)
+      break
+    case 'deleteWorkout':
+      await gymApi.deleteWorkout(action.id)
+      break
+    case 'createTemplate':
+      await gymApi.createTemplate(action.template)
+      break
+    case 'updateTemplate':
+      await gymApi.updateTemplate(action.template)
+      break
+    case 'deleteTemplate':
+      await gymApi.deleteTemplate(action.id)
+      break
+  }
+}
+
+export async function getLastSyncTime(): Promise<number | null> {
+  return await getJSON<number>(LAST_SYNC_KEY)
+}
+
+// Local storage operations
 export async function loadGymEntries(): Promise<GymEntry[]> {
   const data = await getJSON<GymEntry[]>(ENTRIES_KEY)
   return Array.isArray(data) ? data : []
@@ -148,6 +261,113 @@ export async function saveWorkoutTemplates(templates: WorkoutTemplate[]): Promis
   )
 }
 
+// CRUD operations with offline support
+export async function createGymEntryWithSync(input: {
+  date: string
+  exercise: string
+  weightKg: number
+  reps: number
+}): Promise<GymEntry> {
+  const entry = createGymEntry(input)
+  const entries = await loadGymEntries()
+  entries.push(entry)
+  await saveGymEntries(entries)
+  await addPendingAction({ type: 'createEntry', entry })
+  syncWithBackend() // Fire and forget
+  return entry
+}
+
+export async function updateGymEntryWithSync(entry: GymEntry): Promise<void> {
+  const entries = await loadGymEntries()
+  const index = entries.findIndex((e) => e.id === entry.id)
+  if (index >= 0) {
+    entries[index] = entry
+    await saveGymEntries(entries)
+    await addPendingAction({ type: 'updateEntry', entry })
+    syncWithBackend()
+  }
+}
+
+export async function deleteGymEntryWithSync(id: string): Promise<void> {
+  const entries = await loadGymEntries()
+  const filtered = entries.filter((e) => e.id !== id)
+  await saveGymEntries(filtered)
+  await addPendingAction({ type: 'deleteEntry', id })
+  syncWithBackend()
+}
+
+export async function createWorkoutWithSync(input: {
+  date: string
+  name: string
+  sets: WorkoutSet[]
+}): Promise<Workout> {
+  const workout: Workout = {
+    id: randomId(),
+    date: input.date,
+    name: input.name,
+    sets: input.sets,
+    createdAt: Date.now(),
+  }
+  const workouts = await loadWorkouts()
+  workouts.push(workout)
+  await saveWorkouts(workouts)
+  await addPendingAction({ type: 'createWorkout', workout })
+  syncWithBackend()
+  return workout
+}
+
+export async function updateWorkoutWithSync(workout: Workout): Promise<void> {
+  const workouts = await loadWorkouts()
+  const index = workouts.findIndex((w) => w.id === workout.id)
+  if (index >= 0) {
+    workouts[index] = workout
+    await saveWorkouts(workouts)
+    await addPendingAction({ type: 'updateWorkout', workout })
+    syncWithBackend()
+  }
+}
+
+export async function deleteWorkoutWithSync(id: string): Promise<void> {
+  const workouts = await loadWorkouts()
+  const filtered = workouts.filter((w) => w.id !== id)
+  await saveWorkouts(filtered)
+  await addPendingAction({ type: 'deleteWorkout', id })
+  syncWithBackend()
+}
+
+export async function createTemplateWithSync(input: {
+  name: string
+  exercises: Array<{ name: string; reps: number; sets: number }>
+}): Promise<WorkoutTemplate> {
+  const template = createWorkoutTemplate(input)
+  const templates = await loadWorkoutTemplates()
+  templates.push(template)
+  await saveWorkoutTemplates(templates)
+  await addPendingAction({ type: 'createTemplate', template })
+  syncWithBackend()
+  return template
+}
+
+export async function updateTemplateWithSync(template: WorkoutTemplate): Promise<void> {
+  const templates = await loadWorkoutTemplates()
+  const index = templates.findIndex((t) => t.id === template.id)
+  if (index >= 0) {
+    templates[index] = template
+    await saveWorkoutTemplates(templates)
+    await addPendingAction({ type: 'updateTemplate', template })
+    syncWithBackend()
+  }
+}
+
+export async function deleteTemplateWithSync(id: string): Promise<void> {
+  const templates = await loadWorkoutTemplates()
+  const filtered = templates.filter((t) => t.id !== id)
+  await saveWorkoutTemplates(filtered)
+  await addPendingAction({ type: 'deleteTemplate', id })
+  syncWithBackend()
+}
+
+// Helper functions
 export function createWorkoutTemplate(input: {
   name: string
   exercises: Array<{ name: string; reps: number; sets: number }>
@@ -257,3 +477,4 @@ export function migrateEntriesToWorkouts(entries: GymEntry[]): Workout[] {
 
   return workouts
 }
+
