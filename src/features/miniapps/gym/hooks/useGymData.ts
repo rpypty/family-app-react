@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  createWorkoutTemplate,
-  createWorkout,
   createWorkoutSet,
   exerciseKey,
   flattenWorkoutsToEntries,
@@ -11,8 +9,14 @@ import {
   loadWorkouts,
   migrateEntriesToWorkouts,
   saveExercises,
-  saveWorkoutTemplates,
   saveWorkouts,
+  syncWithBackend,
+  createWorkoutWithSync,
+  updateWorkoutWithSync,
+  deleteWorkoutWithSync,
+  createTemplateWithSync,
+  updateTemplateWithSync,
+  deleteTemplateWithSync,
 } from '../api/gymStore'
 import type { TemplateExercise, Workout, WorkoutSet, WorkoutTemplate } from '../types'
 import { parseISODate } from '../utils/dateUtils'
@@ -28,6 +32,13 @@ export function useGymData() {
   useEffect(() => {
     let alive = true
     ;(async () => {
+      // Try to sync with backend first
+      try {
+        await syncWithBackend()
+      } catch (error) {
+        console.warn('Failed to sync with backend, using local data:', error)
+      }
+
       const [loadedWorkouts, loadedEntries, loadedExercises, loadedTemplates] = await Promise.all([
         loadWorkouts(),
         loadGymEntries(),
@@ -61,21 +72,6 @@ export function useGymData() {
       alive = false
     }
   }, [])
-
-  const persistWorkouts = async (next: Workout[]) => {
-    setWorkouts(next)
-    await saveWorkouts(next)
-  }
-
-  const persistExercises = async (next: string[]) => {
-    setExercises(next)
-    await saveExercises(next)
-  }
-
-  const persistTemplates = async (next: WorkoutTemplate[]) => {
-    setTemplates(next)
-    await saveWorkoutTemplates(next)
-  }
 
   const sortedWorkouts = useMemo(() => {
     const copy = [...workouts]
@@ -152,9 +148,10 @@ export function useGymData() {
   }, [selectedWorkoutId, workouts])
 
   const addWorkout = async (date: string, name: string) => {
-    const w = createWorkout({ date, name })
+    const sets: WorkoutSet[] = []
+    const w = await createWorkoutWithSync({ date, name, sets })
     const next = [w, ...workouts]
-    await persistWorkouts(next)
+    setWorkouts(next)
     setSelectedWorkoutId(w.id)
     return w
   }
@@ -166,35 +163,53 @@ export function useGymData() {
       return { ...s, createdAt: now + i }
     })
 
-    const nextWorkouts = workouts.map((w) =>
-      w.id === workoutId
-        ? {
-            ...w,
-            sets: [...(w.sets || []), ...newSets],
-          }
-        : w
-    )
-    await persistWorkouts(nextWorkouts)
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
+    const updatedWorkout = {
+      ...targetWorkout,
+      sets: [...(targetWorkout.sets || []), ...newSets],
+    }
+
+    await updateWorkoutWithSync(updatedWorkout)
+
+    const nextWorkouts = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(nextWorkouts)
   }
 
   const updateWorkoutDate = async (workoutId: string, date: string) => {
-    const nextWorkouts = workouts.map((w) => (w.id === workoutId ? { ...w, date } : w))
-    await persistWorkouts(nextWorkouts)
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
+    const updatedWorkout = { ...targetWorkout, date }
+    await updateWorkoutWithSync(updatedWorkout)
+
+    const nextWorkouts = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(nextWorkouts)
   }
 
   const deleteWorkout = async (workoutId: string) => {
+    await deleteWorkoutWithSync(workoutId)
     const next = workouts.filter((w) => w.id !== workoutId)
-    await persistWorkouts(next)
+    setWorkouts(next)
     if (selectedWorkoutId === workoutId) {
       setSelectedWorkoutId(next[0]?.id || '')
     }
   }
 
   const deleteWorkoutSet = async (workoutId: string, setId: string) => {
-    const next = workouts.map((w) =>
-      w.id === workoutId ? { ...w, sets: (w.sets || []).filter((s) => s.id !== setId) } : w
-    )
-    await persistWorkouts(next)
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
+    const updatedWorkout = {
+      ...targetWorkout,
+      sets: (targetWorkout.sets || []).filter((s) => s.id !== setId),
+    }
+
+    await updateWorkoutWithSync(updatedWorkout)
+
+    const next = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(next)
   }
 
   const deleteOneWorkoutSetBySignature = async (
@@ -203,57 +218,65 @@ export function useGymData() {
     repsValue: number,
     weightValue: number
   ) => {
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
     const exKey = exerciseKey(exerciseName)
-    const next = workouts.map((w) => {
-      if (w.id !== workoutId) return w
+    const sets = [...(targetWorkout.sets || [])]
+    
+    for (let i = sets.length - 1; i >= 0; i -= 1) {
+      const s = sets[i]
+      if (exerciseKey(s.exercise) !== exKey) continue
+      if ((Number(s.reps) || 0) !== repsValue) continue
+      if ((Number(s.weightKg) || 0) !== weightValue) continue
+      sets.splice(i, 1)
+      break
+    }
 
-      const sets = [...(w.sets || [])]
-      for (let i = sets.length - 1; i >= 0; i -= 1) {
-        const s = sets[i]
-        if (exerciseKey(s.exercise) !== exKey) continue
-        if ((Number(s.reps) || 0) !== repsValue) continue
-        if ((Number(s.weightKg) || 0) !== weightValue) continue
-        sets.splice(i, 1)
-        break
-      }
+    const updatedWorkout = { ...targetWorkout, sets }
+    await updateWorkoutWithSync(updatedWorkout)
 
-      return { ...w, sets }
-    })
-
-    await persistWorkouts(next)
+    const next = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(next)
   }
 
   const addExercise = async (exercise: string) => {
     const k = exerciseKey(exercise)
     const exists = exercises.some((x) => exerciseKey(x) === k)
     if (!exists) {
-      await persistExercises([...exercises, exercise])
+      const next = [...exercises, exercise]
+      setExercises(next)
+      await saveExercises(next)
     }
   }
 
   const addTemplate = async (name: string, templateExercises: TemplateExercise[]) => {
-    const t = createWorkoutTemplate({ name, exercises: templateExercises as any })
+    const t = await createTemplateWithSync({ name, exercises: templateExercises as any })
     const next = [t, ...templates]
-    await persistTemplates(next)
+    setTemplates(next)
     return t
   }
 
   const updateTemplate = async (templateId: string, name: string, templateExercises: TemplateExercise[]) => {
-    const next = templates.map((t) =>
-      t.id === templateId
-        ? {
-            ...t,
-            name: (name || '').trim(),
-            exercises: templateExercises,
-          }
-        : t
-    )
-    await persistTemplates(next)
+    const targetTemplate = templates.find((t) => t.id === templateId)
+    if (!targetTemplate) return
+
+    const updatedTemplate = {
+      ...targetTemplate,
+      name: (name || '').trim(),
+      exercises: templateExercises,
+    }
+
+    await updateTemplateWithSync(updatedTemplate)
+
+    const next = templates.map((t) => (t.id === templateId ? updatedTemplate : t))
+    setTemplates(next)
   }
 
   const deleteTemplate = async (templateId: string) => {
+    await deleteTemplateWithSync(templateId)
     const next = templates.filter((t) => t.id !== templateId)
-    await persistTemplates(next)
+    setTemplates(next)
   }
 
   return {
