@@ -1,5 +1,5 @@
 import type { GymEntry, Workout, WorkoutTemplate } from '../types'
-import { apiFetch } from '../../../../../shared/api/client'
+import { apiFetch } from '../../../../shared/api/client'
 
 // API types
 type ApiGymEntry = {
