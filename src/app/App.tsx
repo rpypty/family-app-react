@@ -90,9 +90,10 @@ import { FamilyScreen } from '../features/family/screens/FamilyScreen'
 import { AppLoadingScreen } from '../features/onboarding/screens/AppLoadingScreen'
 import { MiniAppsScreen } from '../features/home/screens/MiniAppsScreen'
 import { TodoScreen } from '../features/miniapps/todo/screens/TodoScreen'
+import { GymScreen } from '../features/miniapps/gym/screens/GymScreen'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
-type AppId = 'home' | 'expenses' | 'todo'
+type AppId = 'home' | 'expenses' | 'todo' | 'gym'
 
 const TABS: Array<{
   id: TabId
@@ -1039,6 +1040,7 @@ function App() {
             <MiniAppsScreen
               onOpenExpenses={() => setActiveApp('expenses')}
               onOpenTodo={() => setActiveApp('todo')}
+              onOpenGym={() => setActiveApp('gym')}
             />
           )}
 
@@ -1084,6 +1086,10 @@ function App() {
 
           {activeApp === 'expenses' && activeTab === 'reports' ? (
             <ReportsScreen />
+          ) : null}
+
+          {activeApp === 'gym' ? (
+            <GymScreen onBack={() => setActiveApp('home')} />
           ) : null}
         </Stack>
       </Container>

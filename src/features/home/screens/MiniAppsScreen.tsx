@@ -2,13 +2,15 @@ import { Box, Button, Card, CardContent, Stack, Typography } from '@mui/material
 import { alpha } from '@mui/material/styles'
 import ListAltRounded from '@mui/icons-material/ListAltRounded'
 import ChecklistRounded from '@mui/icons-material/ChecklistRounded'
+import FitnessCenterRounded from '@mui/icons-material/FitnessCenterRounded'
 
 type MiniAppsScreenProps = {
   onOpenExpenses: () => void
   onOpenTodo: () => void
+  onOpenGym: () => void
 }
 
-export function MiniAppsScreen({ onOpenExpenses, onOpenTodo }: MiniAppsScreenProps) {
+export function MiniAppsScreen({ onOpenExpenses, onOpenTodo, onOpenGym }: MiniAppsScreenProps) {
   return (
     <Stack spacing={3}>
       <Card
@@ -100,6 +102,54 @@ export function MiniAppsScreen({ onOpenExpenses, onOpenTodo }: MiniAppsScreenPro
             onClick={(event) => {
               event.stopPropagation()
               onOpenTodo()
+            }}
+          >
+            Открыть
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          cursor: 'pointer',
+          transition: 'box-shadow 0.2s, border-color 0.2s',
+          '&:hover': {
+            borderColor: 'primary.main',
+            boxShadow: 3,
+          },
+        }}
+        onClick={onOpenGym}
+      >
+        <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.success.main, 0.14),
+              color: 'success.main',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <FitnessCenterRounded />
+          </Box>
+          <Stack spacing={0.5} sx={{ flex: 1 }}>
+            <Typography variant="h6" fontWeight={700}>
+              Тренировки
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Журнал упражнений, шаблоны и аналитика.
+            </Typography>
+          </Stack>
+          <Button
+            variant="outlined"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenGym()
             }}
           >
             Открыть
