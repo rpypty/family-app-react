@@ -174,27 +174,51 @@ export async function syncWithBackend(): Promise<void> {
 
 async function processPendingAction(action: PendingAction): Promise<void> {
   switch (action.type) {
-    case 'createEntry':
-      await gymApi.createGymEntry(action.entry)
+    case 'createEntry': {
+      const serverEntry = await gymApi.createGymEntry(action.entry)
+      // Replace local entry with server entry
+      const entries = await loadGymEntries()
+      const index = entries.findIndex((e) => e.id === action.entry.id)
+      if (index >= 0) {
+        entries[index] = serverEntry
+        await saveGymEntries(entries)
+      }
       break
+    }
     case 'updateEntry':
       await gymApi.updateGymEntry(action.entry)
       break
     case 'deleteEntry':
       await gymApi.deleteGymEntry(action.id)
       break
-    case 'createWorkout':
-      await gymApi.createWorkout(action.workout)
+    case 'createWorkout': {
+      const serverWorkout = await gymApi.createWorkout(action.workout)
+      // Replace local workout with server workout
+      const workouts = await loadWorkouts()
+      const index = workouts.findIndex((w) => w.id === action.workout.id)
+      if (index >= 0) {
+        workouts[index] = serverWorkout
+        await saveWorkouts(workouts)
+      }
       break
+    }
     case 'updateWorkout':
       await gymApi.updateWorkout(action.workout)
       break
     case 'deleteWorkout':
       await gymApi.deleteWorkout(action.id)
       break
-    case 'createTemplate':
-      await gymApi.createTemplate(action.template)
+    case 'createTemplate': {
+      const serverTemplate = await gymApi.createTemplate(action.template)
+      // Replace local template with server template
+      const templates = await loadWorkoutTemplates()
+      const index = templates.findIndex((t) => t.id === action.template.id)
+      if (index >= 0) {
+        templates[index] = serverTemplate
+        await saveWorkoutTemplates(templates)
+      }
       break
+    }
     case 'updateTemplate':
       await gymApi.updateTemplate(action.template)
       break
@@ -301,19 +325,31 @@ export async function createWorkoutWithSync(input: {
   name: string
   sets: WorkoutSet[]
 }): Promise<Workout> {
-  const workout: Workout = {
+  const localWorkout: Workout = {
     id: randomId(),
     date: input.date,
     name: input.name,
     sets: input.sets,
     createdAt: Date.now(),
   }
-  const workouts = await loadWorkouts()
-  workouts.push(workout)
-  await saveWorkouts(workouts)
-  await addPendingAction({ type: 'createWorkout', workout })
-  syncWithBackend()
-  return workout
+  
+  // Try to create on backend immediately
+  try {
+    const serverWorkout = await gymApi.createWorkout(localWorkout)
+    const workouts = await loadWorkouts()
+    workouts.push(serverWorkout)
+    await saveWorkouts(workouts)
+    return serverWorkout
+  } catch (error) {
+    // If offline, save locally and queue for sync
+    console.warn('Failed to create workout on server, saving locally:', error)
+    const workouts = await loadWorkouts()
+    workouts.push(localWorkout)
+    await saveWorkouts(workouts)
+    await addPendingAction({ type: 'createWorkout', workout: localWorkout })
+    syncWithBackend()
+    return localWorkout
+  }
 }
 
 export async function updateWorkoutWithSync(workout: Workout): Promise<void> {
