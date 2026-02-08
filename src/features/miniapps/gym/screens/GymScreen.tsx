@@ -6,12 +6,10 @@ import {
   Box,
   CircularProgress,
   Container,
-  IconButton,
   Paper,
   Toolbar,
   Typography,
 } from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import ViewListIcon from '@mui/icons-material/ViewList'
@@ -128,9 +126,6 @@ export function GymScreen({ onBack }: GymScreenProps) {
         sx={{ bgcolor: 'background.paper', color: 'text.primary', borderBottom: 1, borderColor: 'divider' }}
       >
         <Toolbar>
-          <IconButton edge="start" color="inherit" onClick={onBack}>
-            <ArrowBackIcon />
-          </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Тренировки
           </Typography>
