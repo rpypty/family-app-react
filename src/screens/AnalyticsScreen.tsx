@@ -84,7 +84,6 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
   const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
-  const [onlySelectedTags, setOnlySelectedTags] = useState(false)
   const [summary, setSummary] = useState<{
     totalAmount: number
     currency: string
@@ -228,11 +227,8 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
 
   const rowsForBreakdown = useMemo(() => {
-    if (onlySelectedTags && filterTagIds.size > 0) {
-      return byTagRows.filter((row) => filterTagIds.has(row.tagId))
-    }
     return byTagRows
-  }, [byTagRows, filterTagIds, onlySelectedTags])
+  }, [byTagRows])
 
   const slices = useMemo(() => {
     const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
@@ -300,15 +296,6 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
                 <Box sx={{ flex: 1, width: '100%' }}>
                   <TagPickerInput label="Выбрать тег" onClick={() => setTagDialogOpen(true)} />
                 </Box>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={onlySelectedTags}
-                      onChange={(event) => setOnlySelectedTags(event.target.checked)}
-                    />
-                  }
-                  label="Только выбранные теги"
-                />
               </Stack>
               {selectedTagList.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">

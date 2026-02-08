@@ -56,6 +56,7 @@ import { listExpensePage, createExpense, updateExpense, deleteExpense } from './
 import { listTags, createTag, updateTag, deleteTag } from './data/tags'
 import { findTagByName } from './utils/tagUtils'
 import { copyToClipboard } from './utils/clipboard'
+import { clearCacheMeta, loadCacheMeta, saveCacheMeta } from './data/cacheMeta'
 import {
   listTodoLists,
   createTodoList,
@@ -116,6 +117,8 @@ function App() {
   const [family, setFamily] = useState<Family | null>(null)
   const [isBootstrapping, setBootstrapping] = useState(true)
   const [isDataLoading, setDataLoading] = useState(false)
+  const [isDataStale, setDataStale] = useState(false)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
   const [expensesTotal, setExpensesTotal] = useState(0)
   const [expensesOffset, setExpensesOffset] = useState(0)
   const [isExpensesLoadingMore, setExpensesLoadingMore] = useState(false)
@@ -142,6 +145,9 @@ function App() {
         setUnauthStep('welcome')
         setMenuAnchorEl(null)
         setActiveApp('home')
+        setDataStale(false)
+        setLastSyncAt(null)
+        clearCacheMeta()
         return
       }
       let currentFamily: Family | null = null
@@ -264,11 +270,21 @@ function App() {
     let isActive = true
     const loadData = async () => {
       if (!authSession || !familyId) return
-      setDataLoading(true)
-      setExpensesTotal(0)
-      setExpensesOffset(0)
+      const cacheMeta = loadCacheMeta(familyId)
+      if (isActive) {
+        setLastSyncAt(cacheMeta?.lastSyncAt ?? null)
+        setDataStale(false)
+      }
+      const hasCache = Boolean(cacheMeta)
+      setDataLoading(!hasCache)
+      if (hasCache) {
+        setExpensesTotal((prev) => Math.max(prev, state.expenses.length))
+        setExpensesOffset(state.expenses.length)
+      } else {
+        setExpensesTotal(0)
+        setExpensesOffset(0)
+      }
       setExpensesLoadingMore(false)
-      updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
       try {
         const [expensePage, tags, todoListPage] = await Promise.all([
           listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
@@ -284,11 +300,14 @@ function App() {
         }))
         setExpensesTotal(expensePage.total)
         setExpensesOffset(expensePage.items.length)
+        const now = new Date().toISOString()
+        setLastSyncAt(now)
+        saveCacheMeta({ familyId, lastSyncAt: now })
       } catch {
         if (!isActive) return
-        updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
-        setExpensesTotal(0)
-        setExpensesOffset(0)
+        if (hasCache) {
+          setDataStale(true)
+        }
       } finally {
         if (isActive) setDataLoading(false)
       }
@@ -314,6 +333,18 @@ function App() {
       : activeApp === 'todo'
         ? 'To Do листы'
         : 'Миниаппы'
+
+  const formattedLastSyncAt = useMemo(() => {
+    if (!lastSyncAt) return null
+    try {
+      return new Date(lastSyncAt).toLocaleString('ru-RU', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    } catch {
+      return null
+    }
+  }, [lastSyncAt])
 
   const canRefreshTodo = activeApp === 'todo'
   const canRefreshExpenses = activeApp === 'expenses' && activeTab === 'expenses'
@@ -364,12 +395,15 @@ function App() {
     setFamily(null)
     setActiveApp('home')
     setDataLoading(false)
+    setDataStale(false)
+    setLastSyncAt(null)
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setUnauthStep('welcome')
     setMenuAnchorEl(null)
+    clearCacheMeta()
   }
 
   const handleLeaveFamily = async () => {
@@ -382,11 +416,14 @@ function App() {
     setFamily(null)
     setActiveApp('home')
     setDataLoading(false)
+    setDataStale(false)
+    setLastSyncAt(null)
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setMenuAnchorEl(null)
+    clearCacheMeta()
   }
 
   const handleCopyFamilyCode = async (event?: MouseEvent<HTMLElement>) => {
@@ -514,6 +551,7 @@ function App() {
   const handleRefreshExpenses = async () => {
     if (!authSession || !familyId || isExpensesRefreshing) return
     setExpensesRefreshing(true)
+    setDataStale(false)
     setExpensesLoadingMore(false)
     try {
       const [expensePage, tags] = await Promise.all([
@@ -523,6 +561,11 @@ function App() {
       updateState((prev) => ({ ...prev, expenses: expensePage.items, tags }))
       setExpensesTotal(expensePage.total)
       setExpensesOffset(expensePage.items.length)
+      const now = new Date().toISOString()
+      setLastSyncAt(now)
+      saveCacheMeta({ familyId, lastSyncAt: now })
+    } catch {
+      setDataStale(true)
     } finally {
       setExpensesRefreshing(false)
     }
@@ -531,12 +574,18 @@ function App() {
   const handleRefreshTodoLists = async () => {
     if (!authSession || !familyId || isTodoRefreshing) return
     setTodoRefreshing(true)
+    setDataStale(false)
     try {
       const todoListPage = await listTodoLists({
         includeItems: true,
         itemsArchived: 'all',
       })
       updateTodoLists(() => todoListPage.items)
+      const now = new Date().toISOString()
+      setLastSyncAt(now)
+      saveCacheMeta({ familyId, lastSyncAt: now })
+    } catch {
+      setDataStale(true)
     } finally {
       setTodoRefreshing(false)
     }
@@ -572,10 +621,14 @@ function App() {
   }
 
   const handleToggleTodoListCollapsed = async (listId: string, isCollapsed: boolean) => {
-    await updateTodoList(listId, { isCollapsed })
     updateTodoLists((prev) =>
       prev.map((list) => (list.id === listId ? { ...list, isCollapsed } : list)),
     )
+    try {
+      await updateTodoList(listId, { isCollapsed })
+    } catch {
+      setDataStale(true)
+    }
   }
 
   const handleMoveTodoList = async (listId: string, direction: 'up' | 'down') => {
@@ -960,6 +1013,13 @@ function App() {
 
       <Container maxWidth="md" sx={{ pt: 2, pb: activeApp === 'expenses' ? 12 : 6 }}>
         <Stack spacing={3}>
+          {isDataStale ? (
+            <Alert severity="warning">
+              Нет соединения. Данные могут быть неактуальны.
+              {formattedLastSyncAt ? ` Последнее обновление: ${formattedLastSyncAt}.` : ''}
+            </Alert>
+          ) : null}
+
           {activeApp === 'home' && (
             <MiniAppsScreen
               onOpenExpenses={() => setActiveApp('expenses')}
