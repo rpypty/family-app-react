@@ -15,22 +15,11 @@ import {
 import { alpha } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
-<<<<<<< Updated upstream
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'
-import type { TemplateExercise, Workout, WorkoutTemplate } from '../types'
-import { exerciseKey } from '../api/gymStore'
-
-type WorkoutInputOption = { inputValue: string; title: string }
-type WorkoutTemplateOption = { kind: 'template'; id: string; name: string }
-type WorkoutOption = Workout | string | WorkoutInputOption | WorkoutTemplateOption
-=======
 import type { ExerciseOption, TemplateExercise, Workout, WorkoutTemplate } from '../types'
 import { exerciseKey } from '../api/gymStore'
 
 type TemplateOption = { kind: 'template'; id: string; name: string }
 type WorkoutOption = Workout | TemplateOption | string | { inputValue: string; title: string }
->>>>>>> Stashed changes
 
 interface LogTabProps {
   date: string
@@ -74,12 +63,8 @@ export function LogTab({
   templateExercises,
   allWorkouts,
 }: LogTabProps) {
-<<<<<<< Updated upstream
-  const [exercise, setExercise] = useState('')
-=======
   const dateInputRef = useRef<HTMLInputElement | null>(null)
   const [exercise, setExercise] = useState<ExerciseOption>('')
->>>>>>> Stashed changes
   const [query, setQuery] = useState('')
   const [weightKg, setWeightKg] = useState('')
   const [reps, setReps] = useState('')
@@ -405,18 +390,7 @@ export function LogTab({
             onInputChange={(_, val) => setWorkoutQuery(val)}
             renderInput={(params) => <TextField {...params} label="Выбрать или создать тренировку" />}
             renderOption={(props, option) => (
-<<<<<<< Updated upstream
               <li {...props} key={getWorkoutKey(option)}>
-=======
-              <li
-                {...props}
-                key={
-                  typeof option === 'object' && option !== null && 'id' in option
-                    ? option.id
-                    : getWorkoutLabel(option)
-                }
-              >
->>>>>>> Stashed changes
                 {getWorkoutLabel(option)}
               </li>
             )}
