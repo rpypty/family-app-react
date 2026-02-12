@@ -20,11 +20,7 @@ import { LogTab } from './LogTab'
 import { WorkoutsTab } from './WorkoutsTab'
 import { AnalyticsTab } from './AnalyticsTab'
 
-type GymScreenProps = {
-  onBack: () => void
-}
-
-export function GymScreen({ onBack }: GymScreenProps) {
+export function GymScreen() {
   const [tab, setTab] = useState(0)
   const [date, setDate] = useState(todayISO())
   const [activeTemplateExercises, setActiveTemplateExercises] = useState<TemplateExercise[] | null>(null)

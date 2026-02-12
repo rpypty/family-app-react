@@ -312,9 +312,6 @@ export function TodoScreen({
         const archivedCount = list.items.filter((item) => item.isArchived).length
         const completedCount = list.items.filter((item) => item.isCompleted).length
         const totalCount = list.items.length
-        const listIndex = listIndexMap.get(list.id) ?? 0
-        const canMoveUp = listIndex > 0
-        const canMoveDown = listIndex < sortedLists.length - 1
         const collapseId = `todo-list-${list.id}-items`
 
         return (

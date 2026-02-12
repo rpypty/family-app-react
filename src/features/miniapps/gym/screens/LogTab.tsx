@@ -7,7 +7,6 @@ import {
   CardContent,
   Chip,
   Divider,
-  IconButton,
   InputAdornment,
   Stack,
   TextField,
@@ -18,10 +17,12 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
-import type { ExerciseOption, TemplateExercise, Workout, WorkoutTemplate } from '../types'
+import type { TemplateExercise, Workout, WorkoutTemplate } from '../types'
 import { exerciseKey } from '../api/gymStore'
 
-type WorkoutOption = Workout | string | { inputValue: string; title: string }
+type WorkoutInputOption = { inputValue: string; title: string }
+type WorkoutTemplateOption = { kind: 'template'; id: string; name: string }
+type WorkoutOption = Workout | string | WorkoutInputOption | WorkoutTemplateOption
 
 interface LogTabProps {
   date: string
@@ -65,7 +66,7 @@ export function LogTab({
   templateExercises,
   allWorkouts,
 }: LogTabProps) {
-  const [exercise, setExercise] = useState<ExerciseOption>('')
+  const [exercise, setExercise] = useState('')
   const [query, setQuery] = useState('')
   const [weightKg, setWeightKg] = useState('')
   const [reps, setReps] = useState('')
@@ -73,12 +74,7 @@ export function LogTab({
   const [workoutQuery, setWorkoutQuery] = useState('')
 
   const activeExerciseName = useMemo(() => {
-    const fromSelected =
-      typeof exercise === 'string'
-        ? exercise.trim()
-        : typeof exercise === 'object' && exercise !== null
-        ? (exercise.inputValue || '').trim()
-        : ''
+    const fromSelected = exercise.trim()
     return fromSelected || query.trim()
   }, [exercise, query])
 
@@ -165,6 +161,12 @@ export function LogTab({
     return option.name || 'Тренировка'
   }
 
+  const getWorkoutKey = (option: WorkoutOption): string => {
+    if (typeof option === 'string') return option
+    if ('inputValue' in option) return option.inputValue
+    return option.id
+  }
+
   const handleWorkoutChange = (_: any, value: WorkoutOption | null) => {
     if (!value) return
     if (typeof value === 'string') {
@@ -225,8 +227,21 @@ export function LogTab({
             options={workoutOptions}
             getOptionLabel={getWorkoutLabel}
             isOptionEqualToValue={(option, value) => {
-              if (typeof option === 'object' && 'id' in option && typeof value === 'object' && 'id' in value) {
-                return option.id === value.id
+              if (typeof option === 'string' && typeof value === 'string') {
+                return option === value
+              }
+              if (
+                typeof option === 'object' &&
+                option !== null &&
+                typeof value === 'object' &&
+                value !== null
+              ) {
+                if ('id' in option && 'id' in value) {
+                  return option.id === value.id
+                }
+                if ('inputValue' in option && 'inputValue' in value) {
+                  return option.inputValue === value.inputValue
+                }
               }
               return false
             }}
@@ -249,7 +264,7 @@ export function LogTab({
             onInputChange={(_, val) => setWorkoutQuery(val)}
             renderInput={(params) => <TextField {...params} label="Выбрать или создать тренировку" />}
             renderOption={(props, option) => (
-              <li {...props} key={'id' in option ? option.id : getWorkoutLabel(option)}>
+              <li {...props} key={getWorkoutKey(option)}>
                 {getWorkoutLabel(option)}
               </li>
             )}
