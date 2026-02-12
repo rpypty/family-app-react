@@ -67,8 +67,8 @@ export function LogTab({
   const [exercise, setExercise] = useState<ExerciseOption>('')
   const [query, setQuery] = useState('')
   const [weightKg, setWeightKg] = useState('')
-  const [reps, setReps] = useState('')
-  const [setsCount, setSetsCount] = useState('1')
+  const [reps, setReps] = useState('8')
+  const [setsCount, setSetsCount] = useState('3')
   const [workoutQuery, setWorkoutQuery] = useState('')
   const [templateInputs, setTemplateInputs] = useState<
     Record<string, { weightKg: string; reps: string; sets: string }>
@@ -291,8 +291,8 @@ export function LogTab({
     onAddExercise(ex)
     onAddSets(ex, w, r, c)
     setWeightKg('')
-    setReps('')
-    setSetsCount('1')
+    setReps('8')
+    setSetsCount('3')
     setExercise('')
     setQuery('')
   }
@@ -481,11 +481,11 @@ export function LogTab({
                                 sx={{
                                   display: 'grid',
                                   gap: 1,
-                                  gridTemplateColumns: '1.4fr 1fr 1fr 1fr auto',
+                                  gridTemplateColumns: { xs: '1fr 1fr', sm: '1.4fr 1fr 1fr 1fr auto' },
                                   alignItems: 'center',
                                 }}
                               >
-                                <Box />
+                                <Box sx={{ display: { xs: 'none', sm: 'block' } }} />
                                 <TextField
                                   type="number"
                                   label="Вес"
@@ -512,7 +512,11 @@ export function LogTab({
                                   variant="contained"
                                   onClick={() => handleAddTemplateSets(ex.name)}
                                   disabled={!entry.reps}
-                                  sx={{ borderRadius: 2, height: 40 }}
+                                  sx={{
+                                    borderRadius: 2,
+                                    height: 40,
+                                    gridColumn: { xs: '1 / -1', sm: 'auto' },
+                                  }}
                                 >
                                   Добавить
                                 </Button>
@@ -534,13 +538,69 @@ export function LogTab({
                         freeSolo
                         options={exerciseOptions as ExerciseOption[]}
                         value={exercise}
-                        onChange={(_, val) => setExercise(val || '')}
+                        getOptionLabel={(option) => {
+                          if (typeof option === 'string') return option
+                          if ('inputValue' in option) return option.title
+                          return String(option || '')
+                        }}
+                        filterOptions={(options, params) => {
+                          const filtered = options.filter((opt) => {
+                            const label =
+                              typeof opt === 'string'
+                                ? opt
+                                : 'inputValue' in opt
+                                  ? opt.inputValue
+                                  : String(opt)
+                            return label.toLowerCase().includes(params.inputValue.toLowerCase())
+                          })
+
+                          if (params.inputValue !== '') {
+                            const exists = filtered.some((opt) => {
+                              const label =
+                                typeof opt === 'string'
+                                  ? opt
+                                  : 'inputValue' in opt
+                                    ? opt.inputValue
+                                    : String(opt)
+                              return label.toLowerCase() === params.inputValue.toLowerCase()
+                            })
+                            if (!exists) {
+                              filtered.push({
+                                inputValue: params.inputValue,
+                                title: `Создать "${params.inputValue}"`,
+                              })
+                            }
+                          }
+
+                          return filtered
+                        }}
+                        onChange={(_, val) => {
+                          if (!val) {
+                            setExercise('')
+                            return
+                          }
+                          if (typeof val === 'string') {
+                            setExercise(val)
+                            return
+                          }
+                          if ('inputValue' in val) {
+                            setExercise(val.inputValue)
+                            return
+                          }
+                          setExercise(val)
+                        }}
                         inputValue={query}
                         onInputChange={(_, val) => setQuery(val)}
                         renderInput={(params) => <TextField {...params} label="Упражнение" size="small" />}
                       />
 
-                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' },
+                          gap: 1,
+                        }}
+                      >
                         {lastExerciseStats && (
                           <Typography
                             variant="caption"
