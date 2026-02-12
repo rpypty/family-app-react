@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,12 +17,18 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import type { Currency, Expense, Tag } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
-import { selectedTags } from '../../../../../shared/lib/tagUtils'
+import { findTagByName, selectedTags } from '../../../../../shared/lib/tagUtils'
 import { createId } from '../../../../../shared/lib/uuid'
-import { TagPickerInput } from '../../../../../shared/ui/TagPickerInput'
-import { TagSearchDialog } from '../../../../../shared/ui/TagSearchDialog'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
+
+type TagCreateOption = {
+  inputValue: string
+  name: string
+  isNew: true
+}
+
+type TagOption = Tag | TagCreateOption
 
 type ExpenseFormModalProps = {
   isOpen: boolean
@@ -32,8 +38,6 @@ type ExpenseFormModalProps = {
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<Tag>
-  onUpdateTag: (tagId: string, name: string) => Promise<Tag>
-  onDeleteTag: (tagId: string) => Promise<void>
 }
 
 export function ExpenseFormModal({
@@ -44,8 +48,6 @@ export function ExpenseFormModal({
   onSave,
   onDelete,
   onCreateTag,
-  onUpdateTag,
-  onDeleteTag,
 }: ExpenseFormModalProps) {
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
@@ -53,7 +55,8 @@ export function ExpenseFormModal({
   const [currency, setCurrency] = useState<Currency>('BYN')
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
-  const [isTagDialogOpen, setTagDialogOpen] = useState(false)
+  const [isTagCreating, setTagCreating] = useState(false)
+  const [tagCreateError, setTagCreateError] = useState('')
   const [isConfirmOpen, setConfirmOpen] = useState(false)
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
@@ -68,6 +71,8 @@ export function ExpenseFormModal({
     setCurrency(expense?.currency ?? 'BYN')
     setSelectedTagIds(new Set(expense?.tagIds ?? []))
     setError('')
+    setTagCreateError('')
+    setTagCreating(false)
     setConfirmOpen(false)
     setSaving(false)
     setDeleting(false)
@@ -77,6 +82,54 @@ export function ExpenseFormModal({
     () => selectedTags(tags, selectedTagIds),
     [tags, selectedTagIds],
   )
+
+  const handleTagsChange = async (value: Array<TagOption | string>) => {
+    setTagCreateError('')
+    const nextIds = new Set<string>()
+    let createName = ''
+
+    value.forEach((option) => {
+      if (typeof option === 'string') {
+        createName = option
+        return
+      }
+      if ('isNew' in option) {
+        createName = option.name
+        return
+      }
+      nextIds.add(option.id)
+    })
+
+    if (!createName) {
+      setSelectedTagIds(nextIds)
+      return
+    }
+
+    const trimmed = createName.trim()
+    if (!trimmed) {
+      setSelectedTagIds(nextIds)
+      return
+    }
+
+    const existing = findTagByName(tags, trimmed)
+    if (existing) {
+      nextIds.add(existing.id)
+      setSelectedTagIds(nextIds)
+      return
+    }
+
+    setTagCreating(true)
+    try {
+      const created = await onCreateTag(trimmed)
+      nextIds.add(created.id)
+      setSelectedTagIds(nextIds)
+    } catch {
+      setTagCreateError('Не удалось создать тег. Попробуйте ещё раз.')
+      setSelectedTagIds(nextIds)
+    } finally {
+      setTagCreating(false)
+    }
+  }
 
   const handleSave = async () => {
     const normalizedAmount = amount.replace(/\s/g, '').replace(',', '.')
@@ -167,36 +220,65 @@ export function ExpenseFormModal({
               </TextField>
             </Stack>
             <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Теги
                 </Typography>
-                <Button size="small" onClick={() => setTagDialogOpen(true)}>
-                  Новый тег
-                </Button>
-              </Stack>
-              <TagPickerInput label="Выбрать тег" onClick={() => setTagDialogOpen(true)} />
-              {selectedTagList.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Теги не выбраны
-                </Typography>
-              ) : (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-                  {selectedTagList.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      label={tag.name}
-                      onDelete={() =>
-                        setSelectedTagIds((prev) => {
-                          const next = new Set(prev)
-                          next.delete(tag.id)
-                          return next
-                        })
-                      }
+                <Autocomplete<TagOption, true, false, true>
+                  multiple
+                  freeSolo
+                  disableCloseOnSelect
+                  filterSelectedOptions
+                  options={tags}
+                  value={selectedTagList}
+                  loading={isTagCreating}
+                  onInputChange={(_event, _value, reason) => {
+                    if (reason === 'input' && tagCreateError) {
+                      setTagCreateError('')
+                    }
+                  }}
+                  onChange={(_, value) => {
+                    void handleTagsChange(value)
+                  }}
+                  filterOptions={(options, params) => {
+                    const inputValue = params.inputValue.trim()
+                    const normalized = inputValue.toLowerCase()
+                    const filtered = options.filter((option) =>
+                      option.name.toLowerCase().includes(normalized),
+                    )
+                    if (inputValue && !findTagByName(tags, inputValue)) {
+                      filtered.push({ inputValue, name: inputValue, isNew: true })
+                    }
+                    return filtered
+                  }}
+                  getOptionLabel={(option) => {
+                    if (typeof option === 'string') return option
+                    if ('isNew' in option) return option.name
+                    return option.name
+                  }}
+                  isOptionEqualToValue={(option, value) => {
+                    if (typeof option === 'string' || typeof value === 'string') {
+                      return option === value
+                    }
+                    if ('isNew' in option || 'isNew' in value) return false
+                    return option.id === value.id
+                  }}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      {'isNew' in option ? `Добавить тег "${option.name}"` : option.name}
+                    </li>
+                  )}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Выбрать теги"
+                      placeholder="Поиск или создание"
+                      error={Boolean(tagCreateError)}
+                      helperText={tagCreateError || undefined}
                     />
-                  ))}
-                </Box>
-              )}
+                  )}
+                />
+              </Stack>
             </Box>
             {error ? <Alert severity="error">{error}</Alert> : null}
           </Stack>
@@ -273,20 +355,6 @@ export function ExpenseFormModal({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <TagSearchDialog
-        isOpen={isTagDialogOpen}
-        tags={tags}
-        initialSelected={Array.from(selectedTagIds)}
-        onClose={() => setTagDialogOpen(false)}
-        onConfirm={(selected) => {
-          setSelectedTagIds(new Set(selected))
-          setTagDialogOpen(false)
-        }}
-        onCreateTag={onCreateTag}
-        onUpdateTag={onUpdateTag}
-        onDeleteTag={onDeleteTag}
-      />
     </>
   )
 }

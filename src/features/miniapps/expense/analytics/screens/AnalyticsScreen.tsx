@@ -33,6 +33,7 @@ import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
 import { TagPickerInput } from '../../../../../shared/ui/TagPickerInput'
 import { TagRow } from '../../../../../shared/ui/TagRow'
 import { TagSearchDialog } from '../../../../../shared/ui/TagSearchDialog'
+import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { getAnalyticsByTag, getAnalyticsSummary } from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
 
@@ -327,8 +328,8 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <QuickFilterChip label="За неделю" onClick={() => applyQuickRange(7)} />
               <QuickFilterChip label="За месяц" onClick={() => applyQuickRange(30)} />
-              <QuickFilterChip label="От 5 до 20" onClick={() => applyDayRange(5, 20)} />
-              <QuickFilterChip label="От 20 до 5" onClick={() => applyDayRange(20, 5)} />
+              <QuickFilterChip label="От 5 до 19" onClick={() => applyDayRange(5, 19)} />
+              <QuickFilterChip label="От 20 до 4" onClick={() => applyDayRange(20, 4)} />
             </Stack>
             <Stack spacing={1}>
               <Typography variant="subtitle2" color="text.secondary">
@@ -510,14 +511,22 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
                     return (
                       <Box key={expense.id}>
                         <Stack direction="row" justifyContent="space-between" spacing={2}>
-                          <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                            <Typography fontWeight={600} noWrap>
-                              {expense.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {formatDateDots(parseDate(expense.date))}
-                            </Typography>
-                            {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                          <Stack
+                            direction="row"
+                            spacing={1.5}
+                            alignItems="center"
+                            sx={{ minWidth: 0, flex: 1 }}
+                          >
+                            <ExpenseIcon size={32} />
+                            <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography fontWeight={600} noWrap>
+                                {expense.title}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {formatDateDots(parseDate(expense.date))}
+                              </Typography>
+                              {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                            </Stack>
                           </Stack>
                           <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
                             {formatAmount(expense.amount)} {expense.currency}
@@ -545,6 +554,7 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
         }}
         onUpdateTag={onUpdateTag}
         onDeleteTag={onDeleteTag}
+        enableSelectAll
       />
 
       <Dialog
@@ -586,23 +596,25 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
                       border: 1,
                       borderColor: 'divider',
                       borderRadius: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 0.5,
                     }}
                   >
-                    <Stack direction="row" justifyContent="space-between" spacing={1}>
-                      <Typography variant="subtitle2" fontWeight={600} noWrap>
-                        {expense.title}
-                      </Typography>
-                      <Typography variant="subtitle2" fontWeight={600}>
-                        {formatAmount(expense.amount)} {expense.currency}
-                      </Typography>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <ExpenseIcon size={32} />
+                      <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                        <Stack direction="row" justifyContent="space-between" spacing={1}>
+                          <Typography variant="subtitle2" fontWeight={600} noWrap>
+                            {expense.title}
+                          </Typography>
+                          <Typography variant="subtitle2" fontWeight={600}>
+                            {formatAmount(expense.amount)} {expense.currency}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDateDots(parseDate(expense.date))}
+                        </Typography>
+                        {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                      </Stack>
                     </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatDateDots(parseDate(expense.date))}
-                    </Typography>
-                    {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
                   </Box>
                 )
               })}

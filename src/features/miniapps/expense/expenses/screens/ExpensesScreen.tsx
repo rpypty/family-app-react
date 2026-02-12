@@ -19,6 +19,7 @@ import {
   parseDate,
   formatAmount,
 } from '../../../../../shared/lib/formatters'
+import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
 
@@ -33,8 +34,6 @@ type ExpensesScreenProps = {
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<Tag>
-  onUpdateTag: (tagId: string, name: string) => Promise<Tag>
-  onDeleteTag: (tagId: string) => Promise<void>
 }
 
 export function ExpensesScreen({
@@ -48,8 +47,6 @@ export function ExpensesScreen({
   onUpdateExpense,
   onDeleteExpense,
   onCreateTag,
-  onUpdateTag,
-  onDeleteTag,
 }: ExpensesScreenProps) {
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
@@ -134,12 +131,12 @@ export function ExpensesScreen({
                         </Typography>
                       </Stack>
                       <Stack spacing={1}>
-                      {dayExpenses.map((expense) => {
-                        const tagNames = expense.tagIds
-                          .map((id) => tagMap.get(id))
-                          .filter((name): name is string => Boolean(name))
-                        const visibleTags = tagNames.slice(0, maxTagVisible)
-                        const remainingTags = tagNames.length - visibleTags.length
+                        {dayExpenses.map((expense) => {
+                          const tagNames = expense.tagIds
+                            .map((id) => tagMap.get(id))
+                            .filter((name): name is string => Boolean(name))
+                          const visibleTags = tagNames.slice(0, maxTagVisible)
+                          const remainingTags = tagNames.length - visibleTags.length
                           return (
                             <Paper
                               key={expense.id}
@@ -167,69 +164,77 @@ export function ExpensesScreen({
                                 },
                               }}
                             >
-                              <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
-                                <Stack direction="row" spacing={2} alignItems="center">
-                                  <Typography
-                                    fontWeight={500}
-                                    variant="body2"
-                                    color="text.secondary"
-                                    noWrap
-                                    sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
-                                  >
-                                    {expense.title}
-                                  </Typography>
-                                  <Typography
-                                    fontWeight={600}
-                                    variant="body2"
-                                    color="text.secondary"
-                                    sx={{ whiteSpace: 'nowrap' }}
-                                  >
-                                    {formatAmount(expense.amount)} {expense.currency}
-                                  </Typography>
-                                </Stack>
-                                {tagNames.length > 0 ? (
-                                  <Stack
-                                    direction="row"
-                                    spacing={1}
-                                    sx={{
-                                      flexWrap: 'nowrap',
-                                      overflow: 'hidden',
-                                    }}
-                                  >
-                                    {visibleTags.map((name) => (
-                                      <Chip
-                                        key={name}
-                                        label={name}
-                                        size="small"
-                                        variant="outlined"
-                                        sx={{
-                                          flexShrink: 0,
-                                          maxWidth: 140,
-                                          color: 'text.secondary',
-                                          borderColor: 'divider',
-                                          '& .MuiChip-label': {
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                          },
-                                        }}
-                                      />
-                                    ))}
-                                    {remainingTags > 0 ? (
-                                      <Chip
-                                        label={`${remainingTags}+ тегов`}
-                                        size="small"
-                                        variant="outlined"
-                                        sx={{
-                                          flexShrink: 0,
-                                          color: 'text.secondary',
-                                          borderColor: 'divider',
-                                          '& .MuiChip-label': { whiteSpace: 'nowrap' },
-                                        }}
-                                      />
-                                    ) : null}
+                              <Stack
+                                direction="row"
+                                spacing={1.5}
+                                alignItems="center"
+                                sx={{ flex: 1, minWidth: 0 }}
+                              >
+                                <ExpenseIcon />
+                                <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+                                  <Stack direction="row" spacing={2} alignItems="center">
+                                    <Typography
+                                      fontWeight={500}
+                                      variant="body2"
+                                      color="text.secondary"
+                                      noWrap
+                                      sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
+                                    >
+                                      {expense.title}
+                                    </Typography>
+                                    <Typography
+                                      fontWeight={600}
+                                      variant="body2"
+                                      color="text.secondary"
+                                      sx={{ whiteSpace: 'nowrap' }}
+                                    >
+                                      {formatAmount(expense.amount)} {expense.currency}
+                                    </Typography>
                                   </Stack>
-                                ) : null}
+                                  {tagNames.length > 0 ? (
+                                    <Stack
+                                      direction="row"
+                                      spacing={1}
+                                      sx={{
+                                        flexWrap: 'nowrap',
+                                        overflow: 'hidden',
+                                      }}
+                                    >
+                                      {visibleTags.map((name) => (
+                                        <Chip
+                                          key={name}
+                                          label={name}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={{
+                                            flexShrink: 0,
+                                            maxWidth: 140,
+                                            color: 'text.secondary',
+                                            borderColor: 'divider',
+                                            '& .MuiChip-label': {
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap',
+                                            },
+                                          }}
+                                        />
+                                      ))}
+                                      {remainingTags > 0 ? (
+                                        <Chip
+                                          label={`${remainingTags}+ тегов`}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={{
+                                            flexShrink: 0,
+                                            color: 'text.secondary',
+                                            borderColor: 'divider',
+                                            '& .MuiChip-label': { whiteSpace: 'nowrap' },
+                                          }}
+                                        />
+                                      ) : null}
+                                    </Stack>
+                                  ) : null}
+                                </Stack>
                               </Stack>
                             </Paper>
                           )
@@ -267,8 +272,6 @@ export function ExpensesScreen({
         onSave={handleSave}
         onDelete={handleDelete}
         onCreateTag={onCreateTag}
-        onUpdateTag={onUpdateTag}
-        onDeleteTag={onDeleteTag}
       />
 
       <Fab
