@@ -1,87 +1,75 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  AppBar,
   BottomNavigation,
   BottomNavigationAction,
   Box,
   CircularProgress,
   Container,
   Paper,
-  Toolbar,
-  Typography,
 } from '@mui/material'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
 import EditNoteIcon from '@mui/icons-material/EditNote'
-import ViewListIcon from '@mui/icons-material/ViewList'
 import { useGymData } from '../hooks/useGymData'
 import { todayISO } from '../utils/dateUtils'
-import type { TemplateExercise } from '../types'
-import { LogTab } from './LogTab'
-import { WorkoutsTab } from './WorkoutsTab'
+import { CalendarTab } from './CalendarTab'
 import { AnalyticsTab } from './AnalyticsTab'
+import { WorkoutEditScreen } from './WorkoutEditScreen'
+import { TemplatePickerScreen } from './TemplatePickerScreen'
 
 export function GymScreen() {
-  const [tab, setTab] = useState(0)
   const [date, setDate] = useState(todayISO())
-  const [activeTemplateExercises, setActiveTemplateExercises] = useState<TemplateExercise[] | null>(null)
   const [periodDays, setPeriodDays] = useState(30)
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const route = useMemo(() => {
+    const normalized = location.pathname.replace(/\/+$/, '')
+    const segments = normalized.split('/').filter(Boolean)
+    if (segments[0] !== 'miniapps' || segments[1] !== 'gym') {
+      return { view: 'calendar' as const }
+    }
+    if (segments[2] === 'analytics') {
+      return { view: 'analytics' as const }
+    }
+    if (segments[2] === 'template') {
+      return { view: 'template' as const }
+    }
+    if (segments[2] === 'workout' && segments[3]) {
+      return { view: 'workout' as const, workoutId: segments[3] }
+    }
+    return { view: 'calendar' as const }
+  }, [location.pathname])
+
+  const isPickingTemplate = route.view === 'template'
+  const editingWorkoutId = route.view === 'workout' ? route.workoutId : null
+  const tab = route.view === 'analytics' ? 1 : 0
 
   const {
     loading,
     sortedWorkouts,
-    selectedWorkout,
-    selectedWorkoutId,
-    setSelectedWorkoutId,
     exerciseOptions,
-    selectedWorkoutGroups,
-    selectedWorkoutTotalVolume,
     entries,
     templates,
     addWorkout,
-    addSets,
-    deleteWorkout,
-    deleteWorkoutSet,
-    deleteOneWorkoutSetBySignature,
     addExercise,
     updateWorkoutFull,
-    addTemplate,
-    updateTemplate,
-    deleteTemplate,
   } = useGymData()
 
-  const workoutsForSelectedDate = useMemo(() => {
-    return sortedWorkouts.filter((w) => w.date === date)
-  }, [sortedWorkouts, date])
+  const editingWorkout = useMemo(() => {
+    if (!editingWorkoutId) return null
+    return sortedWorkouts.find((w) => w.id === editingWorkoutId) || null
+  }, [editingWorkoutId, sortedWorkouts])
+
+  useEffect(() => {
+    if (loading) return
+    if (editingWorkoutId && !editingWorkout) {
+      navigate('/miniapps/gym', { replace: true })
+    }
+  }, [editingWorkout, editingWorkoutId, loading, navigate])
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate)
-    setActiveTemplateExercises(null)
-    if (selectedWorkout && selectedWorkout.date !== newDate) {
-      setSelectedWorkoutId('')
-    }
-  }
-
-  const handleSelectWorkout = (id: string) => {
-    setSelectedWorkoutId(id)
-    setActiveTemplateExercises(null)
-  }
-
-  const handleCreateWorkout = async (name: string) => {
-    const workout = await addWorkout(date, name)
-    setSelectedWorkoutId(workout.id)
-    setActiveTemplateExercises(null)
-  }
-
-  const handleUseTemplate = async (templateId: string) => {
-    const t = templates.find((x) => x.id === templateId)
-    if (!t) return
-    const d = todayISO()
-    setDate(d)
-    for (const ex of t.exercises) void addExercise(ex.name)
-    const workout = await addWorkout(d, t.name)
-    setSelectedWorkoutId(workout.id)
-    setActiveTemplateExercises(t.exercises)
-    setTab(0)
   }
 
   const handleUseTemplateForDate = async (templateId: string, forDate: string) => {
@@ -90,20 +78,8 @@ export function GymScreen() {
     const d = (forDate || '').trim() || todayISO()
     setDate(d)
     for (const ex of t.exercises) void addExercise(ex.name)
-    const workout = await addWorkout(d, t.name)
-    setSelectedWorkoutId(workout.id)
-    setActiveTemplateExercises(t.exercises)
-    setTab(0)
-  }
-
-  const handleAddSets = async (exercise: string, weightKg: number, reps: number, count: number) => {
-    if (!selectedWorkoutId) return
-    await addSets(selectedWorkoutId, exercise, weightKg, reps, count)
-  }
-
-  const handleDeleteOneSet = async (exerciseName: string, reps: number, weight: number) => {
-    if (!selectedWorkoutId) return
-    await deleteOneWorkoutSetBySignature(selectedWorkoutId, exerciseName, reps, weight)
+    const w = await addWorkout(d, t.name)
+    navigate(`/miniapps/gym/workout/${w.id}`)
   }
 
   if (loading) {
@@ -116,99 +92,85 @@ export function GymScreen() {
 
   return (
     <Container maxWidth="sm" disableGutters>
-      <AppBar
-        position="static"
-        color="default"
-        elevation={0}
-        sx={{ bgcolor: 'background.paper', color: 'text.primary', borderBottom: 1, borderColor: 'divider' }}
-      >
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Тренировки
-          </Typography>
-        </Toolbar>
-      </AppBar>
-
-      <Box sx={{ pb: 10 }}>
-        {tab === 0 && (
-          <LogTab
-            date={date}
-            onDateChange={handleDateChange}
-            workoutsForDate={workoutsForSelectedDate}
-            selectedWorkout={selectedWorkout}
-            onSelectWorkout={handleSelectWorkout}
-            onCreateWorkout={handleCreateWorkout}
-            templates={templates}
-            onUseTemplate={(templateId) => void handleUseTemplateForDate(templateId, date)}
-            exerciseOptions={exerciseOptions}
-            onAddSets={handleAddSets}
-            onAddExercise={addExercise}
-            selectedWorkoutGroups={selectedWorkoutGroups}
-            selectedWorkoutTotalVolume={selectedWorkoutTotalVolume}
-            onDeleteOneSet={handleDeleteOneSet}
-            templateExercises={activeTemplateExercises || undefined}
+      <Box sx={{ pb: editingWorkout ? 2 : 10 }}>
+        {editingWorkout ? (
+          <WorkoutEditScreen
+            workout={editingWorkout}
             allWorkouts={sortedWorkouts}
-          />
-        )}
-
-        {tab === 1 && (
-          <WorkoutsTab
-            sortedWorkouts={sortedWorkouts}
-            onDeleteWorkout={deleteWorkout}
-            onDeleteWorkoutSet={deleteWorkoutSet}
-            onUpdateWorkout={(id, name, date, sets) => void updateWorkoutFull(id, name, date, sets)}
             exerciseOptions={exerciseOptions}
-            templates={templates}
-            onCreateTemplate={(name, exercises) => {
-              void addTemplate(name, exercises)
-              for (const ex of exercises) void addExercise(ex.name)
+            onAddExercise={addExercise}
+            onSave={(updated) => {
+              void updateWorkoutFull(updated.id, updated.name, updated.date, updated.sets)
             }}
-            onUpdateTemplate={(id, name, exercises) => {
-              void updateTemplate(id, name, exercises)
-              for (const ex of exercises) void addExercise(ex.name)
-            }}
-            onDeleteTemplate={(id) => void deleteTemplate(id)}
-            onUseTemplate={(id) => void handleUseTemplate(id)}
           />
-        )}
+        ) : isPickingTemplate ? (
+          <TemplatePickerScreen
+            templates={templates}
+            onBack={() => navigate('/miniapps/gym')}
+            onCreateCustom={() => {
+              void (async () => {
+                const w = await addWorkout(date, 'Тренировка')
+                navigate(`/miniapps/gym/workout/${w.id}`)
+              })()
+            }}
+            onUseTemplate={(templateId) => {
+              void handleUseTemplateForDate(templateId, date)
+            }}
+          />
+        ) : tab === 0 ? (
+          <CalendarTab
+            workouts={sortedWorkouts}
+            selectedDate={date}
+            onSelectDate={handleDateChange}
+            onEditWorkout={(workoutId) => navigate(`/miniapps/gym/workout/${workoutId}`)}
+            onAddWorkout={(forDate) => {
+              setDate(forDate)
+              navigate('/miniapps/gym/template')
+            }}
+          />
+        ) : null}
 
-        {tab === 2 && <AnalyticsTab entries={entries} periodDays={periodDays} onPeriodChange={setPeriodDays} />}
+        {tab === 1 && <AnalyticsTab entries={entries} periodDays={periodDays} onPeriodChange={setPeriodDays} />}
       </Box>
 
-      <Paper
-        elevation={0}
-        sx={{
-          position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderTop: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-        }}
-      >
-        <Box sx={{ maxWidth: (theme) => theme.breakpoints.values.sm, mx: 'auto' }}>
-          <BottomNavigation
-            showLabels
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            sx={{ bgcolor: 'transparent' }}
-          >
-            <BottomNavigationAction
-              label="Журнал"
-              icon={<EditNoteIcon />}
-            />
-            <BottomNavigationAction
-              label="История"
-              icon={<ViewListIcon />}
-            />
-            <BottomNavigationAction
-              label="Аналитика"
-              icon={<AnalyticsIcon />}
-            />
-          </BottomNavigation>
-        </Box>
-      </Paper>
+      {!editingWorkout && !isPickingTemplate && (
+        <Paper
+          elevation={0}
+          sx={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderTop: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Box sx={{ maxWidth: (theme) => theme.breakpoints.values.sm, mx: 'auto' }}>
+            <BottomNavigation
+              showLabels
+              value={tab}
+              onChange={(_, v) => {
+                if (v === 1) {
+                  navigate('/miniapps/gym/analytics')
+                } else {
+                  navigate('/miniapps/gym')
+                }
+              }}
+              sx={{ bgcolor: 'transparent' }}
+            >
+              <BottomNavigationAction
+                label="Календарь"
+                icon={<EditNoteIcon />}
+              />
+              <BottomNavigationAction
+                label="Аналитика"
+                icon={<AnalyticsIcon />}
+              />
+            </BottomNavigation>
+          </Box>
+        </Paper>
+      )}
     </Container>
   )
 }

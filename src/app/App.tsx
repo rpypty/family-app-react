@@ -166,9 +166,6 @@ const resolveAppRoute = (pathname: string): ResolvedRoute => {
   }
 
   if (app === 'gym') {
-    if (segments.length > 2) {
-      return { activeApp: 'gym', activeTab: 'expenses', redirectTo: ROUTES.gym }
-    }
     return { activeApp: 'gym', activeTab: 'expenses' }
   }
 
@@ -460,7 +457,9 @@ function App() {
       ? active.title
       : activeApp === 'todo'
         ? 'To Do листы'
-        : 'Миниаппы'
+        : activeApp === 'gym'
+          ? 'Тренировки'
+          : 'Миниаппы'
 
   const formattedLastSyncAt = useMemo(() => {
     if (!lastSyncAt) return null
@@ -1015,7 +1014,14 @@ function App() {
               <Tooltip title="На главный экран">
                 <IconButton
                   color="inherit"
-                  onClick={() => navigateHome()}
+                  onClick={() => {
+                    const isGymNested = currentPath.startsWith(`${ROUTES.gym}/`)
+                    if (isGymNested) {
+                      navigate(-1)
+                      return
+                    }
+                    navigateHome()
+                  }}
                   aria-label="На главный экран"
                 >
                   <ArrowBackRounded />
