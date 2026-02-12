@@ -244,6 +244,31 @@ export async function syncWithBackend(): Promise<void> {
   }
 }
 
+export async function refreshFromBackend(): Promise<{
+  entries: GymEntry[]
+  workouts: Workout[]
+  templates: WorkoutTemplate[]
+  exercises: string[]
+} | null> {
+  try {
+    const [entries, workouts, templates, exercises] = await Promise.all([
+      gymApi.listGymEntries({ limit: 1000 }),
+      gymApi.listWorkouts({ limit: 1000 }),
+      gymApi.listTemplates(),
+      gymApi.listExercises(),
+    ])
+    await saveGymEntries(entries)
+    await saveWorkouts(workouts)
+    await saveWorkoutTemplates(templates)
+    await saveExercises(exercises)
+    await setJSON(LAST_SYNC_KEY, Date.now())
+    return { entries, workouts, templates, exercises }
+  } catch (error) {
+    console.error('Failed to refresh from backend:', error)
+    return null
+  }
+}
+
 async function processPendingAction(action: PendingAction): Promise<void> {
   switch (action.type) {
     case 'createEntry': {

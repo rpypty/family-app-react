@@ -572,18 +572,19 @@ export function WorkoutsTab({
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 90px 90px 40px',
+                      gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 90px 90px 40px' },
                       gap: 1,
                       mb: 1,
                       color: 'text.secondary',
                       fontSize: 12,
                       fontWeight: 600,
+                      alignItems: 'center',
                     }}
                   >
-                    <Box>Упражнение</Box>
+                    <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>Упражнение</Box>
                     <Box>Подх.</Box>
                     <Box>Повт.</Box>
-                    <Box />
+                    <Box sx={{ display: { xs: 'none', sm: 'block' } }} />
                   </Box>
                   <Stack spacing={1}>
                     {draft.exercises.map((ex, index) => (
@@ -591,7 +592,7 @@ export function WorkoutsTab({
                         key={index}
                         sx={{
                           display: 'grid',
-                          gridTemplateColumns: '1fr 90px 90px 40px',
+                          gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 90px 90px 40px' },
                           gap: 1,
                           alignItems: 'center',
                           border: 1,
@@ -601,7 +602,10 @@ export function WorkoutsTab({
                           py: 1,
                         }}
                       >
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 600, gridColumn: { xs: '1 / -1', sm: 'auto' } }}
+                        >
                           {ex.name}
                         </Typography>
                         <TextField
@@ -618,7 +622,12 @@ export function WorkoutsTab({
                           size="small"
                           label="Повт"
                         />
-                        <IconButton size="small" color="error" onClick={() => handleRemoveExercise(index)}>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleRemoveExercise(index)}
+                          sx={{ justifySelf: { xs: 'end', sm: 'auto' } }}
+                        >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Box>
@@ -676,7 +685,7 @@ export function WorkoutsTab({
                       key={s.id}
                       sx={{
                         display: 'grid',
-                        gridTemplateColumns: '1.4fr 90px 90px 40px',
+                        gridTemplateColumns: { xs: '1fr', sm: '1.4fr 90px 90px 40px' },
                         gap: 1,
                         alignItems: 'center',
                         border: 1,
@@ -722,7 +731,7 @@ export function WorkoutsTab({
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '1.4fr 90px 90px auto',
+                  gridTemplateColumns: { xs: '1fr', sm: '1.4fr 90px 90px auto' },
                   gap: 1,
                   alignItems: 'center',
                 }}

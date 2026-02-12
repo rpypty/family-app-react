@@ -8,6 +8,7 @@ import {
   loadWorkoutTemplates,
   loadWorkouts,
   migrateEntriesToWorkouts,
+  refreshFromBackend,
   saveExercises,
   saveWorkouts,
   syncWithBackend,
@@ -32,19 +33,36 @@ export function useGymData() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      // Try to sync with backend first
+      let backendData: {
+        workouts: Workout[]
+        entries: ReturnType<typeof flattenWorkoutsToEntries>
+        templates: WorkoutTemplate[]
+        exercises: string[]
+      } | null = null
+
       try {
         await syncWithBackend()
+        const refreshed = await refreshFromBackend()
+        if (refreshed) {
+          backendData = {
+            workouts: refreshed.workouts,
+            entries: refreshed.entries,
+            templates: refreshed.templates,
+            exercises: refreshed.exercises,
+          }
+        }
       } catch (error) {
         console.warn('Failed to sync with backend, using local data:', error)
       }
 
-      const [loadedWorkouts, loadedEntries, loadedExercises, loadedTemplates] = await Promise.all([
-        loadWorkouts(),
-        loadGymEntries(),
-        loadExercises(),
-        loadWorkoutTemplates(),
-      ])
+      const [loadedWorkouts, loadedEntries, loadedExercises, loadedTemplates] = backendData
+        ? [backendData.workouts, backendData.entries, backendData.exercises, backendData.templates]
+        : await Promise.all([
+            loadWorkouts(),
+            loadGymEntries(),
+            loadExercises(),
+            loadWorkoutTemplates(),
+          ])
       if (!alive) return
 
       const w = Array.isArray(loadedWorkouts) ? loadedWorkouts : []
