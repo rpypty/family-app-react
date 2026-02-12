@@ -75,7 +75,10 @@ export function LogTab({
   >({})
 
   const activeExerciseName = useMemo(() => {
-    const fromSelected = exercise.trim()
+    const fromSelected =
+      typeof exercise === 'string'
+        ? exercise.trim()
+        : String(exercise?.inputValue || exercise?.title || '').trim()
     return fromSelected || query.trim()
   }, [exercise, query])
 
