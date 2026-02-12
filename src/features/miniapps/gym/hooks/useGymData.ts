@@ -188,6 +188,39 @@ export function useGymData() {
     setWorkouts(nextWorkouts)
   }
 
+  const updateWorkoutMeta = async (workoutId: string, name: string, date: string) => {
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
+    const updatedWorkout = {
+      ...targetWorkout,
+      name: (name || '').trim(),
+      date,
+    }
+
+    await updateWorkoutWithSync(updatedWorkout)
+
+    const nextWorkouts = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(nextWorkouts)
+  }
+
+  const updateWorkoutFull = async (workoutId: string, name: string, date: string, sets: WorkoutSet[]) => {
+    const targetWorkout = workouts.find((w) => w.id === workoutId)
+    if (!targetWorkout) return
+
+    const updatedWorkout = {
+      ...targetWorkout,
+      name: (name || '').trim(),
+      date,
+      sets,
+    }
+
+    await updateWorkoutWithSync(updatedWorkout)
+
+    const nextWorkouts = workouts.map((w) => (w.id === workoutId ? updatedWorkout : w))
+    setWorkouts(nextWorkouts)
+  }
+
   const deleteWorkout = async (workoutId: string) => {
     await deleteWorkoutWithSync(workoutId)
     const next = workouts.filter((w) => w.id !== workoutId)
@@ -295,6 +328,8 @@ export function useGymData() {
     addWorkout,
     addSets,
     updateWorkoutDate,
+    updateWorkoutMeta,
+    updateWorkoutFull,
     deleteWorkout,
     deleteWorkoutSet,
     deleteOneWorkoutSetBySignature,

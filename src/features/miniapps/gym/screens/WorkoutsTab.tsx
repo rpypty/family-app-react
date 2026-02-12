@@ -24,9 +24,11 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import type { TemplateExercise, Workout } from '../types'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import type { TemplateExercise, Workout, WorkoutSet } from '../types'
 import { formatWorkoutSet } from '../utils/metricsUtils'
-import { exerciseKey } from '../api/gymStore'
+import { createWorkoutSet, exerciseKey } from '../api/gymStore'
 
 type TemplateDraft = {
   name: string
@@ -37,6 +39,7 @@ interface WorkoutsTabProps {
   sortedWorkouts: Workout[]
   onDeleteWorkout: (workoutId: string) => void
   onDeleteWorkoutSet: (workoutId: string, setId: string) => void
+  onUpdateWorkout: (workoutId: string, name: string, date: string, sets: WorkoutSet[]) => void
   exerciseOptions: string[]
   templates: Array<{ id: string; name: string; exercises: TemplateExercise[] }>
   onCreateTemplate: (name: string, exercises: TemplateExercise[]) => void
@@ -49,6 +52,7 @@ export function WorkoutsTab({
   sortedWorkouts,
   onDeleteWorkout,
   onDeleteWorkoutSet,
+  onUpdateWorkout,
   exerciseOptions,
   templates,
   onCreateTemplate,
@@ -60,6 +64,18 @@ export function WorkoutsTab({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateDraft>({ name: '', exercises: [] })
   const [exerciseQuery, setExerciseQuery] = useState('')
+  const [exerciseValue, setExerciseValue] = useState<string | null>(null)
+  const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null)
+  const [editingWorkoutName, setEditingWorkoutName] = useState('')
+  const [editingWorkoutDate, setEditingWorkoutDate] = useState('')
+  const [editingWorkoutSets, setEditingWorkoutSets] = useState<WorkoutSet[]>([])
+  const [newSetExercise, setNewSetExercise] = useState('')
+  const [newSetWeight, setNewSetWeight] = useState('')
+  const [newSetReps, setNewSetReps] = useState('')
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
 
   const parsedExercises = useMemo(() => {
     const raw = (draft.exercises || []).map((x) => String(x?.name || '').trim()).filter(Boolean)
@@ -75,6 +91,44 @@ export function WorkoutsTab({
   }, [draft.exercises])
 
   const canSave = draft.name.trim().length > 0 && parsedExercises.length > 0
+
+  const workoutsByDate = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const w of sortedWorkouts) {
+      const key = String(w.date || '').trim()
+      if (!key) continue
+      map.set(key, (map.get(key) || 0) + 1)
+    }
+    return map
+  }, [sortedWorkouts])
+
+  const calendarLabel = useMemo(() => {
+    const label = calendarMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  }, [calendarMonth])
+
+  const calendarCells = useMemo(() => {
+    const year = calendarMonth.getFullYear()
+    const month = calendarMonth.getMonth()
+    const first = new Date(year, month, 1)
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const offset = (first.getDay() + 6) % 7
+
+    const cells: Array<{ key: string; day?: number; iso?: string; count?: number }> = []
+    for (let i = 0; i < offset; i += 1) {
+      cells.push({ key: `empty-${i}` })
+    }
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      cells.push({
+        key: iso,
+        day,
+        iso,
+        count: workoutsByDate.get(iso) || 0,
+      })
+    }
+    return cells
+  }, [calendarMonth, workoutsByDate])
 
   const handleSave = () => {
     if (!canSave) return
@@ -100,6 +154,7 @@ export function WorkoutsTab({
     }
     setDraft({ name: '', exercises: [] })
     setExerciseQuery('')
+    setExerciseValue(null)
     setEditingId(null)
     setOpen(false)
   }
@@ -108,6 +163,7 @@ export function WorkoutsTab({
     setEditingId(null)
     setDraft({ name: '', exercises: [] })
     setExerciseQuery('')
+    setExerciseValue(null)
     setOpen(true)
   }
 
@@ -124,6 +180,7 @@ export function WorkoutsTab({
       })),
     })
     setExerciseQuery('')
+    setExerciseValue(null)
     setOpen(true)
   }
 
@@ -138,6 +195,7 @@ export function WorkoutsTab({
       exercises: [...draft.exercises, { name, reps: 8, sets: 3 }],
     })
     setExerciseQuery('')
+    setExerciseValue(null)
   }
 
   const handleRemoveExercise = (index: number) => {
@@ -151,6 +209,54 @@ export function WorkoutsTab({
     const updated = [...draft.exercises]
     updated[index] = { ...updated[index], [field]: Math.max(1, value) }
     setDraft({ ...draft, exercises: updated })
+  }
+
+  const handleOpenWorkoutEdit = (workout: Workout) => {
+    setEditingWorkoutId(workout.id)
+    setEditingWorkoutName(workout.name || '')
+    setEditingWorkoutDate(workout.date)
+    setEditingWorkoutSets([...(workout.sets || [])])
+    setNewSetExercise('')
+    setNewSetWeight('')
+    setNewSetReps('')
+  }
+
+  const handleSaveWorkoutEdit = () => {
+    if (!editingWorkoutId) return
+    onUpdateWorkout(editingWorkoutId, editingWorkoutName, editingWorkoutDate, editingWorkoutSets)
+    setEditingWorkoutId(null)
+  }
+
+  const handleUpdateWorkoutSet = (index: number, field: 'exercise' | 'weightKg' | 'reps', value: string) => {
+    setEditingWorkoutSets((prev) => {
+      const next = [...prev]
+      const current = next[index]
+      if (!current) return prev
+      next[index] = {
+        ...current,
+        exercise: field === 'exercise' ? value : current.exercise,
+        weightKg: field === 'weightKg' ? Number(value) || 0 : current.weightKg,
+        reps: field === 'reps' ? Number(value) || 0 : current.reps,
+      }
+      return next
+    })
+  }
+
+  const handleRemoveWorkoutSet = (index: number) => {
+    setEditingWorkoutSets((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleAddWorkoutSet = () => {
+    const name = newSetExercise.trim()
+    if (!name) return
+    const w = Number(newSetWeight) || 0
+    const r = Number(newSetReps) || 0
+    if (r <= 0) return
+    const newSet = createWorkoutSet({ exercise: name, weightKg: w, reps: r })
+    setEditingWorkoutSets((prev) => [...prev, newSet])
+    setNewSetExercise('')
+    setNewSetWeight('')
+    setNewSetReps('')
   }
 
   return (
@@ -220,6 +326,101 @@ export function WorkoutsTab({
           </Card>
         )}
 
+        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Календарь тренировок
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                  }
+                >
+                  <ChevronLeftIcon fontSize="small" />
+                </IconButton>
+                <Typography variant="body2" fontWeight={600}>
+                  {calendarLabel}
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                  }
+                >
+                  <ChevronRightIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, 1fr)',
+                gap: 0.75,
+                alignItems: 'center',
+                mb: 1,
+              }}
+            >
+              {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => (
+                <Typography
+                  key={d}
+                  variant="caption"
+                  color="text.secondary"
+                  textAlign="center"
+                  fontWeight={600}
+                >
+                  {d}
+                </Typography>
+              ))}
+              {calendarCells.map((cell) => {
+                if (!cell.day) {
+                  return <Box key={cell.key} sx={{ height: 32 }} />
+                }
+                const hasWorkout = (cell.count || 0) > 0
+                return (
+                  <Box
+                    key={cell.key}
+                    sx={{
+                      height: 32,
+                      borderRadius: 1,
+                      bgcolor: hasWorkout ? 'primary.main' : 'action.hover',
+                      color: hasWorkout ? 'primary.contrastText' : 'text.primary',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                    title={hasWorkout ? `Тренировок: ${cell.count}` : undefined}
+                  >
+                    {cell.day}
+                    {hasWorkout && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          right: 4,
+                          bottom: 4,
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          bgcolor: 'secondary.main',
+                        }}
+                      />
+                    )}
+                  </Box>
+                )
+              })}
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              Цветом отмечены дни с тренировками.
+            </Typography>
+          </CardContent>
+        </Card>
+
         <Typography variant="subtitle2" fontWeight={700}>
           История тренировок
         </Typography>
@@ -266,6 +467,15 @@ export function WorkoutsTab({
                       }}
                     >
                       <DeleteIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleOpenWorkoutEdit(w)
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
                     </IconButton>
                   </Box>
                 </AccordionSummary>
@@ -319,10 +529,25 @@ export function WorkoutsTab({
               <Autocomplete
                 freeSolo
                 options={exerciseOptions}
+                value={exerciseValue}
                 inputValue={exerciseQuery}
                 onInputChange={(_, val) => setExerciseQuery(val)}
+                filterOptions={(options, params) => {
+                  const filtered = options.filter((opt) =>
+                    String(opt).toLowerCase().includes(params.inputValue.toLowerCase())
+                  )
+                  if (params.inputValue !== '' && !filtered.some((opt) => String(opt) === params.inputValue)) {
+                    filtered.push(`Создать новый: ${params.inputValue}`)
+                  }
+                  return filtered
+                }}
                 onChange={(_, val) => {
-                  if (typeof val === 'string') handleAddExercise(val)
+                  if (typeof val === 'string') {
+                    const prefix = 'Создать новый: '
+                    const name = val.startsWith(prefix) ? val.slice(prefix.length) : val
+                    handleAddExercise(name)
+                  }
+                  setExerciseValue(null)
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && exerciseQuery.trim()) {
@@ -331,62 +556,215 @@ export function WorkoutsTab({
                   }
                 }}
                 renderInput={(params) => (
-                  <TextField 
-                    {...params} 
-                    placeholder="Добавить упражнение" 
+                  <TextField
+                    {...params}
+                    placeholder="Добавить упражнение"
                     size="small"
-                    helperText="Нажмите Enter для добавления"
+                    helperText="Enter — добавить, поле очищается автоматически"
                   />
                 )}
               />
             </Box>
 
             {draft.exercises.length > 0 && (
-              <Stack spacing={1}>
-                {draft.exercises.map((ex, index) => (
+              <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                <CardContent>
                   <Box
-                    key={index}
                     sx={{
-                      display: 'flex',
-                      alignItems: 'center',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 90px 90px 40px',
                       gap: 1,
-                      border: 1,
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      p: 1,
+                      mb: 1,
+                      color: 'text.secondary',
+                      fontSize: 12,
+                      fontWeight: 600,
                     }}
                   >
-                    <Typography variant="body2" sx={{ flex: 1, fontWeight: 600 }}>
-                      {ex.name}
-                    </Typography>
-                    <TextField
-                      type="number"
-                      value={ex.sets}
-                      onChange={(e) => handleUpdateExercise(index, 'sets', Number(e.target.value))}
-                      size="small"
-                      label="Подх"
-                      sx={{ width: 70 }}
-                    />
-                    <TextField
-                      type="number"
-                      value={ex.reps}
-                      onChange={(e) => handleUpdateExercise(index, 'reps', Number(e.target.value))}
-                      size="small"
-                      label="Повт"
-                      sx={{ width: 70 }}
-                    />
-                    <IconButton size="small" color="error" onClick={() => handleRemoveExercise(index)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    <Box>Упражнение</Box>
+                    <Box>Подх.</Box>
+                    <Box>Повт.</Box>
+                    <Box />
                   </Box>
-                ))}
-              </Stack>
+                  <Stack spacing={1}>
+                    {draft.exercises.map((ex, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 90px 90px 40px',
+                          gap: 1,
+                          alignItems: 'center',
+                          border: 1,
+                          borderColor: 'divider',
+                          borderRadius: 2,
+                          px: 1.5,
+                          py: 1,
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {ex.name}
+                        </Typography>
+                        <TextField
+                          type="number"
+                          value={ex.sets}
+                          onChange={(e) => handleUpdateExercise(index, 'sets', Number(e.target.value))}
+                          size="small"
+                          label="Подх"
+                        />
+                        <TextField
+                          type="number"
+                          value={ex.reps}
+                          onChange={(e) => handleUpdateExercise(index, 'reps', Number(e.target.value))}
+                          size="small"
+                          label="Повт"
+                        />
+                        <IconButton size="small" color="error" onClick={() => handleRemoveExercise(index)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
           <Button onClick={handleSave} disabled={!canSave} variant="contained">
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingWorkoutId)}
+        onClose={() => setEditingWorkoutId(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Редактировать тренировку</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Название"
+              value={editingWorkoutName}
+              onChange={(e) => setEditingWorkoutName(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              type="date"
+              label="Дата"
+              value={editingWorkoutDate}
+              onChange={(e) => setEditingWorkoutDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Подходы
+              </Typography>
+              {editingWorkoutSets.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Пока нет подходов
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {editingWorkoutSets.map((s, index) => (
+                    <Box
+                      key={s.id}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.4fr 90px 90px 40px',
+                        gap: 1,
+                        alignItems: 'center',
+                        border: 1,
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        px: 1.5,
+                        py: 1,
+                      }}
+                    >
+                      <TextField
+                        value={s.exercise}
+                        onChange={(e) => handleUpdateWorkoutSet(index, 'exercise', e.target.value)}
+                        size="small"
+                        label="Упражнение"
+                      />
+                      <TextField
+                        type="number"
+                        value={s.weightKg}
+                        onChange={(e) => handleUpdateWorkoutSet(index, 'weightKg', e.target.value)}
+                        size="small"
+                        label="Вес"
+                      />
+                      <TextField
+                        type="number"
+                        value={s.reps}
+                        onChange={(e) => handleUpdateWorkoutSet(index, 'reps', e.target.value)}
+                        size="small"
+                        label="Повт"
+                      />
+                      <IconButton size="small" color="error" onClick={() => handleRemoveWorkoutSet(index)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Добавить подход
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.4fr 90px 90px auto',
+                  gap: 1,
+                  alignItems: 'center',
+                }}
+              >
+                <TextField
+                  value={newSetExercise}
+                  onChange={(e) => setNewSetExercise(e.target.value)}
+                  size="small"
+                  label="Упражнение"
+                />
+                <TextField
+                  type="number"
+                  value={newSetWeight}
+                  onChange={(e) => setNewSetWeight(e.target.value)}
+                  size="small"
+                  label="Вес"
+                />
+                <TextField
+                  type="number"
+                  value={newSetReps}
+                  onChange={(e) => setNewSetReps(e.target.value)}
+                  size="small"
+                  label="Повт"
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleAddWorkoutSet}
+                  disabled={!newSetExercise.trim() || !newSetReps}
+                >
+                  Добавить
+                </Button>
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingWorkoutId(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveWorkoutEdit}
+            disabled={!editingWorkoutDate.trim()}
+          >
             Сохранить
           </Button>
         </DialogActions>

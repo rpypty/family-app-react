@@ -125,6 +125,36 @@ async function savePendingActions(actions: PendingAction[]): Promise<void> {
 
 async function addPendingAction(action: PendingAction): Promise<void> {
   const actions = await loadPendingActions()
+
+  if (action.type === 'updateWorkout') {
+    const idx = actions.findIndex(
+      (a) => a.type === 'createWorkout' && a.workout.id === action.workout.id
+    )
+    if (idx >= 0) {
+      actions[idx] = { type: 'createWorkout', workout: action.workout }
+      await savePendingActions(actions)
+      return
+    }
+  }
+
+  if (action.type === 'deleteWorkout') {
+    const createdIdx = actions.findIndex(
+      (a) => a.type === 'createWorkout' && a.workout.id === action.id
+    )
+    if (createdIdx >= 0) {
+      actions.splice(createdIdx, 1)
+      await savePendingActions(actions)
+      return
+    }
+
+    const filtered = actions.filter(
+      (a) => !(a.type === 'updateWorkout' && a.workout.id === action.id)
+    )
+    filtered.push(action)
+    await savePendingActions(filtered)
+    return
+  }
+
   actions.push(action)
   await savePendingActions(actions)
 }
@@ -154,6 +184,12 @@ export async function syncWithBackend(): Promise<void> {
       return
     }
 
+    const needsRefresh = {
+      entries: actions.some((a) => a.type === 'createEntry' || a.type === 'updateEntry' || a.type === 'deleteEntry'),
+      workouts: actions.some((a) => a.type === 'createWorkout' || a.type === 'updateWorkout' || a.type === 'deleteWorkout'),
+      templates: actions.some((a) => a.type === 'createTemplate' || a.type === 'updateTemplate' || a.type === 'deleteTemplate'),
+    }
+
     // Process pending actions
     const remaining: PendingAction[] = []
     for (const action of actions) {
@@ -166,6 +202,42 @@ export async function syncWithBackend(): Promise<void> {
     }
 
     await savePendingActions(remaining)
+
+    if (remaining.length === 0) {
+      try {
+        const fetches: Array<Promise<void>> = []
+        if (needsRefresh.entries) {
+          fetches.push(
+            (async () => {
+              const entries = await gymApi.listGymEntries({ limit: 1000 })
+              await saveGymEntries(entries)
+            })()
+          )
+        }
+        if (needsRefresh.workouts) {
+          fetches.push(
+            (async () => {
+              const workouts = await gymApi.listWorkouts({ limit: 1000 })
+              await saveWorkouts(workouts)
+            })()
+          )
+        }
+        if (needsRefresh.templates) {
+          fetches.push(
+            (async () => {
+              const templates = await gymApi.listTemplates()
+              await saveWorkoutTemplates(templates)
+            })()
+          )
+        }
+        if (fetches.length > 0) {
+          await Promise.all(fetches)
+        }
+      } catch (error) {
+        console.error('Failed to refresh from backend:', error)
+      }
+    }
+
     await setJSON(LAST_SYNC_KEY, Date.now())
   } finally {
     syncInProgress = false
@@ -185,9 +257,16 @@ async function processPendingAction(action: PendingAction): Promise<void> {
       }
       break
     }
-    case 'updateEntry':
-      await gymApi.updateGymEntry(action.entry)
+    case 'updateEntry': {
+      const serverEntry = await gymApi.updateGymEntry(action.entry)
+      const entries = await loadGymEntries()
+      const index = entries.findIndex((e) => e.id === action.entry.id)
+      if (index >= 0) {
+        entries[index] = serverEntry
+        await saveGymEntries(entries)
+      }
       break
+    }
     case 'deleteEntry':
       await gymApi.deleteGymEntry(action.id)
       break
@@ -202,9 +281,16 @@ async function processPendingAction(action: PendingAction): Promise<void> {
       }
       break
     }
-    case 'updateWorkout':
-      await gymApi.updateWorkout(action.workout)
+    case 'updateWorkout': {
+      const serverWorkout = await gymApi.updateWorkout(action.workout)
+      const workouts = await loadWorkouts()
+      const index = workouts.findIndex((w) => w.id === action.workout.id)
+      if (index >= 0) {
+        workouts[index] = serverWorkout
+        await saveWorkouts(workouts)
+      }
       break
+    }
     case 'deleteWorkout':
       await gymApi.deleteWorkout(action.id)
       break
@@ -219,9 +305,16 @@ async function processPendingAction(action: PendingAction): Promise<void> {
       }
       break
     }
-    case 'updateTemplate':
-      await gymApi.updateTemplate(action.template)
+    case 'updateTemplate': {
+      const serverTemplate = await gymApi.updateTemplate(action.template)
+      const templates = await loadWorkoutTemplates()
+      const index = templates.findIndex((t) => t.id === action.template.id)
+      if (index >= 0) {
+        templates[index] = serverTemplate
+        await saveWorkoutTemplates(templates)
+      }
       break
+    }
     case 'deleteTemplate':
       await gymApi.deleteTemplate(action.id)
       break

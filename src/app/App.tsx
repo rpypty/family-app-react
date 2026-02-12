@@ -1381,6 +1381,14 @@ function App() {
   )
 
   const content = (() => {
+    // DEV: Skip auth and family setup for local development
+    if (import.meta.env.DEV) {
+      if (isBootstrapping) {
+        return <AppLoadingScreen />
+      }
+      return appShell
+    }
+
     if (isBootstrapping) {
       return <AppLoadingScreen />
     }
