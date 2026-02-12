@@ -5,6 +5,7 @@ import {
   Badge,
   Box,
   Button,
+  ButtonBase,
   Card,
   CardContent,
   Dialog,
@@ -98,19 +99,19 @@ export function TodoScreen({
     setCreateOpen(false)
   }
 
-  const handleAddItem = async (listId: string) => {
+  const handleAddItem = (listId: string) => {
     const title = (draftItems[listId] ?? '').trim()
     if (!title) return
-    await onCreateItem(listId, title)
     setDraftItems((prev) => ({ ...prev, [listId]: '' }))
+    void onCreateItem(listId, title)
   }
 
-  const handleToggleItem = async (listId: string, itemId: string, isCompleted: boolean) => {
-    await onToggleItem(listId, itemId, isCompleted)
+  const handleToggleItem = (listId: string, itemId: string, isCompleted: boolean) => {
+    void onToggleItem(listId, itemId, isCompleted)
   }
 
-  const handleDeleteItem = async (listId: string, itemId: string) => {
-    await onDeleteItem(listId, itemId)
+  const handleDeleteItem = (listId: string, itemId: string) => {
+    void onDeleteItem(listId, itemId)
   }
 
   const handleToggleArchiveSetting = async (listId: string, nextValue: boolean) => {
@@ -178,13 +179,13 @@ export function TodoScreen({
     handleCloseItemMenu()
   }
 
-  const handleSaveItemEdit = async () => {
+  const handleSaveItemEdit = () => {
     if (!editingItem) return
     const title = editItemTitle.trim()
     if (!title) return
-    await onUpdateItemTitle(editingItem.listId, editingItem.item.id, title)
     setEditingItem(null)
     setEditItemTitle('')
+    void onUpdateItemTitle(editingItem.listId, editingItem.item.id, title)
   }
 
   const handleDeleteItemRequest = () => {
@@ -193,10 +194,11 @@ export function TodoScreen({
     handleCloseItemMenu()
   }
 
-  const handleConfirmDeleteItem = async () => {
+  const handleConfirmDeleteItem = () => {
     if (!deleteItemTarget) return
-    await onDeleteItem(deleteItemTarget.listId, deleteItemTarget.item.id)
+    const { listId, item } = deleteItemTarget
     setDeleteItemTarget(null)
+    handleDeleteItem(listId, item.id)
   }
 
   const handleCancelDeleteItem = () => {
@@ -313,6 +315,7 @@ export function TodoScreen({
         const listIndex = listIndexMap.get(list.id) ?? 0
         const canMoveUp = listIndex > 0
         const canMoveDown = listIndex < sortedLists.length - 1
+        const collapseId = `todo-list-${list.id}-items`
 
         return (
           <Card key={list.id} variant="outlined" sx={{ borderRadius: 2 }}>
@@ -331,12 +334,39 @@ export function TodoScreen({
                     )}
                   </IconButton>
                 </Tooltip>
-                <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ flex: 1 }}>
-                  {list.title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                  {completedCount}/{totalCount}
-                </Typography>
+                <ButtonBase
+                  onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
+                  aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
+                  aria-expanded={!list.isCollapsed}
+                  aria-controls={collapseId}
+                  sx={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    textAlign: 'left',
+                    borderRadius: 1,
+                    px: 0.5,
+                    py: 0.25,
+                    gap: 1,
+                  }}
+                >
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={700}
+                    noWrap
+                    sx={{ flex: 1, minWidth: 0 }}
+                  >
+                    {list.title}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ whiteSpace: 'nowrap' }}
+                  >
+                    {completedCount}/{totalCount}
+                  </Typography>
+                </ButtonBase>
                 <Tooltip title="Архив списка">
                   <IconButton
                     size="small"
@@ -348,28 +378,57 @@ export function TodoScreen({
                       badgeContent={archivedCount}
                       invisible={archivedCount === 0}
                     >
-                  <ArchiveRounded fontSize="small" />
-                </Badge>
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Настройки">
-              <IconButton
-                size="small"
-                onClick={(event) => handleOpenSettings(event, list.id)}
-                aria-label="Настройки списка"
-              >
-                <SettingsRounded fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Stack>
+                      <ArchiveRounded fontSize="small" />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Настройки">
+                  <IconButton
+                    size="small"
+                    onClick={(event) => handleOpenSettings(event, list.id)}
+                    aria-label="Настройки списка"
+                  >
+                    <SettingsRounded fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
 
-              <Collapse in={!list.isCollapsed} timeout="auto" unmountOnExit>
+              <Collapse id={collapseId} in={!list.isCollapsed} timeout="auto" unmountOnExit>
                 <Stack spacing={1.5} sx={{ pt: 1.5 }}>
                   <Divider />
 
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    alignItems="stretch"
+                  >
+                    <TextField
+                      value={draftItems[list.id] ?? ''}
+                      onChange={(event) =>
+                        setDraftItems((prev) => ({ ...prev, [list.id]: event.target.value }))
+                      }
+                      placeholder="Новый пункт"
+                      size="small"
+                      fullWidth
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleAddItem(list.id)
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddRounded />}
+                      onClick={() => handleAddItem(list.id)}
+                    >
+                      Добавить
+                    </Button>
+                  </Stack>
+
                   {visibleItems.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      Пока нет пунктов. Добавьте первый ниже.
+                      Пока нет пунктов. Добавьте первый пункт.
                     </Typography>
                   ) : (
                     <Stack spacing={1}>
@@ -451,31 +510,6 @@ export function TodoScreen({
                       ))}
                     </Stack>
                   )}
-
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="stretch">
-                    <TextField
-                      value={draftItems[list.id] ?? ''}
-                      onChange={(event) =>
-                        setDraftItems((prev) => ({ ...prev, [list.id]: event.target.value }))
-                      }
-                      placeholder="Новый пункт"
-                      size="small"
-                      fullWidth
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          handleAddItem(list.id)
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="outlined"
-                      startIcon={<AddRounded />}
-                      onClick={() => handleAddItem(list.id)}
-                    >
-                      Добавить
-                    </Button>
-                  </Stack>
                 </Stack>
               </Collapse>
             </CardContent>

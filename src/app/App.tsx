@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Alert,
   Avatar,
@@ -40,7 +41,7 @@ import GroupRounded from '@mui/icons-material/GroupRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
-import type { StorageState, Expense, Tag, TodoList } from '../shared/types'
+import type { StorageState, Expense, Tag, TodoItem, TodoList } from '../shared/types'
 import { loadState, saveState } from '../shared/storage/storage'
 import type { AuthSession, AuthUser } from '../features/auth/api/auth'
 import {
@@ -95,6 +96,85 @@ import { GymScreen } from '../features/miniapps/gym/screens/GymScreen'
 type TabId = 'expenses' | 'analytics' | 'reports'
 type AppId = 'home' | 'expenses' | 'todo' | 'gym'
 
+const ROUTES = {
+  home: '/',
+  expenses: '/miniapps/expenses',
+  expenseAnalytics: '/miniapps/expenses/analytics',
+  expenseReports: '/miniapps/expenses/reports',
+  todo: '/miniapps/todo',
+  gym: '/miniapps/gym',
+} as const
+
+const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
+  expenses: ROUTES.expenses,
+  analytics: ROUTES.expenseAnalytics,
+  reports: ROUTES.expenseReports,
+}
+
+type ResolvedRoute = {
+  activeApp: AppId
+  activeTab: TabId
+  redirectTo?: string
+}
+
+const normalizePathname = (pathname: string) => {
+  const trimmed = pathname.replace(/\/+$/, '')
+  return trimmed.length === 0 ? '/' : trimmed
+}
+
+const resolveAppRoute = (pathname: string): ResolvedRoute => {
+  const normalized = normalizePathname(pathname)
+  const segments = normalized.split('/').filter(Boolean)
+
+  if (segments.length === 0) {
+    return { activeApp: 'home', activeTab: 'expenses' }
+  }
+
+  if (segments[0] !== 'miniapps') {
+    return { activeApp: 'home', activeTab: 'expenses', redirectTo: ROUTES.home }
+  }
+
+  if (segments.length === 1) {
+    return { activeApp: 'home', activeTab: 'expenses', redirectTo: ROUTES.home }
+  }
+
+  const app = segments[1]
+
+  if (app === 'expenses') {
+    const section = segments[2]
+    if (!section) {
+      return { activeApp: 'expenses', activeTab: 'expenses' }
+    }
+    if (section === 'analytics') {
+      return { activeApp: 'expenses', activeTab: 'analytics' }
+    }
+    if (section === 'reports') {
+      return { activeApp: 'expenses', activeTab: 'reports' }
+    }
+    return {
+      activeApp: 'expenses',
+      activeTab: 'expenses',
+      redirectTo: ROUTES.expenses,
+    }
+  }
+
+  if (app === 'todo') {
+    if (segments.length > 2) {
+      return { activeApp: 'todo', activeTab: 'expenses', redirectTo: ROUTES.todo }
+    }
+    return { activeApp: 'todo', activeTab: 'expenses' }
+  }
+
+  if (app === 'gym') {
+    if (segments.length > 2) {
+      return { activeApp: 'gym', activeTab: 'expenses', redirectTo: ROUTES.gym }
+    }
+    return { activeApp: 'gym', activeTab: 'expenses' }
+  }
+
+  return { activeApp: 'home', activeTab: 'expenses', redirectTo: ROUTES.home }
+}
+
 const TABS: Array<{
   id: TabId
   label: string
@@ -125,8 +205,6 @@ const EXPENSES_PAGE_SIZE = 30
 
 function App() {
   const [state, setState] = useState<StorageState>(() => loadState())
-  const [activeTab, setActiveTab] = useState<TabId>('expenses')
-  const [activeApp, setActiveApp] = useState<AppId>('home')
   const [authSession, setAuthSession] = useState<AuthSession | null>(null)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [familyId, setFamilyId] = useState<string | null>(null)
@@ -148,6 +226,40 @@ function App() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const route = useMemo(() => resolveAppRoute(location.pathname), [location.pathname])
+  const activeApp = route.activeApp
+  const activeTab = route.activeTab
+
+  useEffect(() => {
+    if (route.redirectTo) {
+      navigate(route.redirectTo, { replace: true })
+    }
+  }, [route.redirectTo, navigate])
+
+  const currentPath = normalizePathname(location.pathname)
+  const navigateHome = (replace = false) => {
+    if (currentPath !== ROUTES.home || replace) {
+      navigate(ROUTES.home, { replace })
+    }
+  }
+  const navigateExpenseTab = (tab: TabId) => {
+    const target = EXPENSE_TAB_ROUTES[tab]
+    if (currentPath !== target) {
+      navigate(target)
+    }
+  }
+  const navigateTodo = () => {
+    if (currentPath !== ROUTES.todo) {
+      navigate(ROUTES.todo)
+    }
+  }
+  const navigateGym = () => {
+    if (currentPath !== ROUTES.gym) {
+      navigate(ROUTES.gym)
+    }
+  }
 
   useEffect(() => {
     let isActive = true
@@ -160,7 +272,7 @@ function App() {
         setFamily(null)
         setUnauthStep('welcome')
         setMenuAnchorEl(null)
-        setActiveApp('home')
+        navigateHome(true)
         setDataStale(false)
         setLastSyncAt(null)
         clearCacheMeta()
@@ -392,7 +504,7 @@ function App() {
   const handleFamilyComplete = (nextFamily: Family) => {
     setFamily(nextFamily)
     setFamilyId(nextFamily.id)
-    setActiveApp('home')
+    navigateHome(true)
   }
 
   const handleMenuOpen = (event: MouseEvent<HTMLElement>) => {
@@ -409,7 +521,7 @@ function App() {
     setAuthUser(null)
     setFamilyId(null)
     setFamily(null)
-    setActiveApp('home')
+    navigateHome(true)
     setDataLoading(false)
     setDataStale(false)
     setLastSyncAt(null)
@@ -430,7 +542,7 @@ function App() {
     await leaveFamily()
     setFamilyId(null)
     setFamily(null)
-    setActiveApp('home')
+    navigateHome(true)
     setDataLoading(false)
     setDataStale(false)
     setLastSyncAt(null)
@@ -683,12 +795,41 @@ function App() {
   }
 
   const handleCreateTodoItem = async (listId: string, title: string) => {
-    const created = await createTodoItem(listId, title)
+    const tempId = `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const optimisticItem: TodoItem = {
+      id: tempId,
+      title,
+      isCompleted: false,
+      isArchived: false,
+      createdAt: new Date().toISOString(),
+    }
     updateTodoLists((prev) =>
       prev.map((list) =>
-        list.id === listId ? { ...list, items: [...list.items, created] } : list,
+        list.id === listId ? { ...list, items: [...list.items, optimisticItem] } : list,
       ),
     )
+    try {
+      const created = await createTodoItem(listId, title)
+      updateTodoLists((prev) =>
+        prev.map((list) =>
+          list.id === listId
+            ? {
+                ...list,
+                items: list.items.map((item) => (item.id === tempId ? created : item)),
+              }
+            : list,
+        ),
+      )
+    } catch {
+      setDataStale(true)
+      updateTodoLists((prev) =>
+        prev.map((list) =>
+          list.id === listId
+            ? { ...list, items: list.items.filter((item) => item.id !== tempId) }
+            : list,
+        ),
+      )
+    }
   }
 
   const handleToggleTodoItem = async (
@@ -696,16 +837,66 @@ function App() {
     itemId: string,
     isCompleted: boolean,
   ) => {
-    const updated = await updateTodoItem(itemId, { isCompleted: !isCompleted })
-    updateTodoLists((prev) =>
-      prev.map((entry) => {
-        if (entry.id !== listId) return entry
-        return {
-          ...entry,
-          items: entry.items.map((current) => (current.id === itemId ? updated : current)),
+    const list = state.todoLists.find((entry) => entry.id === listId)
+    const currentItem = list?.items.find((item) => item.id === itemId) ?? null
+    const nextCompleted = !isCompleted
+    const optimisticUser = authUser
+      ? {
+          id: authUser.id,
+          name: authUser.name,
+          email: authUser.email,
+          avatarUrl: authUser.avatarUrl,
         }
-      }),
-    )
+      : undefined
+
+    if (currentItem && list) {
+      const optimisticItem: TodoItem = {
+        ...currentItem,
+        isCompleted: nextCompleted,
+        isArchived: list.settings.archiveCompleted ? nextCompleted : false,
+        completedAt: nextCompleted ? new Date().toISOString() : undefined,
+        completedBy: nextCompleted ? optimisticUser : undefined,
+      }
+      updateTodoLists((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== listId) return entry
+          return {
+            ...entry,
+            items: entry.items.map((current) =>
+              current.id === itemId ? optimisticItem : current,
+            ),
+          }
+        }),
+      )
+    }
+
+    try {
+      const updated = await updateTodoItem(itemId, { isCompleted: nextCompleted })
+      updateTodoLists((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== listId) return entry
+          return {
+            ...entry,
+            items: entry.items.map((current) => (current.id === itemId ? updated : current)),
+          }
+        }),
+      )
+    } catch {
+      setDataStale(true)
+      if (currentItem) {
+        updateTodoLists((prev) =>
+          prev.map((entry) => {
+            if (entry.id !== listId) return entry
+            return {
+              ...entry,
+              items: entry.items.map((current) =>
+                current.id === itemId ? currentItem : current,
+              ),
+            }
+          }),
+        )
+      }
+    }
   }
 
   const handleUpdateTodoItemTitle = async (
@@ -713,27 +904,85 @@ function App() {
     itemId: string,
     title: string,
   ) => {
-    const updated = await updateTodoItem(itemId, { title })
-    updateTodoLists((prev) =>
-      prev.map((list) => {
-        if (list.id !== listId) return list
-        return {
-          ...list,
-          items: list.items.map((item) => (item.id === itemId ? updated : item)),
-        }
-      }),
-    )
+    const list = state.todoLists.find((entry) => entry.id === listId)
+    const currentItem = list?.items.find((item) => item.id === itemId) ?? null
+
+    if (currentItem) {
+      updateTodoLists((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== listId) return entry
+          return {
+            ...entry,
+            items: entry.items.map((item) =>
+              item.id === itemId ? { ...item, title } : item,
+            ),
+          }
+        }),
+      )
+    }
+
+    try {
+      const updated = await updateTodoItem(itemId, { title })
+      updateTodoLists((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== listId) return entry
+          return {
+            ...entry,
+            items: entry.items.map((item) => (item.id === itemId ? updated : item)),
+          }
+        }),
+      )
+    } catch {
+      setDataStale(true)
+      if (currentItem) {
+        updateTodoLists((prev) =>
+          prev.map((entry) => {
+            if (entry.id !== listId) return entry
+            return {
+              ...entry,
+              items: entry.items.map((item) =>
+                item.id === itemId ? currentItem : item,
+              ),
+            }
+          }),
+        )
+      }
+    }
   }
 
   const handleDeleteTodoItem = async (listId: string, itemId: string) => {
-    await deleteTodoItem(itemId)
-    updateTodoLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? { ...list, items: list.items.filter((item) => item.id !== itemId) }
-          : list,
-      ),
-    )
+    const list = state.todoLists.find((entry) => entry.id === listId)
+    const removedIndex = list ? list.items.findIndex((item) => item.id === itemId) : -1
+    const removedItem =
+      removedIndex >= 0 && list ? list.items[removedIndex] : null
+
+    if (removedItem) {
+      updateTodoLists((prev) =>
+        prev.map((entry) =>
+          entry.id === listId
+            ? { ...entry, items: entry.items.filter((item) => item.id !== itemId) }
+            : entry,
+        ),
+      )
+    }
+
+    try {
+      await deleteTodoItem(itemId)
+    } catch {
+      setDataStale(true)
+      if (removedItem) {
+        updateTodoLists((prev) =>
+          prev.map((entry) => {
+            if (entry.id !== listId) return entry
+            if (entry.items.some((item) => item.id === itemId)) return entry
+            const items = [...entry.items]
+            const insertIndex = Math.min(Math.max(removedIndex, 0), items.length)
+            items.splice(insertIndex, 0, removedItem)
+            return { ...entry, items }
+          }),
+        )
+      }
+    }
   }
 
   const appShell = (
@@ -767,7 +1016,7 @@ function App() {
                 <Tooltip title="На главный экран">
                   <IconButton
                     color="inherit"
-                    onClick={() => setActiveApp('home')}
+                    onClick={() => navigateHome()}
                     aria-label="На главный экран"
                   >
                     <ArrowBackRounded />
@@ -1038,9 +1287,9 @@ function App() {
 
           {activeApp === 'home' && (
             <MiniAppsScreen
-              onOpenExpenses={() => setActiveApp('expenses')}
-              onOpenTodo={() => setActiveApp('todo')}
-              onOpenGym={() => setActiveApp('gym')}
+              onOpenExpenses={() => navigateExpenseTab('expenses')}
+              onOpenTodo={navigateTodo}
+              onOpenGym={navigateGym}
             />
           )}
 
@@ -1071,8 +1320,6 @@ function App() {
               onUpdateExpense={handleUpdateExpense}
               onDeleteExpense={handleDeleteExpense}
               onCreateTag={handleCreateTag}
-              onUpdateTag={handleUpdateTag}
-              onDeleteTag={handleDeleteTag}
             />
           ) : null}
 
@@ -1089,7 +1336,7 @@ function App() {
           ) : null}
 
           {activeApp === 'gym' ? (
-            <GymScreen onBack={() => setActiveApp('home')} />
+            <GymScreen onBack={() => navigateHome()} />
           ) : null}
         </Stack>
       </Container>
@@ -1110,7 +1357,7 @@ function App() {
         >
           <BottomNavigation
             value={activeTab}
-            onChange={(_, value) => setActiveTab(value)}
+            onChange={(_, value) => navigateExpenseTab(value as TabId)}
             showLabels
             sx={{ height: 82 }}
           >

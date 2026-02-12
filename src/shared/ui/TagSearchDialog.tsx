@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import {
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -38,6 +39,7 @@ type TagSearchDialogProps = {
   onUpdateTag?: (tagId: string, name: string) => Promise<Tag>
   onDeleteTag?: (tagId: string) => Promise<void>
   title?: string
+  enableSelectAll?: boolean
 }
 
 export function TagSearchDialog({
@@ -50,6 +52,7 @@ export function TagSearchDialog({
   onUpdateTag,
   onDeleteTag,
   title = 'Поиск тегов',
+  enableSelectAll = false,
 }: TagSearchDialogProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected))
@@ -91,6 +94,15 @@ export function TagSearchDialog({
     if (!normalized) return tags
     return tags.filter((tag) => tag.name.toLowerCase().includes(normalized))
   }, [query, tags])
+
+  const allSelected = tags.length > 0 && selected.size === tags.length
+  const handleToggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set())
+      return
+    }
+    setSelected(new Set(tags.map((tag) => tag.id)))
+  }
 
   const toggleTag = (tagId: string) => {
     setSelected((prev) => {
@@ -272,11 +284,18 @@ export function TagSearchDialog({
           )}
         </Stack>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Отмена</Button>
-        <Button variant="contained" onClick={() => onConfirm(Array.from(selected))}>
-          Готово
-        </Button>
+      <DialogActions sx={{ justifyContent: enableSelectAll ? 'space-between' : 'flex-end' }}>
+        {enableSelectAll ? (
+          <Button onClick={handleToggleAll} disabled={tags.length === 0}>
+            {allSelected ? 'Убрать все' : 'Выбрать все'}
+          </Button>
+        ) : null}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button variant="contained" onClick={() => onConfirm(Array.from(selected))}>
+            Готово
+          </Button>
+        </Box>
       </DialogActions>
 
       <Menu
