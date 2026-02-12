@@ -1000,7 +1000,7 @@ function App() {
         }}
       >
         <Box sx={{ position: 'relative', py: 1.5, px: 2, textAlign: 'center' }}>
-          {activeApp !== 'home' || canRefresh ? (
+          {activeApp !== 'home' ? (
             <Box
               sx={{
                 position: 'absolute',
@@ -1012,17 +1012,15 @@ function App() {
                 gap: 0.5,
               }}
             >
-              {activeApp !== 'home' ? (
-                <Tooltip title="На главный экран">
-                  <IconButton
-                    color="inherit"
-                    onClick={() => navigateHome()}
-                    aria-label="На главный экран"
-                  >
-                    <ArrowBackRounded />
-                  </IconButton>
-                </Tooltip>
-              ) : null}
+              <Tooltip title="На главный экран">
+                <IconButton
+                  color="inherit"
+                  onClick={() => navigateHome()}
+                  aria-label="На главный экран"
+                >
+                  <ArrowBackRounded />
+                </IconButton>
+              </Tooltip>
               {canRefresh ? (
                 <Tooltip title="Обновить">
                   <span>
@@ -1336,7 +1334,7 @@ function App() {
           ) : null}
 
           {activeApp === 'gym' ? (
-            <GymScreen onBack={() => navigateHome()} />
+            <GymScreen />
           ) : null}
         </Stack>
       </Container>
