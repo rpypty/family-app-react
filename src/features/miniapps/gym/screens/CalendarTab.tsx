@@ -32,9 +32,12 @@ export function CalendarTab({
   onAddWorkout,
   onDeleteWorkout,
 }: CalendarTabProps) {
+  const [removingIds, setRemovingIds] = useState<string[]>([])
+
+  const visibleWorkouts = useMemo(() => workouts.filter((w) => !removingIds.includes(w.id)), [workouts, removingIds])
   const workoutsByDate = useMemo(() => {
     const map = new Map<string, Workout[]>()
-    for (const w of workouts) {
+    for (const w of visibleWorkouts) {
       const key = String(w.date || '').trim()
       if (!key) continue
       const list = map.get(key) || []
@@ -42,7 +45,7 @@ export function CalendarTab({
       map.set(key, list)
     }
     return map
-  }, [workouts])
+  }, [visibleWorkouts])
 
   const selectedWorkouts = useMemo(() => {
     if (!selectedDate) return workouts
@@ -284,6 +287,7 @@ export function CalendarTab({
                             setSwipedWorkoutId(null)
                             return
                           }
+                          setRemovingIds((prev) => [...prev, w.id])
                           try {
                             const res = onDeleteWorkout(w.id)
                             if (res && typeof (res as any).then === 'function') {
@@ -291,6 +295,7 @@ export function CalendarTab({
                             }
                           } finally {
                             setSwipedWorkoutId(null)
+                            setRemovingIds((prev) => prev.filter((id) => id !== w.id))
                           }
                         }}
                       >
@@ -377,6 +382,7 @@ export function CalendarTab({
                                 setSwipedWorkoutId(null)
                                 return
                               }
+                              setRemovingIds((prev) => [...prev, w.id])
                               try {
                                 const res = onDeleteWorkout(w.id)
                                 if (res && typeof (res as any).then === 'function') {
@@ -384,6 +390,7 @@ export function CalendarTab({
                                 }
                               } finally {
                                 setSwipedWorkoutId(null)
+                                setRemovingIds((prev) => prev.filter((id) => id !== w.id))
                               }
                             }}
                           >

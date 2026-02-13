@@ -307,6 +307,13 @@ export function useGymData() {
     }
   }
 
+  const deleteExercise = async (exercise: string) => {
+    const k = exerciseKey(exercise)
+    const next = exercises.filter((e) => exerciseKey(e) !== k)
+    setExercises(next)
+    await saveExercises(next)
+  }
+
   const addTemplate = async (name: string, templateExercises: TemplateExercise[]) => {
     const t = await createTemplateWithSync({ name, exercises: templateExercises as any })
     const next = [t, ...templates]
@@ -358,6 +365,7 @@ export function useGymData() {
     deleteWorkoutSet,
     deleteOneWorkoutSetBySignature,
     addExercise,
+    deleteExercise,
     addTemplate,
     updateTemplate,
     deleteTemplate,

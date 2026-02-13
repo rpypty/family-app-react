@@ -10,12 +10,16 @@ import {
 } from '@mui/material'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
 import EditNoteIcon from '@mui/icons-material/EditNote'
+import ListAltIcon from '@mui/icons-material/ListAlt'
 import { useGymData } from '../hooks/useGymData'
+import { createWorkoutSet } from '../api/gymStore'
 import { todayISO } from '../utils/dateUtils'
 import { CalendarTab } from './CalendarTab'
 import { AnalyticsTab } from './AnalyticsTab'
 import { WorkoutEditScreen } from './WorkoutEditScreen'
 import { TemplatePickerScreen } from './TemplatePickerScreen'
+import TemplateManagerScreen from './TemplateManagerScreen'
+import TemplateEditScreen from './TemplateEditScreen'
 
 export function GymScreen() {
   const [date, setDate] = useState<string | null>(null)
@@ -32,6 +36,12 @@ export function GymScreen() {
     if (segments[2] === 'analytics') {
       return { view: 'analytics' as const }
     }
+    if (segments[2] === 'manage') {
+      if (segments[3] === 'template' && segments[4]) {
+        return { view: 'manage-template' as const, sub: segments[4] }
+      }
+      return { view: 'manage' as const }
+    }
     if (segments[2] === 'template') {
       return { view: 'template' as const }
     }
@@ -43,7 +53,7 @@ export function GymScreen() {
 
   const isPickingTemplate = route.view === 'template'
   const editingWorkoutId = route.view === 'workout' ? route.workoutId : null
-  const tab = route.view === 'analytics' ? 1 : 0
+  const tab = route.view === 'analytics' ? 1 : route.view === 'manage' ? 2 : 0
 
   const {
     loading,
@@ -80,6 +90,20 @@ export function GymScreen() {
     setDate(d)
     for (const ex of t.exercises) void addExercise(ex.name)
     const w = await addWorkout(d, t.name)
+    // Build sets from template exercises preserving order and per-set weights
+    const sets = [] as any[]
+    for (const ex of t.exercises) {
+      const reps = Number(ex.reps) || 8
+      const setsCount = Math.max(1, Number(ex.sets) || 0) || 1
+      const weights: number[] | undefined = Array.isArray((ex as any).weights) ? (ex as any).weights : undefined
+      for (let i = 0; i < setsCount; i += 1) {
+        const weight = weights && weights[i] !== undefined ? Number(weights[i]) || 0 : 0
+        sets.push(createWorkoutSet({ exercise: ex.name, weightKg: weight, reps }))
+      }
+    }
+    if (sets.length > 0) {
+      await updateWorkoutFull(w.id, w.name, w.date, sets)
+    }
     navigate(`/miniapps/gym/workout/${w.id}`)
   }
 
@@ -107,10 +131,9 @@ export function GymScreen() {
         ) : isPickingTemplate ? (
           <TemplatePickerScreen
             templates={templates}
-            onBack={() => navigate('/miniapps/gym')}
-            onCreateCustom={() => {
+            onCreateCustom={(name) => {
               void (async () => {
-                const w = await addWorkout(date || todayISO(), 'Тренировка')
+                const w = await addWorkout(date || todayISO(), name || 'Тренировка')
                 navigate(`/miniapps/gym/workout/${w.id}`)
               })()
             }}
@@ -118,6 +141,10 @@ export function GymScreen() {
               void handleUseTemplateForDate(templateId, date || todayISO())
             }}
           />
+        ) : route.view === 'manage-template' ? (
+          <TemplateEditScreen />
+        ) : route.view === 'manage' ? (
+          <TemplateManagerScreen />
         ) : tab === 0 ? (
           <>
             <CalendarTab
@@ -158,6 +185,8 @@ export function GymScreen() {
               onChange={(_, v) => {
                 if (v === 1) {
                   navigate('/miniapps/gym/analytics')
+                } else if (v === 2) {
+                  navigate('/miniapps/gym/manage')
                 } else {
                   navigate('/miniapps/gym')
                 }
@@ -171,6 +200,10 @@ export function GymScreen() {
               <BottomNavigationAction
                 label="Аналитика"
                 icon={<AnalyticsIcon />}
+              />
+              <BottomNavigationAction
+                label="Шаблоны"
+                icon={<ListAltIcon />}
               />
             </BottomNavigation>
           </Box>

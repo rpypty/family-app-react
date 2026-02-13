@@ -60,6 +60,7 @@ export function WorkoutsTab({
   onDeleteTemplate,
   onUseTemplate,
 }: WorkoutsTabProps) {
+  const [removingIds, setRemovingIds] = useState<string[]>([])
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateDraft>({ name: '', exercises: [] })
@@ -90,7 +91,7 @@ export function WorkoutsTab({
     return out
   }, [draft.exercises])
 
-  const canSave = draft.name.trim().length > 0 && parsedExercises.length > 0
+  const canSave = (draft.name.trim().length > 0 || exerciseQuery.trim().length > 0) && parsedExercises.length > 0
 
   const workoutsByDate = useMemo(() => {
     const map = new Map<string, number>()
@@ -147,10 +148,11 @@ export function WorkoutsTab({
       })
     }
 
+    const nameToUse = draft.name.trim() || exerciseQuery.trim()
     if (editingId) {
-      onUpdateTemplate(editingId, draft.name.trim(), exercises)
+      onUpdateTemplate(editingId, nameToUse, exercises)
     } else {
-      onCreateTemplate(draft.name.trim(), exercises)
+      onCreateTemplate(nameToUse, exercises)
     }
     setDraft({ name: '', exercises: [] })
     setExerciseQuery('')
@@ -192,6 +194,7 @@ export function WorkoutsTab({
     if (exists) return
     setDraft({
       ...draft,
+      name: draft.name.trim() || name,
       exercises: [...draft.exercises, { name, reps: 8, sets: 3 }],
     })
     setExerciseQuery('')
@@ -425,7 +428,7 @@ export function WorkoutsTab({
           История тренировок
         </Typography>
 
-        {sortedWorkouts.length === 0 ? (
+        {sortedWorkouts.filter((w) => !removingIds.includes(w.id)).length === 0 ? (
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -435,7 +438,7 @@ export function WorkoutsTab({
           </Card>
         ) : (
           <Stack spacing={1}>
-            {sortedWorkouts.map((w) => (
+            {sortedWorkouts.filter((w) => !removingIds.includes(w.id)).map((w) => (
               <Accordion
                 key={w.id}
                 disableGutters
@@ -461,9 +464,15 @@ export function WorkoutsTab({
                     <IconButton
                       size="small"
                       color="error"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation()
-                        onDeleteWorkout(w.id)
+                        setRemovingIds((prev) => [...prev, w.id])
+                        try {
+                          const res: any = onDeleteWorkout(w.id)
+                          if (res && typeof res.then === 'function') await res
+                        } finally {
+                          setRemovingIds((prev) => prev.filter((id) => id !== w.id))
+                        }
                       }}
                     >
                       <DeleteIcon fontSize="small" />

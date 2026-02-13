@@ -951,18 +951,18 @@ function App() {
 
   const handleDeleteTodoItem = async (listId: string, itemId: string) => {
     const list = state.todoLists.find((entry) => entry.id === listId)
-    const removedIndex = list ? list.items.findIndex((item) => item.id === itemId) : -1
-    const removedItem =
-      removedIndex >= 0 && list ? list.items[removedIndex] : null
+      const removedIndex = list ? list.items.findIndex((item) => item.id === itemId) : -1
+      const removedItem =
+        removedIndex >= 0 && list ? list.items[removedIndex] : null
 
-    if (removedItem) {
-      updateTodoLists((prev) =>
-        prev.map((entry) =>
-          entry.id === listId
-            ? { ...entry, items: entry.items.filter((item) => item.id !== itemId) }
-            : entry,
-        ),
-      )
+      if (removedItem) {
+        updateTodoLists((prev) =>
+          prev.map((entry) =>
+            entry.id === listId
+              ? { ...entry, items: entry.items.filter((item) => item.id !== itemId) }
+              : entry,
+          ),
+        )
     }
 
     try {
