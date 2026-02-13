@@ -18,7 +18,7 @@ import { WorkoutEditScreen } from './WorkoutEditScreen'
 import { TemplatePickerScreen } from './TemplatePickerScreen'
 
 export function GymScreen() {
-  const [date, setDate] = useState(todayISO())
+  const [date, setDate] = useState<string | null>(null)
   const [periodDays, setPeriodDays] = useState(30)
   const location = useLocation()
   const navigate = useNavigate()
@@ -54,6 +54,7 @@ export function GymScreen() {
     addWorkout,
     addExercise,
     updateWorkoutFull,
+    deleteWorkout,
   } = useGymData()
 
   const editingWorkout = useMemo(() => {
@@ -68,7 +69,7 @@ export function GymScreen() {
     }
   }, [editingWorkout, editingWorkoutId, loading, navigate])
 
-  const handleDateChange = (newDate: string) => {
+  const handleDateChange = (newDate: string | null) => {
     setDate(newDate)
   }
 
@@ -109,25 +110,28 @@ export function GymScreen() {
             onBack={() => navigate('/miniapps/gym')}
             onCreateCustom={() => {
               void (async () => {
-                const w = await addWorkout(date, 'Тренировка')
+                const w = await addWorkout(date || todayISO(), 'Тренировка')
                 navigate(`/miniapps/gym/workout/${w.id}`)
               })()
             }}
             onUseTemplate={(templateId) => {
-              void handleUseTemplateForDate(templateId, date)
+              void handleUseTemplateForDate(templateId, date || todayISO())
             }}
           />
         ) : tab === 0 ? (
-          <CalendarTab
-            workouts={sortedWorkouts}
-            selectedDate={date}
-            onSelectDate={handleDateChange}
-            onEditWorkout={(workoutId) => navigate(`/miniapps/gym/workout/${workoutId}`)}
-            onAddWorkout={(forDate) => {
-              setDate(forDate)
-              navigate('/miniapps/gym/template')
-            }}
-          />
+          <>
+            <CalendarTab
+              workouts={sortedWorkouts}
+              selectedDate={date}
+              onSelectDate={handleDateChange}
+              onEditWorkout={(workoutId) => navigate(`/miniapps/gym/workout/${workoutId}`)}
+              onAddWorkout={(forDate) => {
+                setDate(forDate)
+                navigate('/miniapps/gym/template')
+              }}
+              onDeleteWorkout={deleteWorkout}
+            />
+          </>
         ) : null}
 
         {tab === 1 && <AnalyticsTab entries={entries} periodDays={periodDays} onPeriodChange={setPeriodDays} />}
@@ -135,17 +139,18 @@ export function GymScreen() {
 
       {!editingWorkout && !isPickingTemplate && (
         <Paper
-          elevation={0}
-          sx={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderTop: 1,
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-          }}
-        >
+            elevation={3}
+            sx={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderTop: 1,
+              borderColor: 'divider',
+              bgcolor: 'white',
+              opacity: 1,
+            }}
+          >
           <Box sx={{ maxWidth: (theme) => theme.breakpoints.values.sm, mx: 'auto' }}>
             <BottomNavigation
               showLabels
@@ -157,7 +162,7 @@ export function GymScreen() {
                   navigate('/miniapps/gym')
                 }
               }}
-              sx={{ bgcolor: 'transparent' }}
+              sx={{ bgcolor: 'white' }}
             >
               <BottomNavigationAction
                 label="Календарь"

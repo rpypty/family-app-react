@@ -1016,11 +1016,15 @@ function App() {
                   color="inherit"
                   onClick={() => {
                     const isGymNested = currentPath.startsWith(`${ROUTES.gym}/`)
-                    if (isGymNested) {
-                      navigate(-1)
-                      return
+                    if (activeApp === 'gym') {
+                      if (isGymNested) {
+                        navigate(ROUTES.gym)
+                      } else {
+                        navigateHome()
+                      }
+                    } else {
+                      navigateHome()
                     }
-                    navigateHome()
                   }}
                   aria-label="На главный экран"
                 >
