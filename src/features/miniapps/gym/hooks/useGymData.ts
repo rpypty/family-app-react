@@ -12,6 +12,7 @@ import {
   saveExercises,
   saveWorkouts,
   syncWithBackend,
+  getLastSyncTime,
   createWorkoutWithSync,
   updateWorkoutWithSync,
   deleteWorkoutWithSync,
@@ -41,7 +42,12 @@ export function useGymData() {
       } | null = null
 
       try {
-        await syncWithBackend()
+        const last = await getLastSyncTime()
+        const now = Date.now()
+        const SKIP_WINDOW = 60 * 1000 // 60 seconds
+        if (!last || now - last > SKIP_WINDOW) {
+          await syncWithBackend()
+        }
         const refreshed = await refreshFromBackend()
         if (refreshed) {
           backendData = {

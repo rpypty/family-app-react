@@ -26,7 +26,7 @@ interface WorkoutEditScreenProps {
 }
 
 export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSave, onAddExercise }: WorkoutEditScreenProps) {
-  const [name] = useState(workout.name || '')
+  const [name, setName] = useState(workout.name || '')
   const [date] = useState(workout.date)
   const [sets, setSets] = useState<WorkoutSet[]>([...(workout.sets || [])])
   const [weightDrafts, setWeightDrafts] = useState<Record<string, string>>({})
@@ -162,7 +162,6 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
     return (
       <ExercisePickerScreen
         exercises={exerciseOptions}
-        onBack={() => navigate(workoutBasePath)}
         onSelect={(name) => {
           handleAddSetToExercise(name)
           navigate(workoutBasePath)
@@ -178,11 +177,16 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
       onTouchStart={() => setSwipedExerciseKey(null)}
     >
       <Stack spacing={2}>
-
         <Box>
-          <Typography variant="h5" fontWeight={800} sx={{ mb: 0.5 }}>
-            {name.trim() || workout.name || 'Тренировка'}
-          </Typography>
+          <TextField
+            fullWidth
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Название тренировки"
+            variant="standard"
+            inputProps={{ style: { fontWeight: 800, fontSize: '1.25rem' } }}
+            sx={{ mb: 0.5 }}
+          />
           <Typography variant="body2" color="text.secondary">
             {date}
           </Typography>
@@ -212,7 +216,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                     pr: 2,
                     color: 'error.contrastText',
                     opacity: swipedExerciseKey === group.key ? 1 : 0,
-                    transition: 'opacity 120ms ease',
+                    transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                     cursor: 'pointer',
                   }}
                   onClick={() => handleRemoveExercise(group.name)}
@@ -223,10 +227,11 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                   variant="outlined"
                   sx={{
                     borderRadius: 2,
-                    transform: swipedExerciseKey === group.key ? 'translateX(-72px)' : 'translateX(0)',
-                    transition: 'transform 160ms ease',
+                    transform: swipedExerciseKey === group.key ? 'translateX(-80px)' : 'translateX(0)',
+                    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                     position: 'relative',
                   }}
+                  style={{ touchAction: 'pan-y' }}
                   onTouchStart={(e) => {
                     touchStartX.current = e.touches[0]?.clientX ?? null
                   }}
@@ -259,9 +264,15 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                             <Box component="span" sx={{ color: deltaColor(group.stats.avgWeightChange) }}>
                               {formatPercent(group.stats.avgWeightChange)}
                             </Box>
-                            {' '}• Объем:{' '}
-                            <Box component="span" sx={{ color: deltaColor(group.stats.volumeChange) }}>
-                              {formatPercent(group.stats.volumeChange)}
+                            {' '}• Пред. вес:{' '}
+                            <Box component="span" sx={{ fontWeight: 600 }}>
+                              {group.stats.prevAvgWeight ? `${group.stats.prevAvgWeight.toFixed(1)} кг` : '—'}
+                            </Box>
+                            <Box component="span" sx={{ display: 'block' }}>
+                              Объем:{' '}
+                              <Box component="span" sx={{ color: deltaColor(group.stats.volumeChange) }}>
+                                {formatPercent(group.stats.volumeChange)}
+                              </Box>
                             </Box>
                           </Typography>
                         )}
@@ -355,7 +366,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
         sx={{
           position: 'fixed',
           right: 16,
-          bottom: 24,
+          bottom: 88,
         }}
       >
         <AddIcon />
