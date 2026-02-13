@@ -42,26 +42,31 @@ function uniqueExercises(names: string[]): string[] {
 }
 
 function uniqueTemplateExercisesInOrder(
-  items: Array<{ name: string; reps: number; sets: number }>
-): Array<{ name: string; reps: number; sets: number }> {
+  items: Array<{ name: string; reps: number; sets: number; weights?: number[] }>
+): Array<{ name: string; reps: number; sets: number; weights?: number[] }> {
   const seen = new Set<string>()
-  const out: Array<{ name: string; reps: number; sets: number }> = []
+  const out: Array<{ name: string; reps: number; sets: number; weights?: number[] }> = []
   for (const it of items || []) {
     const name = String((it as any)?.name || '').trim()
     if (!name) continue
     const k = exerciseKey(name)
     if (seen.has(k)) continue
     seen.add(k)
-    out.push({
-      name,
-      reps: Math.max(1, Number((it as any)?.reps) || 0) || 8,
-      sets: Math.max(1, Number((it as any)?.sets) || 0) || 3,
-    })
+    const reps = Math.max(1, Number((it as any)?.reps) || 0) || 8
+    const sets = Math.max(1, Number((it as any)?.sets) || 0) || 3
+    const rawWeights = (it as any)?.weights
+    let weights: number[] | undefined
+    if (Array.isArray(rawWeights)) {
+      weights = rawWeights.map((w: any) => Number(w) || 0).slice(0, sets)
+      // If weights shorter than sets, pad with zeros
+      while (weights.length < sets) weights.push(0)
+    }
+    out.push({ name, reps, sets, weights })
   }
   return out
 }
 
-function coerceTemplateExercises(raw: unknown): Array<{ name: string; reps: number; sets: number }> {
+function coerceTemplateExercises(raw: unknown): Array<{ name: string; reps: number; sets: number; weights?: number[] }> {
   if (!Array.isArray(raw)) return []
 
   // Legacy: string[]
@@ -75,12 +80,13 @@ function coerceTemplateExercises(raw: unknown): Array<{ name: string; reps: numb
     )
   }
 
-  // Current: {name,reps,sets}[] (or slightly different shapes)
+  // Current: {name,reps,sets,weights?}[] (or slightly different shapes)
   return uniqueTemplateExercisesInOrder(
     (raw as any[]).map((x) => ({
       name: String(x?.name || x?.exercise || ''),
       reps: Number(x?.reps) || 0,
       sets: Number(x?.sets) || 0,
+      weights: Array.isArray(x?.weights) ? x.weights.map((w: any) => Number(w) || 0) : undefined,
     }))
   )
 }
@@ -491,7 +497,7 @@ export async function deleteWorkoutWithSync(id: string): Promise<void> {
 
 export async function createTemplateWithSync(input: {
   name: string
-  exercises: Array<{ name: string; reps: number; sets: number }>
+  exercises: Array<{ name: string; reps: number; sets: number; weights?: number[] }>
 }): Promise<WorkoutTemplate> {
   const template = createWorkoutTemplate(input)
   const templates = await loadWorkoutTemplates()
@@ -524,7 +530,7 @@ export async function deleteTemplateWithSync(id: string): Promise<void> {
 // Helper functions
 export function createWorkoutTemplate(input: {
   name: string
-  exercises: Array<{ name: string; reps: number; sets: number }>
+  exercises: Array<{ name: string; reps: number; sets: number; weights?: number[] }>
 }): WorkoutTemplate {
   return {
     id: randomId(),

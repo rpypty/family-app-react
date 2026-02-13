@@ -37,6 +37,7 @@ type ApiTemplateExercise = {
   name: string
   reps: number
   sets: number
+  weights?: number[]
 }
 
 type ApiWorkoutTemplate = {
@@ -112,6 +113,7 @@ const mapTemplate = (template: ApiWorkoutTemplate): WorkoutTemplate => ({
     name: ex.name,
     reps: ex.reps,
     sets: ex.sets,
+    weights: Array.isArray((ex as any).weights) ? (ex as any).weights.map((w: any) => Number(w) || 0) : undefined,
   })),
   createdAt: new Date(template.created_at).getTime(),
 })

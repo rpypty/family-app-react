@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import {
   Box,
   Button,
@@ -27,6 +29,8 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
   const [query, setQuery] = useState('')
   const [customName, setCustomName] = useState('')
   const [isCreateOpen, setCreateOpen] = useState(false)
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -82,7 +86,13 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
         <Box sx={{ ml: 1, fontWeight: 600 }}>Создать новое</Box>
       </Fab>
 
-      <Dialog open={isCreateOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={isCreateOpen}
+        onClose={() => setCreateOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={fullScreen}
+      >
         <DialogTitle>Создать новое упражнение</DialogTitle>
         <DialogContent>
           <TextField

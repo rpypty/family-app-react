@@ -27,6 +27,7 @@ export interface TemplateExercise {
   name: string
   reps: number
   sets: number
+  weights?: number[]
 }
 
 export interface WorkoutTemplate {

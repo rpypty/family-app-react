@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Fab,
-  Button,
   IconButton,
   Stack,
   TextField,
@@ -93,15 +93,15 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
     if (previousWorkout) {
       const prevSets = previousWorkout.sets || []
       for (const g of list) {
-        const prev = prevSets.filter((s) => exerciseKey(s.exercise) === g.key)
+        const prev = prevSets.filter((s: WorkoutSet) => exerciseKey(s.exercise) === g.key)
         if (prev.length === 0) {
           g.stats = { avgWeightChange: null, volumeChange: null, prevAvgWeight: null, prevVolume: null }
           continue
         }
-        const prevAvg = prev.reduce((sum, s) => sum + (s.weightKg || 0), 0) / prev.length
-        const prevVol = prev.reduce((sum, s) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
-        const currAvg = g.sets.reduce((sum, s) => sum + (s.weightKg || 0), 0) / (g.sets.length || 1)
-        const currVol = g.sets.reduce((sum, s) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
+        const prevAvg = prev.reduce((sum: number, s: WorkoutSet) => sum + (s.weightKg || 0), 0) / prev.length
+        const prevVol = prev.reduce((sum: number, s: WorkoutSet) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
+        const currAvg = g.sets.reduce((sum: number, s: WorkoutSet) => sum + (s.weightKg || 0), 0) / (g.sets.length || 1)
+        const currVol = g.sets.reduce((sum: number, s: WorkoutSet) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
         g.stats = {
           prevAvgWeight: prevAvg,
           prevVolume: prevVol,
@@ -172,9 +172,8 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
 
   return (
     <Box
-      sx={{ p: 2 }}
-      onClickCapture={() => setSwipedExerciseKey(null)}
-      onTouchStart={() => setSwipedExerciseKey(null)}
+      sx={{ p: 2, paddingBottom: 'calc(120px + env(safe-area-inset-bottom))' }}
+      onClick={() => setSwipedExerciseKey(null)}
     >
       <Stack spacing={2}>
         <Box>
@@ -295,7 +294,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                     </Typography>
 
                     <Stack spacing={1}>
-                      {group.sets.map((s) => (
+                      {group.sets.map((s: WorkoutSet) => (
                         <Box
                           key={s.id}
                           sx={{
@@ -337,7 +336,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                             }}
                             size="small"
                           />
-                          <IconButton size="small" color="error" onClick={() => handleRemoveSet(s.id)}>
+                          <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); handleRemoveSet(s.id) }}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
@@ -351,7 +350,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
         </Stack>
 
         <datalist id="gym-exercises">
-          {exerciseOptions.map((opt) => (
+          {exerciseOptions.map((opt: string) => (
             <option key={opt} value={opt} />
           ))}
         </datalist>
