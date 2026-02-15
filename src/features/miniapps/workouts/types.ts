@@ -30,17 +30,17 @@ export type ExerciseMeta = {
   updatedAt: number
 }
 
-export type TemplateExercise = {
-  name: string
+export type TemplateSet = {
+  id: string
+  exercise: string
   reps: number
-  sets: number
-  weight?: number
+  weightKg: number
 }
 
 export type WorkoutTemplate = {
   id: string
   name: string
-  exercises: TemplateExercise[]
+  sets: TemplateSet[]
   createdAt: number
 }
 

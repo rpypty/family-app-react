@@ -22,7 +22,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { WorkoutTemplate, TemplateExercise } from '../types'
+import type { WorkoutTemplate, TemplateSet } from '../types'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { exerciseKey } from '../utils/workout'
 
@@ -30,7 +30,7 @@ interface TemplateEditorProps {
   templateId?: string
   templates: WorkoutTemplate[]
   exercises: string[]
-  onCreateTemplate: (name: string, exercises: TemplateExercise[]) => Promise<WorkoutTemplate>
+  onCreateTemplate: (name: string, sets: TemplateSet[]) => Promise<WorkoutTemplate>
   onUpdateTemplate: (template: WorkoutTemplate) => Promise<WorkoutTemplate>
 }
 
@@ -59,6 +59,7 @@ export function TemplateEditor({
   const [swipedExercise, setSwipedExercise] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
   const applyingRemote = useRef(false)
+  const isEditing = useRef(false)
   const touchStartX = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
 
@@ -66,7 +67,7 @@ export function TemplateEditor({
     return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
   }, [])
 
-  // Load template data
+  // Load template data (only on initial load or template change)
   useEffect(() => {
     console.log('TemplateEditor: Loading template', { templateId, isNew, templatesCount: templates.length })
     
@@ -74,6 +75,7 @@ export function TemplateEditor({
       console.log('TemplateEditor: Is new template, clearing form')
       setName('')
       setItems([])
+      isEditing.current = false
       return
     }
 
@@ -81,20 +83,37 @@ export function TemplateEditor({
       const template = templates.find((t) => t.id === templateId)
       console.log('TemplateEditor: Found template?', { found: !!template, template })
       
+      // Skip reload if user is actively editing
+      if (isEditing.current && template) {
+        console.log('TemplateEditor: Skipping reload - user is editing')
+        return
+      }
+      
       if (template) {
         applyingRemote.current = true
         setName(template.name)
+        
+        // Convert flat TemplateSet[] to grouped DraftExercise[]
+        const grouped = new Map<string, DraftSet[]>()
+        for (const set of template.sets || []) {
+          if (!grouped.has(set.exercise)) {
+            grouped.set(set.exercise, [])
+          }
+          grouped.get(set.exercise)!.push({
+            id: set.id || cryptoRandomId(),
+            weightKg: set.weightKg || 0,
+            reps: set.reps || 8,
+          })
+        }
+        
         setItems(
-          (template.exercises || []).map((e) => ({
-            name: e.name,
-            sets: Array.from({ length: Math.max(1, e.sets || 1) }, () => ({
-              id: cryptoRandomId(),
-              weightKg: e.weight ?? 0,
-              reps: e.reps || 8,
-            })),
+          Array.from(grouped.entries()).map(([name, sets]) => ({
+            name,
+            sets,
           }))
         )
-        console.log('TemplateEditor: Loaded template data', { name: template.name, exercises: template.exercises?.length })
+        
+        console.log('TemplateEditor: Loaded template data', { name: template.name, setsCount: template.sets?.length })
         setTimeout(() => {
           applyingRemote.current = false
         }, 50)
@@ -116,30 +135,38 @@ export function TemplateEditor({
     console.log('TemplateEditor: Setting up auto-save timer', { name, itemsLength: items.length, templateId, isNew })
 
     const timer = setTimeout(async () => {
-      const converted: TemplateExercise[] = items.map((it) => ({
-        name: it.name,
-        reps: it.sets[it.sets.length - 1]?.reps || 8,
-        sets: it.sets.length,
-        weight: it.sets[0]?.weightKg || 0,
-      }))
+      // Convert DraftExercise[] to flat TemplateSet[]
+      const converted: TemplateSet[] = items.flatMap((it) =>
+        it.sets.map((s) => ({
+          id: s.id,
+          exercise: it.name,
+          reps: s.reps,
+          weightKg: s.weightKg,
+        }))
+      )
 
-      console.log('TemplateEditor: Auto-saving template', { isNew, templateId, name, exercises: converted })
+      console.log('TemplateEditor: Auto-saving template', { isNew, templateId, name, sets: converted })
 
       try {
         if (isNew) {
           console.log('TemplateEditor: Creating new template')
           const created = await onCreateTemplate(name.trim(), converted)
           console.log('TemplateEditor: Created template', created)
+          isEditing.current = false
           navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
         } else if (templateId) {
           console.log('TemplateEditor: Updating existing template', templateId)
           await onUpdateTemplate({
             id: templateId,
             name: name.trim(),
-            exercises: converted,
+            sets: converted,
             createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
           })
           console.log('TemplateEditor: Updated template')
+          // Reset editing flag after successful save
+          setTimeout(() => {
+            isEditing.current = false
+          }, 100)
         }
       } catch (error) {
         console.error('TemplateEditor: Failed to save template:', error)
@@ -157,6 +184,7 @@ export function TemplateEditor({
     if (!n) return
     const key = exerciseKey(n)
     if (items.some((it) => exerciseKey(it.name) === key)) return
+    isEditing.current = true
     setItems((prev) => [
       ...prev,
       { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }] },
@@ -165,6 +193,7 @@ export function TemplateEditor({
   }
 
   const handleAddSet = (exerciseName: string) => {
+    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
@@ -175,6 +204,7 @@ export function TemplateEditor({
   }
 
   const handleRemoveSet = (exerciseName: string, setId: string) => {
+    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName ? { ...it, sets: it.sets.filter((s) => s.id !== setId) } : it
@@ -188,6 +218,7 @@ export function TemplateEditor({
     field: 'weightKg' | 'reps',
     value: number
   ) => {
+    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
@@ -198,6 +229,7 @@ export function TemplateEditor({
   }
 
   const handleRemoveExercise = (exerciseName: string) => {
+    isEditing.current = true
     setItems((prev) => prev.filter((it) => it.name !== exerciseName))
   }
 
@@ -205,6 +237,7 @@ export function TemplateEditor({
     const { active, over } = event
     if (!over || active.id === over.id) return
 
+    isEditing.current = true
     setItems((items) => {
       const oldIndex = items.findIndex((item) => item.name === active.id)
       const newIndex = items.findIndex((item) => item.name === over.id)
@@ -250,7 +283,10 @@ export function TemplateEditor({
         <TextField
           label="Название шаблона"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            isEditing.current = true
+            setName(e.target.value)
+          }}
           fullWidth
           autoFocus
           sx={{

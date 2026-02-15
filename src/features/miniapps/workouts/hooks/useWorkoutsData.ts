@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ExerciseMeta, Workout, WorkoutTemplate, TemplateExercise } from '../types'
+import type { ExerciseMeta, Workout, WorkoutTemplate, TemplateSet } from '../types'
 import {
   createWorkout as createWorkoutApi,
   deleteWorkout as deleteWorkoutApi,
@@ -245,6 +245,10 @@ export function useWorkoutsData() {
     setLocalExercises(updatedLocal)
     saveLocalExercises(updatedLocal)
     
+    // Remove from backend exercises list (client-side only, backend keeps its data)
+    const updatedBackend = backendExercises.filter((ex) => exerciseKey(ex) !== key)
+    setBackendExercises(updatedBackend)
+    
     // Remove from exercise meta
     setExerciseMeta((prev) => {
       const next = { ...prev }
@@ -256,15 +260,15 @@ export function useWorkoutsData() {
     // Remove from templates
     const updatedTemplates = templates.map((template) => ({
       ...template,
-      exercises: template.exercises.filter((ex) => exerciseKey(ex.name) !== key),
+      sets: template.sets.filter((set) => exerciseKey(set.exercise) !== key),
     }))
     setTemplates(updatedTemplates)
     saveTemplates(updatedTemplates)
   }
 
-  const createTemplate = async (name: string, exercises: TemplateExercise[]) => {
+  const createTemplate = async (name: string, sets: TemplateSet[]) => {
     try {
-      const template = await createTemplateApi({ name, exercises })
+      const template = await createTemplateApi({ name, sets })
       const newTemplates = [template, ...templates]
       setTemplates(newTemplates)
       saveTemplates(newTemplates)
@@ -275,7 +279,7 @@ export function useWorkoutsData() {
       const localTemplate = {
         id: `local_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         name,
-        exercises,
+        sets,
         createdAt: Date.now(),
       }
       const newTemplates = [localTemplate, ...templates]
