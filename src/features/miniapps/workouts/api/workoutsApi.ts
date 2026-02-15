@@ -17,12 +17,11 @@ type ApiWorkout = {
   updated_at: string
 }
 
-type ApiTemplateExercise = {
+type ApiTemplateSet = {
   id: string
-  name: string
-  sets: number
+  exercise: string
+  weight_kg: number
   reps: number
-  weight: number
 }
 
 type ApiWorkoutTemplate = {
@@ -30,7 +29,7 @@ type ApiWorkoutTemplate = {
   family_id: string
   user_id: string
   name: string
-  exercises: ApiTemplateExercise[]
+  sets: ApiTemplateSet[]
   created_at: string
   updated_at: string
 }
@@ -70,11 +69,11 @@ const mapWorkout = (workout: ApiWorkout): Workout => {
 const mapTemplate = (template: ApiWorkoutTemplate): WorkoutTemplate => ({
   id: template.id,
   name: template.name,
-  exercises: template.exercises.map((ex) => ({
-    name: ex.name,
-    sets: ex.sets,
-    reps: ex.reps,
-    weight: Number(ex.weight) || 0,
+  sets: template.sets.map((set) => ({
+    id: set.id,
+    exercise: set.exercise,
+    weightKg: set.weight_kg,
+    reps: set.reps,
   })),
   createdAt: new Date(template.created_at).getTime(),
 })
@@ -136,7 +135,11 @@ export const createTemplate = async (
     method: 'POST',
     body: JSON.stringify({
       name: template.name,
-      exercises: template.exercises,
+      sets: template.sets.map((set) => ({
+        exercise: set.exercise,
+        weight_kg: set.weightKg,
+        reps: set.reps,
+      })),
     }),
   })
   return mapTemplate(response)
@@ -147,7 +150,11 @@ export const updateTemplate = async (template: WorkoutTemplate): Promise<Workout
     method: 'PUT',
     body: JSON.stringify({
       name: template.name,
-      exercises: template.exercises,
+      sets: template.sets.map((set) => ({
+        exercise: set.exercise,
+        weight_kg: set.weightKg,
+        reps: set.reps,
+      })),
     }),
   })
   return mapTemplate(response)

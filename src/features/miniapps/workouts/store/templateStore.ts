@@ -1,5 +1,4 @@
-import type { WorkoutTemplate, TemplateExercise } from '../types'
-import { exerciseKey } from '../utils/workout'
+import type { WorkoutTemplate, TemplateSet } from '../types'
 
 const STORAGE_KEY = 'workouts:templates:v1'
 
@@ -10,48 +9,43 @@ function randomId(): string {
   return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-function uniqueTemplateExercisesInOrder(
-  items: Array<{ name: string; reps: number; sets: number; weight?: number }>
-): TemplateExercise[] {
-  const seen = new Set<string>()
-  const out: TemplateExercise[] = []
-  for (const it of items || []) {
-    const name = String(it?.name || '').trim()
-    if (!name) continue
-    const k = exerciseKey(name)
-    if (seen.has(k)) continue
-    seen.add(k)
-    const reps = Math.max(1, Number(it?.reps) || 0) || 8
-    const sets = Math.max(1, Number(it?.sets) || 0) || 3
-    const weight = Number(it?.weight) || 0
-    out.push({ name, reps, sets, weight })
-  }
-  return out
-}
-
-function coerceTemplateExercises(raw: unknown): TemplateExercise[] {
+// Coerce raw data into TemplateSet[] - support legacy format
+function coerceTemplateSets(raw: unknown): TemplateSet[] {
   if (!Array.isArray(raw)) return []
 
-  // Legacy: string[]
-  if (raw.every((x) => typeof x === 'string')) {
-    return uniqueTemplateExercisesInOrder(
-      (raw as string[]).map((name) => ({
-        name,
-        reps: 8,
-        sets: 3,
-      }))
-    )
+  const out: TemplateSet[] = []
+  
+  for (const item of raw) {
+    // Current format: {id?, exercise, reps, weightKg}
+    if (item && typeof item === 'object' && 'exercise' in item) {
+      const set: TemplateSet = {
+        id: (item as any).id || randomId(),
+        exercise: String((item as any).exercise || '').trim(),
+        reps: Math.max(1, Number((item as any).reps) || 8),
+        weightKg: Number((item as any).weightKg) || 0,
+      }
+      if (set.exercise) out.push(set)
+    }
+    // Legacy format: {name, sets, reps, weight} - expand to multiple sets
+    else if (item && typeof item === 'object' && 'name' in item && 'sets' in item) {
+      const name = String((item as any).name || '').trim()
+      const setCount = Math.max(1, Number((item as any).sets) || 3)
+      const reps = Math.max(1, Number((item as any).reps) || 8)
+      const weight = Number((item as any).weight) || 0
+      if (name) {
+        for (let i = 0; i < setCount; i++) {
+          out.push({
+            id: randomId(),
+            exercise: name,
+            reps,
+            weightKg: weight,
+          })
+        }
+      }
+    }
   }
-
-  // Current: {name,reps,sets,weight?}[]
-  return uniqueTemplateExercisesInOrder(
-    (raw as any[]).map((x) => ({
-      name: String(x?.name || x?.exercise || ''),
-      reps: Number(x?.reps) || 0,
-      sets: Number(x?.sets) || 0,
-      weight: Number(x?.weight) || 0,
-    }))
-  )
+  
+  return out
 }
 
 export const loadTemplates = (): WorkoutTemplate[] => {
@@ -65,10 +59,10 @@ export const loadTemplates = (): WorkoutTemplate[] => {
       .map((t) => ({
         id: (t as any)?.id || randomId(),
         name: String((t as any)?.name || '').trim(),
-        exercises: coerceTemplateExercises((t as any)?.exercises),
+        sets: coerceTemplateSets((t as any)?.sets || (t as any)?.exercises), // Handle both formats
         createdAt: Number((t as any)?.createdAt) || Date.now(),
       }))
-      .filter((t) => t.name)
+      .filter((t) => t.name && t.sets.length > 0)
   } catch {
     return []
   }
@@ -80,7 +74,12 @@ export const saveTemplates = (templates: WorkoutTemplate[]): void => {
     const normalized = (templates || []).map((t) => ({
       id: t.id,
       name: (t.name || '').trim(),
-      exercises: uniqueTemplateExercisesInOrder(t.exercises || []),
+      sets: (t.sets || []).map(s => ({
+        id: s.id || randomId(),
+        exercise: s.exercise,
+        reps: s.reps,
+        weightKg: s.weightKg,
+      })),
       createdAt: t.createdAt || Date.now(),
     }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
@@ -91,12 +90,15 @@ export const saveTemplates = (templates: WorkoutTemplate[]): void => {
 
 export const createTemplateLocal = (input: {
   name: string
-  exercises: TemplateExercise[]
+  sets: TemplateSet[]
 }): WorkoutTemplate => {
   return {
     id: randomId(),
     name: (input.name || '').trim(),
-    exercises: uniqueTemplateExercisesInOrder(input.exercises || []),
+    sets: input.sets.map(s => ({
+      ...s,
+      id: s.id || randomId(),
+    })),
     createdAt: Date.now(),
   }
 }

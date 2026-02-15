@@ -6,6 +6,11 @@ import {
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Fab,
   IconButton,
   List,
@@ -16,14 +21,14 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
-import type { ExerciseMeta, WorkoutTemplate, TemplateExercise } from '../types'
+import type { ExerciseMeta, WorkoutTemplate, TemplateSet } from '../types'
 import { exerciseKey } from '../utils/workout'
 
 interface WorkoutsTemplatesProps {
   templates: WorkoutTemplate[]
   exercises: string[]
   exerciseMeta: Record<string, ExerciseMeta>
-  onCreateTemplate: (name: string, exercises: TemplateExercise[]) => Promise<WorkoutTemplate>
+  onCreateTemplate: (name: string, sets: TemplateSet[]) => Promise<WorkoutTemplate>
   onUpdateTemplate: (template: WorkoutTemplate) => Promise<WorkoutTemplate>
   onDeleteTemplate: (id: string) => void | Promise<void>
   onAddExercise: (name: string) => void
@@ -45,8 +50,11 @@ export function WorkoutsTemplates({
   const [mode, setMode] = useState<Mode>('templates')
   const [query, setQuery] = useState('')
   const [swipedExercise, setSwipedExercise] = useState<string | null>(null)
+  const [swipedTemplate, setSwipedTemplate] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'exercise' | 'template'; name: string; id?: string } | null>(null)
   const touchStartX = React.useRef<number | null>(null)
   const cardRefs = React.useRef<Map<string, HTMLElement>>(new Map())
+  const templateCardRefs = React.useRef<Map<string, HTMLElement>>(new Map())
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -80,13 +88,21 @@ export function WorkoutsTemplates({
 
   // Close swiped card when clicking outside
   useEffect(() => {
-    if (!swipedExercise) return
+    if (!swipedExercise && !swipedTemplate) return
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target as Node
-      const swipedCard = cardRefs.current.get(swipedExercise)
-      if (swipedCard && !swipedCard.contains(target)) {
-        setSwipedExercise(null)
+      if (swipedExercise) {
+        const swipedCard = cardRefs.current.get(swipedExercise)
+        if (swipedCard && !swipedCard.contains(target)) {
+          setSwipedExercise(null)
+        }
+      }
+      if (swipedTemplate) {
+        const swipedCard = templateCardRefs.current.get(swipedTemplate)
+        if (swipedCard && !swipedCard.contains(target)) {
+          setSwipedTemplate(null)
+        }
       }
     }
 
@@ -94,10 +110,27 @@ export function WorkoutsTemplates({
     return () => {
       document.removeEventListener('click', handleClick)
     }
-  }, [swipedExercise])
+  }, [swipedExercise, swipedTemplate])
 
   const handleDeleteExercise = (name: string) => {
-    onDeleteExercise(name)
+    setConfirmDelete({ type: 'exercise', name })
+  }
+
+  const handleDeleteTemplate = (id: string, name: string) => {
+    setConfirmDelete({ type: 'template', name, id })
+  }
+
+  const confirmDeleteAction = () => {
+    if (!confirmDelete) return
+    
+    if (confirmDelete.type === 'exercise') {
+      onDeleteExercise(confirmDelete.name)
+      setSwipedExercise(null)
+    } else if (confirmDelete.id) {
+      onDeleteTemplate(confirmDelete.id)
+      setSwipedTemplate(null)
+    }
+    setConfirmDelete(null)
   }
 
   return (
@@ -155,46 +188,107 @@ export function WorkoutsTemplates({
               </Typography>
             ) : (
               filteredTemplates.map((t) => (
-                <Card
+                <Box
                   key={t.id}
-                  variant="outlined"
+                  ref={(el: HTMLElement | null) => {
+                    if (el) templateCardRefs.current.set(t.id, el)
+                    else templateCardRefs.current.delete(t.id)
+                  }}
                   sx={{
+                    position: 'relative',
                     mb: 1.5,
-                    bgcolor: 'var(--wk-card)',
-                    borderColor: 'var(--wk-border)',
-                    borderRadius: 'var(--wk-radius-sm)',
                   }}
                 >
-                  <CardContent
+                  {/* Delete Button (Behind) */}
+                  <Box
                     sx={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 80,
+                      bgcolor: '#f44336',
+                      borderRadius: '0 var(--wk-radius-sm) var(--wk-radius-sm) 0',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      '&:last-child': { pb: 2 },
+                      justifyContent: 'center',
+                      opacity: swipedTemplate === t.id ? 1 : 0,
+                      transition: 'opacity 0.2s ease',
+                      pointerEvents: swipedTemplate === t.id ? 'auto' : 'none',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      handleDeleteTemplate(t.id, t.name)
                     }}
                   >
-                    <Box sx={{ flex: 1 }} onClick={() => openEditTemplate(t.id)}>
-                      <Typography variant="body1" fontWeight={700} sx={{ color: 'var(--wk-ink)' }}>
-                        {t.name}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
-                        {(t.exercises || []).length} упр.
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <IconButton size="small" onClick={() => openEditTemplate(t.id)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
+                    <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
+                  </Box>
+
+                  {/* Card (Front) */}
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      bgcolor: 'var(--wk-card)',
+                      borderColor: 'var(--wk-border)',
+                      borderRadius: 'var(--wk-radius-sm)',
+                      transform: swipedTemplate === t.id ? 'translateX(-80px)' : 'translateX(0)',
+                      transition: 'transform 0.2s ease',
+                      position: 'relative',
+                      zIndex: 1,
+                    }}
+                    style={{ touchAction: 'pan-y' }}
+                    onTouchStart={(ev) => {
+                      touchStartX.current = ev.touches[0]?.clientX ?? null
+                    }}
+                    onTouchEnd={(ev) => {
+                      const startX = touchStartX.current
+                      const endX = ev.changedTouches[0]?.clientX
+                      touchStartX.current = null
+
+                      if (startX !== null && endX !== undefined) {
+                        const delta = startX - endX
+                        // Swipe left to reveal delete
+                        if (delta > 80) {
+                          setSwipedTemplate(t.id)
+                        }
+                        // Swipe right to close
+                        else if (delta < -40 && swipedTemplate === t.id) {
+                          setSwipedTemplate(null)
+                        }
+                      }
+                    }}
+                  >
+                    <CardContent
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        '&:last-child': { pb: 2 },
+                      }}
+                    >
+                      <Box sx={{ flex: 1 }} onClick={() => openEditTemplate(t.id)}>
+                        <Typography variant="body1" fontWeight={700} sx={{ color: 'var(--wk-ink)' }}>
+                          {t.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
+                          {(() => {
+                            const uniqueExercises = new Set((t.sets || []).map(s => s.exercise))
+                            return `${uniqueExercises.size} упр., ${(t.sets || []).length} сет.`
+                          })()}
+                        </Typography>
+                      </Box>
                       <IconButton
                         size="small"
-                        color="error"
-                        onClick={() => onDeleteTemplate(t.id)}
+                        onClick={(ev) => {
+                          ev.stopPropagation()
+                          openEditTemplate(t.id)
+                        }}
                       >
-                        <DeleteIcon fontSize="small" />
+                        <EditIcon fontSize="small" />
                       </IconButton>
-                    </Box>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </Box>
               ))
             )}
           </List>
@@ -240,7 +334,6 @@ export function WorkoutsTemplates({
                       }}
                       onClick={() => {
                         handleDeleteExercise(e)
-                        setSwipedExercise(null)
                       }}
                     >
                       <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
@@ -346,6 +439,29 @@ export function WorkoutsTemplates({
       >
         <AddIcon />
       </Fab>
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">Подтвердите удаление</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            {confirmDelete?.type === 'exercise'
+              ? `Вы уверены, что хотите удалить упражнение "${confirmDelete?.name}"?`
+              : `Вы уверены, что хотите удалить шаблон "${confirmDelete?.name}"?`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(null)}>Отмена</Button>
+          <Button onClick={confirmDeleteAction} color="error" autoFocus>
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
