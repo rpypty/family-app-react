@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ExerciseMeta, Workout } from '../types'
+import type { ExerciseMeta, Workout, WorkoutTemplate, TemplateExercise } from '../types'
 import {
   createWorkout as createWorkoutApi,
   deleteWorkout as deleteWorkoutApi,
   listExercises as listExercisesApi,
   listWorkouts as listWorkoutsApi,
   updateWorkout as updateWorkoutApi,
+  listTemplates as listTemplatesApi,
+  createTemplate as createTemplateApi,
+  updateTemplate as updateTemplateApi,
+  deleteTemplate as deleteTemplateApi,
 } from '../api/workoutsApi'
 import { loadExerciseMeta, saveExerciseMeta } from '../store/exerciseMetaStore'
 import {
@@ -14,6 +18,8 @@ import {
   replaceLocalExercise,
   saveLocalExercises,
 } from '../store/exerciseListStore'
+import { loadTemplates, saveTemplates } from '../store/templateStore'
+import { loadWorkouts as loadWorkoutsStore, saveWorkouts as saveWorkoutsStore, createWorkoutLocal } from '../store/workoutsStore'
 import { exerciseKey, sortWorkouts } from '../utils/workout'
 import { todayISO } from '../utils/date'
 
@@ -39,20 +45,48 @@ export function useWorkoutsData() {
   const [backendExercises, setBackendExercises] = useState<string[]>([])
   const [localExercises, setLocalExercises] = useState<string[]>([])
   const [exerciseMeta, setExerciseMeta] = useState<Record<string, ExerciseMeta>>({})
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([])
 
   useEffect(() => {
     let alive = true
     ;(async () => {
+      // Always load from local storage first for instant UI
+      const localWorkouts = loadWorkoutsStore()
+      const localTemplates = loadTemplates()
+      if (localWorkouts.length > 0) {
+        setWorkouts(sortWorkouts(localWorkouts))
+      }
+      if (localTemplates.length > 0) {
+        setTemplates(localTemplates)
+      }
+
       try {
-        const [workoutsResponse, exerciseResponse] = await Promise.all([
+        const [workoutsResponse, exerciseResponse, templatesResponse] = await Promise.all([
           listWorkoutsApi(),
           listExercisesApi(),
+          listTemplatesApi(),
         ])
         if (!alive) return
+        
+        // Update with server data and save to local storage
         setWorkouts(sortWorkouts(workoutsResponse))
+        saveWorkoutsStore(workoutsResponse)
+        
         setBackendExercises(Array.isArray(exerciseResponse) ? exerciseResponse : [])
+        
+        const validTemplates = Array.isArray(templatesResponse) ? templatesResponse : []
+        setTemplates(validTemplates)
+        saveTemplates(validTemplates)
       } catch (error) {
-        console.warn('Workouts load failed', error)
+        console.warn('Workouts load failed, using local data', error)
+        // Load from local storage as fallback
+        if (!alive) return
+        if (localWorkouts.length === 0) {
+          setWorkouts(loadWorkoutsStore())
+        }
+        if (localTemplates.length === 0) {
+          setTemplates(loadTemplates())
+        }
       }
 
       if (!alive) return
@@ -71,24 +105,69 @@ export function useWorkoutsData() {
   )
 
   const createWorkout = async (date?: string, name?: string) => {
-    const workout = await createWorkoutApi({
+    // Create workout locally first for instant UI feedback
+    const localWorkout = createWorkoutLocal({
       date: (date || todayISO()).trim(),
       name: (name || 'Тренировка').trim() || 'Тренировка',
       sets: [],
     })
-    setWorkouts((prev) => sortWorkouts([workout, ...prev]))
-    return workout
+    
+    const newWorkouts = sortWorkouts([localWorkout, ...workouts])
+    setWorkouts(newWorkouts)
+    saveWorkoutsStore(newWorkouts)
+    
+    // Try to sync with server in background
+    try {
+      const serverWorkout = await createWorkoutApi({
+        date: localWorkout.date,
+        name: localWorkout.name,
+        sets: [],
+      })
+      
+      // Replace local workout with server workout
+      const updatedWorkouts = sortWorkouts(
+        newWorkouts.map((w) => (w.id === localWorkout.id ? serverWorkout : w))
+      )
+      setWorkouts(updatedWorkouts)
+      saveWorkoutsStore(updatedWorkouts)
+      return serverWorkout
+    } catch (error) {
+      console.warn('Failed to sync workout with server, keeping local copy', error)
+      return localWorkout
+    }
   }
 
   const updateWorkout = async (workout: Workout) => {
-    const updated = await updateWorkoutApi(workout)
-    setWorkouts((prev) => sortWorkouts(prev.map((w) => (w.id === updated.id ? updated : w))))
-    return updated
+    // Update locally first
+    const updatedWorkouts = sortWorkouts(workouts.map((w) => (w.id === workout.id ? workout : w)))
+    setWorkouts(updatedWorkouts)
+    saveWorkoutsStore(updatedWorkouts)
+    
+    // Try to sync with server
+    try {
+      const serverWorkout = await updateWorkoutApi(workout)
+      const syncedWorkouts = sortWorkouts(updatedWorkouts.map((w) => (w.id === serverWorkout.id ? serverWorkout : w)))
+      setWorkouts(syncedWorkouts)
+      saveWorkoutsStore(syncedWorkouts)
+      return serverWorkout
+    } catch (error) {
+      console.warn('Failed to sync workout update with server, keeping local copy', error)
+      return workout
+    }
   }
 
   const deleteWorkout = async (workoutId: string) => {
-    await deleteWorkoutApi(workoutId)
-    setWorkouts((prev) => prev.filter((w) => w.id !== workoutId))
+    // Delete locally first
+    const updatedWorkouts = workouts.filter((w) => w.id !== workoutId)
+    setWorkouts(updatedWorkouts)
+    saveWorkoutsStore(updatedWorkouts)
+    
+    // Try to sync with server
+    try {
+      await deleteWorkoutApi(workoutId)
+    } catch (error) {
+      console.warn('Failed to sync workout deletion with server, kept local deletion', error)
+    }
   }
 
   const addExercise = (name: string) => {
@@ -158,16 +237,72 @@ export function useWorkoutsData() {
     }
   }
 
+  const createTemplate = async (name: string, exercises: TemplateExercise[]) => {
+    try {
+      const template = await createTemplateApi({ name, exercises })
+      const newTemplates = [template, ...templates]
+      setTemplates(newTemplates)
+      saveTemplates(newTemplates)
+      return template
+    } catch (error) {
+      console.warn('Failed to create template on server, saving locally', error)
+      // Fallback to local storage
+      const localTemplate = {
+        id: `local_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        name,
+        exercises,
+        createdAt: Date.now(),
+      }
+      const newTemplates = [localTemplate, ...templates]
+      setTemplates(newTemplates)
+      saveTemplates(newTemplates)
+      return localTemplate
+    }
+  }
+
+  const updateTemplate = async (template: WorkoutTemplate) => {
+    const updatedTemplates = templates.map((t) => (t.id === template.id ? template : t))
+    try {
+      const updated = await updateTemplateApi(template)
+      const serverTemplates = templates.map((t) => (t.id === updated.id ? updated : t))
+      setTemplates(serverTemplates)
+      saveTemplates(serverTemplates)
+      return updated
+    } catch (error) {
+      console.warn('Failed to update template on server, saving locally', error)
+      setTemplates(updatedTemplates)
+      saveTemplates(updatedTemplates)
+      return template
+    }
+  }
+
+  const deleteTemplate = async (templateId: string) => {
+    const filteredTemplates = templates.filter((t) => t.id !== templateId)
+    try {
+      await deleteTemplateApi(templateId)
+      setTemplates(filteredTemplates)
+      saveTemplates(filteredTemplates)
+    } catch (error) {
+      console.warn('Failed to delete template on server, deleting locally', error)
+      setTemplates(filteredTemplates)
+      saveTemplates(filteredTemplates)
+    }
+  }
+
   return {
     loading,
     workouts,
     exercises,
     exerciseMeta,
+    templates,
     createWorkout,
     updateWorkout,
     deleteWorkout,
     addExercise,
     upsertExerciseMeta,
     renameExercise,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
   }
 }

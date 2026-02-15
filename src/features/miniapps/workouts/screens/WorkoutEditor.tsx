@@ -24,7 +24,7 @@ import MoreVertRounded from '@mui/icons-material/MoreVertRounded'
 import type { ExerciseMeta, Workout, WorkoutSet } from '../types'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { WeightChips } from '../components/WeightChips'
-import { createWorkoutSet, exerciseKey, workoutEntries, volumeForSet } from '../utils/workout'
+import { createWorkoutSet, exerciseKey, volumeForSet, workoutEntries } from '../utils/workout'
 import { formatDateLabel } from '../utils/date'
 
 interface WorkoutEditorProps {
@@ -46,6 +46,12 @@ type ExerciseGroup = {
   isWeightless: boolean
   note: string
   sets: WorkoutSet[]
+  stats?: {
+    avgWeightChange?: number | null
+    volumeChange?: number | null
+    prevAvgWeight?: number | null
+    prevVolume?: number | null
+  }
 }
 
 type ConfirmState =
@@ -72,6 +78,9 @@ export function WorkoutEditor({
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
   const [isEditingHeader, setEditingHeader] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
+  const [swipedExerciseKey, setSwipedExerciseKey] = useState<string | null>(null)
+  const touchStartX = useRef<number | null>(null)
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isHydrating = useRef(false)
   const lastSaved = useRef<string>('')
@@ -107,7 +116,7 @@ export function WorkoutEditor({
     return () => clearTimeout(t)
   }, [workoutSignature])
 
-  const groups = useMemo<ExerciseGroup[]>(() => {
+  const groups = useMemo(() => {
     const map = new Map<string, ExerciseGroup>()
     for (const set of sets) {
       const display = set.exercise.trim()
@@ -124,8 +133,37 @@ export function WorkoutEditor({
       existing.sets = [...existing.sets, set]
       map.set(key, existing)
     }
-    return Array.from(map.values())
-  }, [exerciseMeta, sets])
+    
+    const list = Array.from(map.values())
+    
+    // Calculate stats by comparing with previous workout
+    const previousWorkout = allWorkouts
+      .filter((w) => w.id !== workout.id && w.date < workout.date)
+      .sort((a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : 0))[0]
+
+    if (previousWorkout) {
+      const prevSets = previousWorkout.sets || []
+      for (const g of list) {
+        const prev = prevSets.filter((s) => exerciseKey(s.exercise) === g.key)
+        if (prev.length === 0 || g.isWeightless) {
+          g.stats = { avgWeightChange: null, volumeChange: null, prevAvgWeight: null, prevVolume: null }
+          continue
+        }
+        const prevAvg = prev.reduce((sum, s) => sum + (s.weightKg || 0), 0) / prev.length
+        const prevVol = prev.reduce((sum, s) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
+        const currAvg = g.sets.reduce((sum, s) => sum + (s.weightKg || 0), 0) / (g.sets.length || 1)
+        const currVol = g.sets.reduce((sum, s) => sum + (s.weightKg || 0) * (s.reps || 0), 0)
+        g.stats = {
+          prevAvgWeight: prevAvg,
+          prevVolume: prevVol,
+          avgWeightChange: prevAvg > 0 ? ((currAvg - prevAvg) / prevAvg) * 100 : null,
+          volumeChange: prevVol > 0 ? ((currVol - prevVol) / prevVol) * 100 : null,
+        }
+      }
+    }
+    
+    return list
+  }, [exerciseMeta, sets, allWorkouts, workout.id, workout.date])
 
   const history = useMemo(() => {
     const other = allWorkouts.filter((w) => w.id !== workout.id)
@@ -193,6 +231,29 @@ export function WorkoutEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
   }, [date, name, onSave, sets, workout, serialize])
+
+  // Close swiped card when clicking outside
+  useEffect(() => {
+    if (!swipedExerciseKey) return
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement
+      const swipedCard = cardRefs.current.get(swipedExerciseKey)
+      
+      // Check if click is outside the swiped card
+      if (swipedCard && !swipedCard.contains(target)) {
+        setSwipedExerciseKey(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [swipedExerciseKey])
 
   return (
     <Box sx={{ pb: 10 }}>
@@ -273,11 +334,72 @@ export function WorkoutEditor({
                 0
               )
               return (
-                <Card
-                  key={group.key}
-                  variant="outlined"
-                  sx={{ borderRadius: 'var(--wk-radius)', borderColor: 'var(--wk-border)', bgcolor: 'var(--wk-card)' }}
+                <Box 
+                  key={group.key} 
+                  sx={{ position: 'relative' }}
+                  ref={(el: HTMLDivElement | null) => {
+                    if (el) {
+                      cardRefs.current.set(group.key, el)
+                    } else {
+                      cardRefs.current.delete(group.key)
+                    }
+                  }}
                 >
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: 'var(--wk-radius)',
+                      bgcolor: 'error.main',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      pr: 2,
+                      color: 'error.contrastText',
+                      opacity: swipedExerciseKey === group.key ? 1 : 0,
+                      transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      cursor: 'pointer',
+                      pointerEvents: swipedExerciseKey === group.key ? 'auto' : 'none',
+                    }}
+                    onClick={() => {
+                      setConfirm({ open: true, kind: 'exercise', exerciseName: group.name })
+                      setSwipedExerciseKey(null)
+                    }}
+                  >
+                    <DeleteOutlineRounded sx={{ fontSize: 36 }} />
+                  </Box>
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 'var(--wk-radius)',
+                      borderColor: 'var(--wk-border)',
+                      bgcolor: 'var(--wk-card)',
+                      transform: swipedExerciseKey === group.key ? 'translateX(-80px)' : 'translateX(0)',
+                      transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      position: 'relative',
+                    }}
+                    style={{ touchAction: 'pan-y' }}
+                    onTouchStart={(e) => {
+                      touchStartX.current = e.touches[0]?.clientX ?? null
+                    }}
+                    onTouchEnd={(e) => {
+                      const startX = touchStartX.current
+                      const endX = e.changedTouches[0]?.clientX
+                      touchStartX.current = null
+                      
+                      if (startX !== null && endX !== undefined) {
+                        const delta = startX - endX
+                        // Swipe left to reveal delete
+                        if (delta > 80) {
+                          setSwipedExerciseKey(group.key)
+                        }
+                        // Swipe right to close
+                        else if (delta < -40 && swipedExerciseKey === group.key) {
+                          setSwipedExerciseKey(null)
+                        }
+                      }
+                    }}
+                  >
                   <CardContent>
                     <Stack spacing={1.5}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -305,21 +427,32 @@ export function WorkoutEditor({
                             </Typography>
                           ) : null}
                         </Stack>
-                        <IconButton
-                          size="small"
-                          onClick={() => setConfirm({ open: true, kind: 'exercise', exerciseName: group.name })}
-                          sx={{
-                            bgcolor: 'var(--wk-ink-soft)',
-                            width: 30,
-                            height: 30,
-                          }}
-                        >
-                          <DeleteOutlineRounded fontSize="small" sx={{ fontSize: 16 }} />
-                        </IconButton>
                       </Stack>
 
-                      <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
-                        Объём: {Math.round(volume)}
+                      {group.stats && !group.isWeightless ? (
+                        <Typography variant="caption" sx={{ color: 'var(--wk-muted)', display: 'block' }}>
+                          Вес:{' '}
+                          <Box component="span" sx={{ color: deltaColor(group.stats.avgWeightChange) }}>
+                            {formatPercent(group.stats.avgWeightChange)}
+                          </Box>
+                          {' '}• Пред. вес:{' '}
+                          <Box component="span" sx={{ fontWeight: 600 }}>
+                            {group.stats.prevAvgWeight ? `${group.stats.prevAvgWeight.toFixed(1)} кг` : '—'}
+                          </Box>
+                          <br />
+                          Объем:{' '}
+                          <Box component="span" sx={{ color: deltaColor(group.stats.volumeChange) }}>
+                            {formatPercent(group.stats.volumeChange)}
+                          </Box>
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
+                          Объём: {Math.round(volume)}
+                        </Typography>
+                      )}
+
+                      <Typography variant="caption" sx={{ color: 'var(--wk-muted)', fontStyle: 'italic' }}>
+                        Свайпните влево для удаления
                       </Typography>
 
                       <Stack spacing={1}>
@@ -403,6 +536,7 @@ export function WorkoutEditor({
                     </Stack>
                   </CardContent>
                 </Card>
+                </Box>
               )
             })}
           </Stack>
@@ -497,4 +631,17 @@ export function WorkoutEditor({
       </Dialog>
     </Box>
   )
+}
+
+function deltaColor(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'var(--wk-muted)'
+  if (value > 0) return 'success.main'
+  if (value < 0) return 'error.main'
+  return 'var(--wk-muted)'
+}
+
+function formatPercent(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(1)}%`
 }
