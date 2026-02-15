@@ -41,24 +41,28 @@ export function useGymData() {
         exercises: string[]
       } | null = null
 
-      try {
-        const last = await getLastSyncTime()
-        const now = Date.now()
-        const SKIP_WINDOW = 60 * 1000 // 60 seconds
-        if (!last || now - last > SKIP_WINDOW) {
-          await syncWithBackend()
-        }
-        const refreshed = await refreshFromBackend()
-        if (refreshed) {
-          backendData = {
-            workouts: refreshed.workouts,
-            entries: refreshed.entries,
-            templates: refreshed.templates,
-            exercises: refreshed.exercises,
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine
+
+      if (!offline) {
+        try {
+          const last = await getLastSyncTime()
+          const now = Date.now()
+          const SKIP_WINDOW = 60 * 1000 // 60 seconds
+          if (!last || now - last > SKIP_WINDOW) {
+            await syncWithBackend()
           }
+          const refreshed = await refreshFromBackend()
+          if (refreshed) {
+            backendData = {
+              workouts: refreshed.workouts,
+              entries: refreshed.entries,
+              templates: refreshed.templates,
+              exercises: refreshed.exercises,
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to sync with backend, using local data:', error)
         }
-      } catch (error) {
-        console.warn('Failed to sync with backend, using local data:', error)
       }
 
       const [loadedWorkouts, loadedEntries, loadedExercises, loadedTemplates] = backendData

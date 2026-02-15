@@ -34,6 +34,7 @@ type ExpensesScreenProps = {
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<Tag>
+  readOnly?: boolean
 }
 
 export function ExpensesScreen({
@@ -47,14 +48,16 @@ export function ExpensesScreen({
   onUpdateExpense,
   onDeleteExpense,
   onCreateTag,
+  readOnly = false,
 }: ExpensesScreenProps) {
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const maxTagVisible = isSmall ? 2 : 3
+  const canEdit = !readOnly
   const sentinelRef = useInfiniteScroll({
-    enabled: hasMore,
+    enabled: hasMore && !readOnly,
     loading: isLoadingMore,
     onLoadMore,
     rootMargin: '240px',
@@ -76,11 +79,13 @@ export function ExpensesScreen({
   const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.name])), [tags])
 
   const openCreate = () => {
+    if (readOnly) return
     setEditingExpense(null)
     setFormOpen(true)
   }
 
   const openEdit = (expense: Expense) => {
+    if (readOnly) return
     setEditingExpense(expense)
     setFormOpen(true)
   }
@@ -141,27 +146,33 @@ export function ExpensesScreen({
                             <Paper
                               key={expense.id}
                               variant="outlined"
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => openEdit(expense)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  openEdit(expense)
-                                }
-                              }}
+                              role={canEdit ? 'button' : undefined}
+                              tabIndex={canEdit ? 0 : undefined}
+                              onClick={canEdit ? () => openEdit(expense) : undefined}
+                              onKeyDown={
+                                canEdit
+                                  ? (event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        openEdit(expense)
+                                      }
+                                    }
+                                  : undefined
+                              }
                               sx={{
                                 p: 1.5,
                                 display: 'flex',
                                 flexDirection: { xs: 'column', sm: 'row' },
                                 justifyContent: 'space-between',
                                 gap: 1.5,
-                                cursor: 'pointer',
+                                cursor: canEdit ? 'pointer' : 'default',
                                 transition: 'box-shadow 0.2s, border-color 0.2s',
-                                '&:hover': {
-                                  borderColor: 'primary.main',
-                                  boxShadow: 2,
-                                },
+                                '&:hover': canEdit
+                                  ? {
+                                      borderColor: 'primary.main',
+                                      boxShadow: 2,
+                                    }
+                                  : undefined,
                               }}
                             >
                               <Stack
@@ -274,19 +285,21 @@ export function ExpensesScreen({
         onCreateTag={onCreateTag}
       />
 
-      <Fab
-        color="primary"
-        aria-label="Добавить расход"
-        onClick={openCreate}
-        sx={{
-          position: 'fixed',
-          right: 16,
-          bottom: 'calc(72px + env(safe-area-inset-bottom))',
-          zIndex: 10,
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {canEdit ? (
+        <Fab
+          color="primary"
+          aria-label="Добавить расход"
+          onClick={openCreate}
+          sx={{
+            position: 'fixed',
+            right: 16,
+            bottom: 'calc(72px + env(safe-area-inset-bottom))',
+            zIndex: 10,
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      ) : null}
     </>
   )
 }

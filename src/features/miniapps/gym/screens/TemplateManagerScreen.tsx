@@ -21,11 +21,16 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import { useGymData } from '../hooks/useGymData'
 
-export function TemplateManagerScreen() {
+type TemplateManagerScreenProps = {
+  readOnly?: boolean
+}
+
+export function TemplateManagerScreen({ readOnly = false }: TemplateManagerScreenProps) {
   const navigate = useNavigate()
   const { templates, exercises, deleteTemplate, addExercise, deleteExercise } = useGymData()
   const [mode, setMode] = useState<'templates' | 'exercises'>('templates')
   const [query, setQuery] = useState('')
+  const canEdit = !readOnly
 
   // Templates UI state (editing opens full-page editor)
 
@@ -47,29 +52,34 @@ export function TemplateManagerScreen() {
   }, [exercises, query])
 
   const openNewTemplate = () => {
+    if (readOnly) return
     // navigate to full-page editor
     navigate('/miniapps/gym/manage/template/new')
   }
 
   const openEditTemplate = (id: string) => {
+    if (readOnly) return
     navigate(`/miniapps/gym/manage/template/${id}`)
   }
 
   // saving handled in full-page editor
 
   const openNewExercise = () => {
+    if (readOnly) return
     setEditingExercise(null)
     setExerciseDraftName('')
     setExerciseDialogOpen(true)
   }
 
   const openEditExercise = (name: string) => {
+    if (readOnly) return
     setEditingExercise(name)
     setExerciseDraftName(name)
     setExerciseDialogOpen(true)
   }
 
   const saveExercise = async () => {
+    if (readOnly) return
     const name = exerciseDraftName.trim()
     if (!name) return
     if (!editingExercise) {
@@ -101,6 +111,7 @@ export function TemplateManagerScreen() {
                 sx={{ mb: 1 }}
                 onPointerDown={(e) => ((e.currentTarget as any).__startX = (e as any).clientX)}
                 onPointerUp={(e) => {
+                  if (readOnly) return
                   const start = (e.currentTarget as any).__startX
                   const dx = start ? ((e as any).clientX - start) : 0
                   if (dx < -60) {
@@ -115,8 +126,8 @@ export function TemplateManagerScreen() {
                     <Typography variant="caption" color="text.secondary">{(t.exercises || []).length} упр.</Typography>
                   </Box>
                   <Box>
-                    <IconButton size="small" onClick={() => openEditTemplate(t.id)}><EditIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => deleteTemplate(t.id)}><DeleteIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openEditTemplate(t.id)} disabled={!canEdit}><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" color="error" onClick={() => deleteTemplate(t.id)} disabled={!canEdit}><DeleteIcon fontSize="small" /></IconButton>
                   </Box>
                 </CardContent>
               </Card>
@@ -131,6 +142,7 @@ export function TemplateManagerScreen() {
                 sx={{ mb: 1 }}
                 onPointerDown={(ev) => ((ev.currentTarget as any).__startX = (ev as any).clientX)}
                 onPointerUp={(ev) => {
+                  if (readOnly) return
                   const start = (ev.currentTarget as any).__startX
                   const dx = start ? ((ev as any).clientX - start) : 0
                   if (dx < -60) {
@@ -143,11 +155,11 @@ export function TemplateManagerScreen() {
                     <Typography variant="body1" fontWeight={700}>{e}</Typography>
                   </Box>
                   <Box>
-                    <IconButton size="small" onClick={() => openEditExercise(e)}><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openEditExercise(e)} disabled={!canEdit}><EditIcon fontSize="small" /></IconButton>
                     <IconButton size="small" color="error" onClick={() => {
                       // @ts-ignore
                       deleteExercise(e)
-                    }}><DeleteIcon fontSize="small" /></IconButton>
+                    }} disabled={!canEdit}><DeleteIcon fontSize="small" /></IconButton>
                   </Box>
                 </CardContent>
               </Card>
@@ -156,21 +168,30 @@ export function TemplateManagerScreen() {
         )}
       </Stack>
 
-      <Fab variant="extended" color="primary" sx={{ position: 'fixed', right: 16, bottom: 88 }} onClick={() => (mode === 'templates' ? openNewTemplate() : openNewExercise())}>
-        <AddIcon />
-        <Box sx={{ ml: 1, fontWeight: 600 }}>{mode === 'templates' ? 'Создать шаблон' : 'Создать упражнение'}</Box>
-      </Fab>
+      {canEdit ? (
+        <Fab
+          variant="extended"
+          color="primary"
+          sx={{ position: 'fixed', right: 16, bottom: 88 }}
+          onClick={() => (mode === 'templates' ? openNewTemplate() : openNewExercise())}
+        >
+          <AddIcon />
+          <Box sx={{ ml: 1, fontWeight: 600 }}>
+            {mode === 'templates' ? 'Создать шаблон' : 'Создать упражнение'}
+          </Box>
+        </Fab>
+      ) : null}
 
       {/* Template editing uses the full-page editor at /miniapps/gym/manage/template/:id */}
 
       <Dialog open={isExerciseDialogOpen} onClose={() => setExerciseDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{editingExercise ? 'Редактировать упражнение' : 'Новое упражнение'}</DialogTitle>
         <DialogContent>
-          <TextField autoFocus value={exerciseDraftName} onChange={(e) => setExerciseDraftName(e.target.value)} fullWidth sx={{ mt: 1 }} />
+          <TextField autoFocus value={exerciseDraftName} onChange={(e) => setExerciseDraftName(e.target.value)} fullWidth sx={{ mt: 1 }} disabled={readOnly} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setExerciseDialogOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={saveExercise} disabled={!exerciseDraftName.trim()}>Сохранить</Button>
+          <Button variant="contained" onClick={saveExercise} disabled={readOnly || !exerciseDraftName.trim()}>Сохранить</Button>
         </DialogActions>
       </Dialog>
     </Box>

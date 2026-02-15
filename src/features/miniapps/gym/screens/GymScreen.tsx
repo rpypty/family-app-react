@@ -21,7 +21,11 @@ import { TemplatePickerScreen } from './TemplatePickerScreen'
 import TemplateManagerScreen from './TemplateManagerScreen'
 import TemplateEditScreen from './TemplateEditScreen'
 
-export function GymScreen() {
+type GymScreenProps = {
+  readOnly?: boolean
+}
+
+export function GymScreen({ readOnly = false }: GymScreenProps) {
   const [date, setDate] = useState<string | null>(null)
   const [periodDays, setPeriodDays] = useState(30)
   const location = useLocation()
@@ -84,6 +88,7 @@ export function GymScreen() {
   }
 
   const handleUseTemplateForDate = async (templateId: string, forDate: string) => {
+    if (readOnly) return
     const t = templates.find((x) => x.id === templateId)
     if (!t) return
     const d = (forDate || '').trim() || todayISO()
@@ -123,6 +128,7 @@ export function GymScreen() {
             workout={editingWorkout}
             allWorkouts={sortedWorkouts}
             exerciseOptions={exerciseOptions}
+            readOnly={readOnly}
             onAddExercise={addExercise}
             onSave={(updated) => {
               void updateWorkoutFull(updated.id, updated.name, updated.date, updated.sets)
@@ -131,7 +137,9 @@ export function GymScreen() {
         ) : isPickingTemplate ? (
           <TemplatePickerScreen
             templates={templates}
+            readOnly={readOnly}
             onCreateCustom={(name) => {
+              if (readOnly) return
               void (async () => {
                 const w = await addWorkout(date || todayISO(), name || 'Тренировка')
                 navigate(`/miniapps/gym/workout/${w.id}`)
@@ -142,21 +150,26 @@ export function GymScreen() {
             }}
           />
         ) : route.view === 'manage-template' ? (
-          <TemplateEditScreen />
+          <TemplateEditScreen readOnly={readOnly} />
         ) : route.view === 'manage' ? (
-          <TemplateManagerScreen />
+          <TemplateManagerScreen readOnly={readOnly} />
         ) : tab === 0 ? (
           <>
             <CalendarTab
               workouts={sortedWorkouts}
               selectedDate={date}
               onSelectDate={handleDateChange}
-              onEditWorkout={(workoutId) => navigate(`/miniapps/gym/workout/${workoutId}`)}
+              onEditWorkout={(workoutId) => {
+                if (readOnly) return
+                navigate(`/miniapps/gym/workout/${workoutId}`)
+              }}
               onAddWorkout={(forDate) => {
+                if (readOnly) return
                 setDate(forDate)
                 navigate('/miniapps/gym/template')
               }}
-              onDeleteWorkout={deleteWorkout}
+              onDeleteWorkout={readOnly ? undefined : deleteWorkout}
+              readOnly={readOnly}
             />
           </>
         ) : null}

@@ -14,12 +14,14 @@ interface TemplatePickerScreenProps {
   templates: Array<{ id: string; name: string; exercises: TemplateExercise[] }>
   onUseTemplate: (templateId: string) => void
   onCreateCustom: (name?: string) => void
+  readOnly?: boolean
 }
 
 export function TemplatePickerScreen({
   templates,
   onUseTemplate,
   onCreateCustom,
+  readOnly = false,
 }: TemplatePickerScreenProps) {
   const [query, setQuery] = useState('')
 
@@ -45,7 +47,11 @@ export function TemplatePickerScreen({
           fullWidth
         />
 
-        <Button variant="contained" onClick={() => onCreateCustom(query.trim() || undefined)}>
+        <Button
+          variant="contained"
+          onClick={() => onCreateCustom(query.trim() || undefined)}
+          disabled={readOnly}
+        >
           Создать кастомную тренировку
         </Button>
 
@@ -63,8 +69,8 @@ export function TemplatePickerScreen({
               <Card
                 key={t.id}
                 variant="outlined"
-                sx={{ borderRadius: 2, cursor: 'pointer' }}
-                onClick={() => onUseTemplate(t.id)}
+                sx={{ borderRadius: 2, cursor: readOnly ? 'default' : 'pointer' }}
+                onClick={readOnly ? undefined : () => onUseTemplate(t.id)}
               >
                 <CardContent>
                   <Typography variant="subtitle1" fontWeight={700}>

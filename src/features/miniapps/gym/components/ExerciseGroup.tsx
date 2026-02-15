@@ -12,12 +12,23 @@ type Props = {
   onUpdateSet?: (setId: string, field: 'weightKg' | 'reps', value: number | string) => void
   onRemoveExercise?: () => void
   stats?: any
+  readOnly?: boolean
 }
 
-export function ExerciseGroup({ name, sets, onAddSet, onRemoveSet, onUpdateSet, onRemoveExercise, stats }: Props) {
+export function ExerciseGroup({
+  name,
+  sets,
+  onAddSet,
+  onRemoveSet,
+  onUpdateSet,
+  onRemoveExercise,
+  stats,
+  readOnly = false,
+}: Props) {
   const touchStartX = useRef<number | null>(null)
   const [swiped, setSwiped] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const canEdit = !readOnly
 
   useEffect(() => {
     const handler = (ev: PointerEvent) => {
@@ -49,11 +60,11 @@ export function ExerciseGroup({ name, sets, onAddSet, onRemoveSet, onUpdateSet, 
           justifyContent: 'flex-end',
           pr: 2,
           color: 'error.contrastText',
-          opacity: swiped ? 1 : 0,
+          opacity: canEdit && swiped ? 1 : 0,
           transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-          cursor: 'pointer',
+          cursor: canEdit ? 'pointer' : 'default',
         }}
-        onClick={() => onRemoveExercise && onRemoveExercise()}
+        onClick={canEdit ? () => onRemoveExercise && onRemoveExercise() : undefined}
       >
         <DeleteIcon sx={{ fontSize: 36 }} />
       </Box>
@@ -62,23 +73,33 @@ export function ExerciseGroup({ name, sets, onAddSet, onRemoveSet, onUpdateSet, 
         variant="outlined"
         sx={{ borderRadius: 2, transform: swiped ? 'translateX(-80px)' : 'translateX(0)', transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)', position: 'relative' }}
         style={{ touchAction: 'pan-y' }}
-        onTouchStart={(e) => { touchStartX.current = e.touches[0]?.clientX ?? null }}
-        onTouchEnd={(e) => {
-          const startX = touchStartX.current
-          const endX = e.changedTouches[0]?.clientX
-          touchStartX.current = null
-          if (startX !== null && endX !== undefined) {
-            const delta = startX - endX
-            if (delta > 80) {
-              setSwiped(true)
-              return
-            }
-            if (delta < -40) {
-              setSwiped(false)
-              return
-            }
-          }
-        }}
+        onTouchStart={
+          canEdit
+            ? (e) => {
+                touchStartX.current = e.touches[0]?.clientX ?? null
+              }
+            : undefined
+        }
+        onTouchEnd={
+          canEdit
+            ? (e) => {
+                const startX = touchStartX.current
+                const endX = e.changedTouches[0]?.clientX
+                touchStartX.current = null
+                if (startX !== null && endX !== undefined) {
+                  const delta = startX - endX
+                  if (delta > 80) {
+                    setSwiped(true)
+                    return
+                  }
+                  if (delta < -40) {
+                    setSwiped(false)
+                    return
+                  }
+                }
+              }
+            : undefined
+        }
       >
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -91,18 +112,62 @@ export function ExerciseGroup({ name, sets, onAddSet, onRemoveSet, onUpdateSet, 
               )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Button size="small" color="primary" variant="text" onClick={() => onAddSet && onAddSet()} sx={{ fontWeight: 600 }}>Добавить подход</Button>
+              <Button
+                size="small"
+                color="primary"
+                variant="text"
+                onClick={() => onAddSet && onAddSet()}
+                sx={{ fontWeight: 600 }}
+                disabled={readOnly}
+              >
+                Добавить подход
+              </Button>
             </Box>
           </Box>
 
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Свайп влево, чтобы удалить упражнение</Typography>
+          {canEdit ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Свайп влево, чтобы удалить упражнение
+            </Typography>
+          ) : null}
 
           <Stack spacing={1}>
             {sets.map((s: SetLike) => (
               <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr auto', sm: '120px 120px auto' }, gap: 1, alignItems: 'center' }}>
-                <TextField type="number" label="Повт" value={String(s.reps)} onChange={(e) => onUpdateSet && onUpdateSet(s.id, 'reps', Number(e.target.value) || 0)} size="small" />
-                <TextField type="number" label="Вес" value={s.weightKg === 0 ? '' : String(s.weightKg)} onChange={(e) => onUpdateSet && onUpdateSet(s.id, 'weightKg', e.target.value === '' ? '' : Number(e.target.value) || 0)} size="small" />
-                <IconButton size="small" color="error" onClick={(ev) => { ev.stopPropagation(); onRemoveSet && onRemoveSet(s.id) }}>
+                <TextField
+                  type="number"
+                  label="Повт"
+                  value={String(s.reps)}
+                  onChange={(e) =>
+                    onUpdateSet && onUpdateSet(s.id, 'reps', Number(e.target.value) || 0)
+                  }
+                  size="small"
+                  disabled={readOnly}
+                />
+                <TextField
+                  type="number"
+                  label="Вес"
+                  value={s.weightKg === 0 ? '' : String(s.weightKg)}
+                  onChange={(e) =>
+                    onUpdateSet &&
+                    onUpdateSet(
+                      s.id,
+                      'weightKg',
+                      e.target.value === '' ? '' : Number(e.target.value) || 0,
+                    )
+                  }
+                  size="small"
+                  disabled={readOnly}
+                />
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={(ev) => {
+                    ev.stopPropagation()
+                    onRemoveSet && onRemoveSet(s.id)
+                  }}
+                  disabled={readOnly}
+                >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Box>

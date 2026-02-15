@@ -23,9 +23,17 @@ interface WorkoutEditScreenProps {
   exerciseOptions: string[]
   onSave: (workout: Workout) => void
   onAddExercise: (name: string) => void
+  readOnly?: boolean
 }
 
-export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSave, onAddExercise }: WorkoutEditScreenProps) {
+export function WorkoutEditScreen({
+  workout,
+  allWorkouts,
+  exerciseOptions,
+  onSave,
+  onAddExercise,
+  readOnly = false,
+}: WorkoutEditScreenProps) {
   const [name, setName] = useState(workout.name || '')
   const [date] = useState(workout.date)
   const [sets, setSets] = useState<WorkoutSet[]>([...(workout.sets || [])])
@@ -35,6 +43,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
+  const canEdit = !readOnly
 
   const workoutBasePath = useMemo(() => `/miniapps/gym/workout/${workout.id}`, [workout.id])
   const isPickingExercise = useMemo(() => {
@@ -117,10 +126,12 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
   }, [previousWorkout, sets])
 
   const handleRemoveSet = (setId: string) => {
+    if (readOnly) return
     setSets((prev) => prev.filter((s) => s.id !== setId))
   }
 
   const handleUpdateSet = (setId: string, field: 'weightKg' | 'reps', value: string) => {
+    if (readOnly) return
     setSets((prev) =>
       prev.map((s) =>
         s.id === setId
@@ -135,6 +146,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
   }
 
   const handleAddSetToExercise = (exerciseName: string) => {
+    if (readOnly) return
     const exercise = exerciseName.trim()
     if (!exercise) return
     const newSet = createWorkoutSet({ exercise, weightKg: 0, reps: 8 })
@@ -143,11 +155,13 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
   }
 
   const handleRemoveExercise = (exerciseName: string) => {
+    if (readOnly) return
     const key = exerciseKey(exerciseName)
     setSets((prev) => prev.filter((s) => exerciseKey(s.exercise) !== key))
   }
 
   useEffect(() => {
+    if (readOnly) return
     if (!canSave) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
@@ -162,6 +176,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
     return (
       <ExercisePickerScreen
         exercises={exerciseOptions}
+        readOnly={readOnly}
         onSelect={(name) => {
           handleAddSetToExercise(name)
           navigate(workoutBasePath)
@@ -185,6 +200,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
             variant="standard"
             inputProps={{ style: { fontWeight: 800, fontSize: '1.25rem' } }}
             sx={{ mb: 0.5 }}
+            disabled={readOnly}
           />
           <Typography variant="body2" color="text.secondary">
             {date}
@@ -203,53 +219,64 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
           ) : (
             groups.map((group) => (
               <Box key={group.key} sx={{ position: 'relative' }}>
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: 2,
-                    bgcolor: 'error.main',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    pr: 2,
-                    color: 'error.contrastText',
-                    opacity: swipedExerciseKey === group.key ? 1 : 0,
-                    transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => handleRemoveExercise(group.name)}
-                >
-                  <DeleteIcon sx={{ fontSize: 36 }} />
-                </Box>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: 2,
+                      bgcolor: 'error.main',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      pr: 2,
+                      color: 'error.contrastText',
+                      opacity: canEdit && swipedExerciseKey === group.key ? 1 : 0,
+                      transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      cursor: canEdit ? 'pointer' : 'default',
+                    }}
+                    onClick={canEdit ? () => handleRemoveExercise(group.name) : undefined}
+                  >
+                    <DeleteIcon sx={{ fontSize: 36 }} />
+                  </Box>
                 <Card
                   variant="outlined"
                   sx={{
                     borderRadius: 2,
-                    transform: swipedExerciseKey === group.key ? 'translateX(-80px)' : 'translateX(0)',
+                    transform:
+                      canEdit && swipedExerciseKey === group.key
+                        ? 'translateX(-80px)'
+                        : 'translateX(0)',
                     transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                     position: 'relative',
                   }}
                   style={{ touchAction: 'pan-y' }}
-                  onTouchStart={(e) => {
-                    touchStartX.current = e.touches[0]?.clientX ?? null
-                  }}
-                  onTouchEnd={(e) => {
-                    const startX = touchStartX.current
-                    const endX = e.changedTouches[0]?.clientX
-                    touchStartX.current = null
-                    if (startX !== null && endX !== undefined) {
-                      const delta = startX - endX
-                      if (delta > 80) {
-                        setSwipedExerciseKey(group.key)
-                        return
-                      }
-                      if (delta < -40) {
-                        setSwipedExerciseKey(null)
-                        return
-                      }
-                    }
-                  }}
+                  onTouchStart={
+                    canEdit
+                      ? (e) => {
+                          touchStartX.current = e.touches[0]?.clientX ?? null
+                        }
+                      : undefined
+                  }
+                  onTouchEnd={
+                    canEdit
+                      ? (e) => {
+                          const startX = touchStartX.current
+                          const endX = e.changedTouches[0]?.clientX
+                          touchStartX.current = null
+                          if (startX !== null && endX !== undefined) {
+                            const delta = startX - endX
+                            if (delta > 80) {
+                              setSwipedExerciseKey(group.key)
+                              return
+                            }
+                            if (delta < -40) {
+                              setSwipedExerciseKey(null)
+                              return
+                            }
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -283,15 +310,22 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                           variant="text"
                           onClick={() => handleAddSetToExercise(group.name)}
                           sx={{ fontWeight: 600 }}
+                          disabled={readOnly}
                         >
                           Добавить подход
                         </Button>
                       </Box>
                     </Box>
 
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                      Свайп влево, чтобы удалить упражнение
-                    </Typography>
+                    {canEdit ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block', mb: 1 }}
+                      >
+                        Свайп влево, чтобы удалить упражнение
+                      </Typography>
+                    ) : null}
 
                     <Stack spacing={1}>
                       {group.sets.map((s: WorkoutSet) => (
@@ -310,6 +344,7 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                             value={s.reps}
                             onChange={(e) => handleUpdateSet(s.id, 'reps', e.target.value)}
                             size="small"
+                            disabled={readOnly}
                           />
                           <TextField
                             type="number"
@@ -335,8 +370,17 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
                               })
                             }}
                             size="small"
+                            disabled={readOnly}
                           />
-                          <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); handleRemoveSet(s.id) }}>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRemoveSet(s.id)
+                            }}
+                            disabled={readOnly}
+                          >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
@@ -357,20 +401,22 @@ export function WorkoutEditScreen({ workout, allWorkouts, exerciseOptions, onSav
 
       </Stack>
 
-      <Fab
-        variant="extended"
-        color="primary"
-        aria-label="Добавить упражнение"
-        onClick={() => navigate(`${workoutBasePath}/exercises`)}
-        sx={{
-          position: 'fixed',
-          right: 16,
-          bottom: 88,
-        }}
-      >
-        <AddIcon />
-        <Box sx={{ ml: 1, fontWeight: 600 }}>Добавить упражнение</Box>
-      </Fab>
+      {canEdit ? (
+        <Fab
+          variant="extended"
+          color="primary"
+          aria-label="Добавить упражнение"
+          onClick={() => navigate(`${workoutBasePath}/exercises`)}
+          sx={{
+            position: 'fixed',
+            right: 16,
+            bottom: 88,
+          }}
+        >
+          <AddIcon />
+          <Box sx={{ ml: 1, fontWeight: 600 }}>Добавить упражнение</Box>
+        </Fab>
+      ) : null}
     </Box>
   )
 }

@@ -15,13 +15,18 @@ import { exerciseKey } from '../api/gymStore'
 type DraftSet = { id: string; weightKg: number; reps: number }
 type DraftExercise = { name: string; sets: DraftSet[] }
 
-export function TemplateEditScreen() {
+type TemplateEditScreenProps = {
+  readOnly?: boolean
+}
+
+export function TemplateEditScreen({ readOnly = false }: TemplateEditScreenProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const parts = useMemo(() => location.pathname.replace(/\/+$/, '').split('/').filter(Boolean), [location.pathname])
   const last = parts[4] // 'new' or template id
 
   const { templates, exercises: exerciseOptions, addTemplate, updateTemplate } = useGymData()
+  const canEdit = !readOnly
 
   const [templateId, setTemplateId] = useState<string | null>(last !== 'new' ? last : null)
   const [name, setName] = useState('')
@@ -61,6 +66,7 @@ export function TemplateEditScreen() {
   const base = useMemo(() => `/miniapps/gym/manage/template/${templateId ?? 'new'}`, [templateId])
 
   const handleAddExercise = (exerciseName: string) => {
+    if (readOnly) return
     const n = (exerciseName || '').trim()
     if (!n) return
     const key = exerciseKey(n)
@@ -69,14 +75,17 @@ export function TemplateEditScreen() {
   }
 
   const handleAddSet = (exerciseName: string) => {
+    if (readOnly) return
     setItems((prev) => prev.map((it) => (it.name === exerciseName ? { ...it, sets: [...it.sets, { id: cryptoRandomId(), weightKg: 0, reps: 8 }] } : it)))
   }
 
   const handleRemoveSet = (exerciseName: string, setId: string) => {
+    if (readOnly) return
     setItems((prev) => prev.map((it) => (it.name === exerciseName ? { ...it, sets: it.sets.filter((s) => s.id !== setId) } : it)))
   }
 
   const handleUpdateSet = (exerciseName: string, setId: string, field: 'weightKg' | 'reps', value: number) => {
+    if (readOnly) return
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
@@ -90,6 +99,7 @@ export function TemplateEditScreen() {
   useEffect(() => {
     let active = true
     ;(async () => {
+      if (readOnly) return
       if (applyingRemote.current) return
 
       const converted: TemplateExercise[] = items.map((it) => ({
@@ -118,6 +128,7 @@ export function TemplateEditScreen() {
     return (
       <ExercisePickerScreen
         exercises={exerciseOptions}
+        readOnly={readOnly}
         onSelect={(n) => {
           handleAddExercise(n)
           navigate(base)
@@ -130,7 +141,7 @@ export function TemplateEditScreen() {
     <Box sx={{ p: 2, pb: 20 }}>
       <Stack spacing={2}>
         <Typography variant="h6" fontWeight={700}>{templateId ? 'Редактировать шаблон' : 'Новый шаблон'}</Typography>
-        <TextField label="Название" value={name} onChange={(e) => setName(e.target.value)} fullWidth />
+        <TextField label="Название" value={name} onChange={(e) => setName(e.target.value)} fullWidth disabled={readOnly} />
 
         {items.length === 0 ? (
           <Card variant="outlined">
@@ -140,6 +151,7 @@ export function TemplateEditScreen() {
           </Card>
         ) : (
           <DndContext collisionDetection={closestCenter} onDragEnd={(e: any) => {
+            if (!canEdit) return
             const { active, over } = e
             if (!over) return
             const fromIndex = items.findIndex((it) => it.name === String(active.id))
@@ -152,7 +164,17 @@ export function TemplateEditScreen() {
             <SortableContext items={items.map((it) => it.name)} strategy={verticalListSortingStrategy}>
               <Stack spacing={2}>
                 {items.map((it) => (
-                  <SortableExercise key={it.name} item={it} onAddSet={handleAddSet} onRemoveSet={handleRemoveSet} onUpdateSet={handleUpdateSet} onRemoveExercise={(n) => setItems((prev) => prev.filter((x) => x.name !== n))} />
+                  <SortableExercise
+                    key={it.name}
+                    item={it}
+                    readOnly={readOnly}
+                    onAddSet={handleAddSet}
+                    onRemoveSet={handleRemoveSet}
+                    onUpdateSet={handleUpdateSet}
+                    onRemoveExercise={(n) =>
+                      setItems((prev) => prev.filter((x) => x.name !== n))
+                    }
+                  />
                 ))}
               </Stack>
             </SortableContext>
@@ -160,10 +182,18 @@ export function TemplateEditScreen() {
         )}
       </Stack>
 
-      <Fab variant="extended" color="primary" aria-label="Добавить упражнение" onClick={() => navigate(`${base}/exercises`)} sx={{ position: 'fixed', right: 16, bottom: 88 }}>
-        <AddIcon />
-        <Box sx={{ ml: 1, fontWeight: 600 }}>Добавить упражнение</Box>
-      </Fab>
+      {canEdit ? (
+        <Fab
+          variant="extended"
+          color="primary"
+          aria-label="Добавить упражнение"
+          onClick={() => navigate(`${base}/exercises`)}
+          sx={{ position: 'fixed', right: 16, bottom: 88 }}
+        >
+          <AddIcon />
+          <Box sx={{ ml: 1, fontWeight: 600 }}>Добавить упражнение</Box>
+        </Fab>
+      ) : null}
     </Box>
   )
 }
