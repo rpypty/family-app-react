@@ -237,6 +237,31 @@ export function useWorkoutsData() {
     }
   }
 
+  const deleteExercise = (name: string) => {
+    const key = exerciseKey(name)
+    
+    // Remove from local exercises
+    const updatedLocal = localExercises.filter((ex) => exerciseKey(ex) !== key)
+    setLocalExercises(updatedLocal)
+    saveLocalExercises(updatedLocal)
+    
+    // Remove from exercise meta
+    setExerciseMeta((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      saveExerciseMeta(next)
+      return next
+    })
+    
+    // Remove from templates
+    const updatedTemplates = templates.map((template) => ({
+      ...template,
+      exercises: template.exercises.filter((ex) => exerciseKey(ex.name) !== key),
+    }))
+    setTemplates(updatedTemplates)
+    saveTemplates(updatedTemplates)
+  }
+
   const createTemplate = async (name: string, exercises: TemplateExercise[]) => {
     try {
       const template = await createTemplateApi({ name, exercises })
@@ -301,6 +326,7 @@ export function useWorkoutsData() {
     addExercise,
     upsertExerciseMeta,
     renameExercise,
+    deleteExercise,
     createTemplate,
     updateTemplate,
     deleteTemplate,

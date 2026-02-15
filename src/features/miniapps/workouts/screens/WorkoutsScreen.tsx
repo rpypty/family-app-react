@@ -33,6 +33,7 @@ export function WorkoutsScreen() {
     addExercise,
     upsertExerciseMeta,
     renameExercise,
+    deleteExercise,
     createTemplate,
     updateTemplate,
     deleteTemplate,
@@ -147,6 +148,7 @@ export function WorkoutsScreen() {
 
         {route.view === 'exercise' ? (
           <ExerciseEditor
+            exerciseName={route.exerciseName}
             exerciseMeta={exerciseMeta}
             onAddExercise={addExercise}
             onUpsertMeta={upsertExerciseMeta}
@@ -191,6 +193,7 @@ export function WorkoutsScreen() {
             onAddExercise={addExercise}
             onUpsertMeta={upsertExerciseMeta}
             onRenameExercise={renameExercise}
+            onDeleteExercise={deleteExercise}
           />
         ) : route.view === 'analytics' ? (
           <WorkoutsAnalytics workouts={workouts} exerciseMeta={exerciseMeta} />
