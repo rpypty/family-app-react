@@ -43,6 +43,7 @@ import type { TodoItem, TodoList, TodoUser } from '../../../../shared/types'
 
 type TodoScreenProps = {
   lists: TodoList[]
+  readOnly?: boolean
   onCreateList: (title: string) => Promise<void>
   onDeleteList: (listId: string) => Promise<void>
   onToggleArchiveSetting: (listId: string, archiveCompleted: boolean) => Promise<void>
@@ -56,6 +57,7 @@ type TodoScreenProps = {
 
 export function TodoScreen({
   lists,
+  readOnly = false,
   onCreateList,
   onDeleteList,
   onToggleArchiveSetting,
@@ -92,6 +94,7 @@ export function TodoScreen({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleCreateList = async () => {
+    if (readOnly) return
     const title = newListTitle.trim()
     if (!title) return
     await onCreateList(title)
@@ -100,6 +103,7 @@ export function TodoScreen({
   }
 
   const handleAddItem = (listId: string) => {
+    if (readOnly) return
     const title = (draftItems[listId] ?? '').trim()
     if (!title) return
     setDraftItems((prev) => ({ ...prev, [listId]: '' }))
@@ -107,18 +111,22 @@ export function TodoScreen({
   }
 
   const handleToggleItem = (listId: string, itemId: string, isCompleted: boolean) => {
+    if (readOnly) return
     void onToggleItem(listId, itemId, isCompleted)
   }
 
   const handleDeleteItem = (listId: string, itemId: string) => {
+    if (readOnly) return
     void onDeleteItem(listId, itemId)
   }
 
   const handleToggleArchiveSetting = async (listId: string, nextValue: boolean) => {
+    if (readOnly) return
     await onToggleArchiveSetting(listId, nextValue)
   }
 
   const handleOpenSettings = (event: MouseEvent<HTMLElement>, listId: string) => {
+    if (readOnly) return
     setSettingsAnchorEl(event.currentTarget)
     setSettingsListId(listId)
   }
@@ -134,6 +142,7 @@ export function TodoScreen({
   }
 
   const handleConfirmDeleteList = async () => {
+    if (readOnly) return
     if (!deleteListId) return
     await onDeleteList(deleteListId)
     setDeleteListId(null)
@@ -163,6 +172,7 @@ export function TodoScreen({
   }
 
   const handleOpenItemMenu = (anchor: HTMLElement, listId: string, item: TodoItem) => {
+    if (readOnly) return
     setItemMenuAnchorEl(anchor)
     setItemMenuTarget({ listId, item })
   }
@@ -173,6 +183,7 @@ export function TodoScreen({
   }
 
   const handleEditItem = () => {
+    if (readOnly) return
     if (!itemMenuTarget) return
     setEditingItem(itemMenuTarget)
     setEditItemTitle(itemMenuTarget.item.title)
@@ -180,6 +191,7 @@ export function TodoScreen({
   }
 
   const handleSaveItemEdit = () => {
+    if (readOnly) return
     if (!editingItem) return
     const title = editItemTitle.trim()
     if (!title) return
@@ -189,12 +201,14 @@ export function TodoScreen({
   }
 
   const handleDeleteItemRequest = () => {
+    if (readOnly) return
     if (!itemMenuTarget) return
     setDeleteItemTarget(itemMenuTarget)
     handleCloseItemMenu()
   }
 
   const handleConfirmDeleteItem = () => {
+    if (readOnly) return
     if (!deleteItemTarget) return
     const { listId, item } = deleteItemTarget
     setDeleteItemTarget(null)
@@ -206,6 +220,7 @@ export function TodoScreen({
   }
 
   const handleStartLongPress = (event: TouchEvent<HTMLElement>, listId: string, item: TodoItem) => {
+    if (readOnly) return
     const target = event.currentTarget
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current)
@@ -286,7 +301,7 @@ export function TodoScreen({
             fullWidth
           />
           <Tooltip title="Создать список">
-            <IconButton color="primary" onClick={() => setCreateOpen(true)}>
+            <IconButton color="primary" onClick={() => setCreateOpen(true)} disabled={readOnly}>
               <AddRounded />
             </IconButton>
           </Tooltip>
@@ -322,6 +337,7 @@ export function TodoScreen({
                   <IconButton
                     size="small"
                     onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
+                    disabled={readOnly}
                     aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
                   >
                     {list.isCollapsed ? (
@@ -333,11 +349,13 @@ export function TodoScreen({
                 </Tooltip>
                 <ButtonBase
                   onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
+                  disabled={readOnly}
                   aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
                   aria-expanded={!list.isCollapsed}
                   aria-controls={collapseId}
                   sx={{
                     flex: 1,
+                    minWidth: 0,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -346,6 +364,7 @@ export function TodoScreen({
                     px: 0.5,
                     py: 0.25,
                     gap: 1,
+                    overflow: 'hidden',
                   }}
                 >
                   <Typography
@@ -383,6 +402,7 @@ export function TodoScreen({
                   <IconButton
                     size="small"
                     onClick={(event) => handleOpenSettings(event, list.id)}
+                    disabled={readOnly}
                     aria-label="Настройки списка"
                   >
                     <SettingsRounded fontSize="small" />
@@ -407,6 +427,7 @@ export function TodoScreen({
                       placeholder="Новый пункт"
                       size="small"
                       fullWidth
+                      disabled={readOnly}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           event.preventDefault()
@@ -418,6 +439,7 @@ export function TodoScreen({
                       variant="outlined"
                       startIcon={<AddRounded />}
                       onClick={() => handleAddItem(list.id)}
+                      disabled={readOnly}
                     >
                       Добавить
                     </Button>
@@ -453,6 +475,7 @@ export function TodoScreen({
                               }
                               inputProps={{ 'aria-label': 'Отметить пункт' }}
                               sx={{ p: 0.5 }}
+                              disabled={readOnly}
                             />
                             {item.completedBy ? (
                               <Tooltip title="Кто отметил">
@@ -498,6 +521,7 @@ export function TodoScreen({
                               onClick={(event) =>
                                 handleOpenItemMenu(event.currentTarget, list.id, item)
                               }
+                              disabled={readOnly}
                               aria-label="Открыть меню"
                             >
                               <MoreHorizRounded fontSize="small" />
@@ -532,6 +556,7 @@ export function TodoScreen({
                 <Switch
                   checked={settingsList.settings.archiveCompleted}
                   onChange={(_, checked) => handleToggleArchiveSetting(settingsList.id, checked)}
+                  disabled={readOnly}
                 />
               }
               label="Архивировать отмеченные"
@@ -548,7 +573,7 @@ export function TodoScreen({
                   await onMoveList(settingsList.id, 'up')
                   handleCloseSettings()
                 }}
-                disabled={!canMoveSettingsUp}
+                disabled={readOnly || !canMoveSettingsUp}
                 startIcon={<ArrowUpwardRounded fontSize="small" />}
               >
                 Вверх
@@ -560,7 +585,7 @@ export function TodoScreen({
                   await onMoveList(settingsList.id, 'down')
                   handleCloseSettings()
                 }}
-                disabled={!canMoveSettingsDown}
+                disabled={readOnly || !canMoveSettingsDown}
                 startIcon={<ArrowDownwardRounded fontSize="small" />}
               >
                 Вниз
@@ -571,6 +596,7 @@ export function TodoScreen({
               variant="outlined"
               color="error"
               onClick={() => handleRequestDeleteList(settingsList.id)}
+              disabled={readOnly}
             >
               Удалить список
             </Button>
@@ -588,6 +614,7 @@ export function TodoScreen({
             size="small"
             fullWidth
             autoFocus
+            disabled={readOnly}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
@@ -598,7 +625,7 @@ export function TodoScreen({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={handleCreateList}>
+          <Button variant="contained" onClick={handleCreateList} disabled={readOnly}>
             Создать
           </Button>
         </DialogActions>
@@ -613,7 +640,12 @@ export function TodoScreen({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancelDeleteList}>Отмена</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDeleteList}>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDeleteList}
+            disabled={readOnly}
+          >
             Удалить
           </Button>
         </DialogActions>
@@ -626,13 +658,13 @@ export function TodoScreen({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={handleEditItem}>
+        <MenuItem onClick={handleEditItem} disabled={readOnly}>
           <ListItemIcon>
             <EditOutlined fontSize="small" />
           </ListItemIcon>
           <ListItemText primary="Редактировать" />
         </MenuItem>
-        <MenuItem onClick={handleDeleteItemRequest}>
+        <MenuItem onClick={handleDeleteItemRequest} disabled={readOnly}>
           <ListItemIcon>
             <DeleteOutlineRounded fontSize="small" />
           </ListItemIcon>
@@ -658,6 +690,7 @@ export function TodoScreen({
             size="small"
             fullWidth
             autoFocus
+            disabled={readOnly}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
@@ -675,7 +708,7 @@ export function TodoScreen({
           >
             Отмена
           </Button>
-          <Button variant="contained" onClick={handleSaveItemEdit}>
+          <Button variant="contained" onClick={handleSaveItemEdit} disabled={readOnly}>
             Сохранить
           </Button>
         </DialogActions>
@@ -695,7 +728,12 @@ export function TodoScreen({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancelDeleteItem}>Отмена</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDeleteItem}>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDeleteItem}
+            disabled={readOnly}
+          >
             Удалить
           </Button>
         </DialogActions>
@@ -734,6 +772,7 @@ export function TodoScreen({
                       }
                       inputProps={{ 'aria-label': 'Снять отметку' }}
                       sx={{ p: 0.5 }}
+                      disabled={readOnly}
                     />
                     {item.completedBy ? (
                       <Tooltip title="Кто отметил">
@@ -779,6 +818,7 @@ export function TodoScreen({
                       onClick={(event) =>
                         handleOpenItemMenu(event.currentTarget, archiveList!.id, item)
                       }
+                      disabled={readOnly}
                       aria-label="Открыть меню"
                     >
                       <MoreHorizRounded fontSize="small" />

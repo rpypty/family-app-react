@@ -39,6 +39,7 @@ import { listExpensePage } from '../../expenses/api/expenses'
 
 type AnalyticsScreenProps = {
   tags: Tag[]
+  readOnly?: boolean
   onUpdateTag?: (tagId: string, name: string) => Promise<Tag>
   onDeleteTag?: (tagId: string) => Promise<void>
 }
@@ -55,10 +56,52 @@ const PALETTE = [
 ]
 
 const FALLBACK_FROM = '2000-01-01'
+const FILTER_STORAGE_KEY = 'expense:analytics:filters:v1'
 
 type DayRange = {
   from: Date
   to: Date
+}
+
+type StoredAnalyticsFilters = {
+  fromDate: string | null
+  toDate: string | null
+  tagIds: string[]
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isStoredFilters = (value: unknown): value is StoredAnalyticsFilters => {
+  if (!isPlainObject(value)) return false
+  const fromDate = value.fromDate
+  const toDate = value.toDate
+  const tagIds = value.tagIds
+  if (fromDate !== null && typeof fromDate !== 'string') return false
+  if (toDate !== null && typeof toDate !== 'string') return false
+  if (!Array.isArray(tagIds)) return false
+  return tagIds.every((id) => typeof id === 'string')
+}
+
+const loadStoredFilters = (): StoredAnalyticsFilters | null => {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    return isStoredFilters(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const saveStoredFilters = (filters: StoredAnalyticsFilters) => {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters))
+  } catch {
+    // Ignore storage errors to avoid blocking UI updates.
+  }
 }
 
 const resolveSameMonthRange = (startDay: number, endDay: number, today: Date): DayRange => {
@@ -82,12 +125,20 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
   return { from, to }
 }
 
-export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScreenProps) {
+export function AnalyticsScreen({
+  tags,
+  onUpdateTag,
+  onDeleteTag,
+  readOnly = false,
+}: AnalyticsScreenProps) {
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const [fromDate, setFromDate] = useState<string | null>(null)
-  const [toDate, setToDate] = useState<string | null>(null)
-  const [filterTagIds, setFilterTagIds] = useState<Set<string>>(new Set())
+  const storedFilters = useMemo(() => loadStoredFilters(), [])
+  const [fromDate, setFromDate] = useState<string | null>(storedFilters?.fromDate ?? null)
+  const [toDate, setToDate] = useState<string | null>(storedFilters?.toDate ?? null)
+  const [filterTagIds, setFilterTagIds] = useState<Set<string>>(
+    () => new Set(storedFilters?.tagIds ?? [])
+  )
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
   const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
   const [summary, setSummary] = useState<{
@@ -155,11 +206,28 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   }
 
   useEffect(() => {
+    saveStoredFilters({
+      fromDate,
+      toDate,
+      tagIds: Array.from(filterTagIds),
+    })
+  }, [fromDate, toDate, filterTagIds])
+
+  useEffect(() => {
     setShowAllTagBreakdown(false)
   }, [fromDate, toDate, filterTagIds])
 
   useEffect(() => {
     let isActive = true
+    if (readOnly) {
+      setLoading(false)
+      setLoadError('Оффлайн: аналитика недоступна.')
+      setSummary(null)
+      setByTagRows([])
+      return () => {
+        isActive = false
+      }
+    }
     const loadAnalytics = async () => {
       setLoading(true)
       setLoadError(null)
@@ -194,13 +262,21 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
     return () => {
       isActive = false
     }
-  }, [range.from, range.to, tagIdsKey])
+  }, [readOnly, range.from, range.to, tagIdsKey])
 
   useEffect(() => {
     let isActive = true
     if (!hasFilters) {
       setFilteredExpenses([])
       setListError(null)
+      return () => {
+        isActive = false
+      }
+    }
+    if (readOnly) {
+      setFilteredExpenses([])
+      setListError('Оффлайн: список недоступен.')
+      setListLoading(false)
       return () => {
         isActive = false
       }
@@ -232,7 +308,7 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
     return () => {
       isActive = false
     }
-  }, [hasFilters, range.from, range.to, tagIds, tagIdsKey])
+  }, [readOnly, hasFilters, range.from, range.to, tagIds, tagIdsKey])
 
   const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
 
@@ -261,6 +337,14 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
   useEffect(() => {
     if (!drilldownTag) return
     let isActive = true
+    if (readOnly) {
+      setDrilldownLoading(false)
+      setDrilldownError('Оффлайн: данные недоступны.')
+      setDrilldownExpenses([])
+      return () => {
+        isActive = false
+      }
+    }
     const loadDrilldown = async () => {
       setDrilldownLoading(true)
       setDrilldownError(null)
@@ -287,7 +371,7 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
     return () => {
       isActive = false
     }
-  }, [drilldownTag, range.from, range.to])
+  }, [readOnly, drilldownTag, range.from, range.to])
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -438,6 +522,7 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
                     size={180}
                     activeSliceId={activeSliceId}
                     onSliceClick={(slice) => {
+                      if (readOnly) return
                       if (!slice.id) return
                       setDrilldownTag({ id: slice.id, name: slice.label })
                       setDrilldownExpenses([])
@@ -552,8 +637,8 @@ export function AnalyticsScreen({ tags, onUpdateTag, onDeleteTag }: AnalyticsScr
           setFilterTagIds(new Set(selected))
           setTagDialogOpen(false)
         }}
-        onUpdateTag={onUpdateTag}
-        onDeleteTag={onDeleteTag}
+        onUpdateTag={readOnly ? undefined : onUpdateTag}
+        onDeleteTag={readOnly ? undefined : onDeleteTag}
         enableSelectAll
       />
 

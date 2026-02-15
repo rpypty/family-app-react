@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -74,6 +74,11 @@ import { findTagByName } from '../shared/lib/tagUtils'
 import { copyToClipboard } from '../shared/lib/clipboard'
 import { clearCacheMeta, loadCacheMeta, saveCacheMeta } from '../shared/storage/cacheMeta'
 import {
+  clearOfflineCache,
+  loadOfflineCache,
+  saveOfflineCache,
+} from '../shared/storage/offlineCache'
+import {
   listTodoLists,
   createTodoList,
   updateTodoList,
@@ -89,12 +94,14 @@ import { WelcomeScreen } from '../features/onboarding/screens/WelcomeScreen'
 import { AuthScreen } from '../features/auth/screens/AuthScreen'
 import { FamilyScreen } from '../features/family/screens/FamilyScreen'
 import { AppLoadingScreen } from '../features/onboarding/screens/AppLoadingScreen'
+import { OfflineBlockedScreen } from '../features/onboarding/screens/OfflineBlockedScreen'
 import { MiniAppsScreen } from '../features/home/screens/MiniAppsScreen'
 import { TodoScreen } from '../features/miniapps/todo/screens/TodoScreen'
 import { GymScreen } from '../features/miniapps/gym/screens/GymScreen'
+import { WorkoutsScreen } from '../features/miniapps/workouts/screens/WorkoutsScreen'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
-type AppId = 'home' | 'expenses' | 'todo' | 'gym'
+type AppId = 'home' | 'expenses' | 'todo' | 'gym' | 'workouts'
 
 const ROUTES = {
   home: '/',
@@ -103,6 +110,7 @@ const ROUTES = {
   expenseReports: '/miniapps/expenses/reports',
   todo: '/miniapps/todo',
   gym: '/miniapps/gym',
+  workouts: '/miniapps/workouts',
 } as const
 
 const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
@@ -169,6 +177,10 @@ const resolveAppRoute = (pathname: string): ResolvedRoute => {
     return { activeApp: 'gym', activeTab: 'expenses' }
   }
 
+  if (app === 'workouts') {
+    return { activeApp: 'workouts', activeTab: 'expenses' }
+  }
+
   return { activeApp: 'home', activeTab: 'expenses', redirectTo: ROUTES.home }
 }
 
@@ -202,6 +214,13 @@ const EXPENSES_PAGE_SIZE = 30
 
 function App() {
   const [state, setState] = useState<StorageState>(() => loadState())
+  const [isOffline, setIsOffline] = useState(() => {
+    if (typeof navigator === 'undefined') return false
+    return !navigator.onLine
+  })
+  const isOfflineRef = useRef(isOffline)
+  const [offlineSnapshot, setOfflineSnapshot] = useState(() => loadOfflineCache())
+  const offlineSnapshotRef = useRef(offlineSnapshot)
   const [authSession, setAuthSession] = useState<AuthSession | null>(null)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [familyId, setFamilyId] = useState<string | null>(null)
@@ -228,6 +247,29 @@ function App() {
   const route = useMemo(() => resolveAppRoute(location.pathname), [location.pathname])
   const activeApp = route.activeApp
   const activeTab = route.activeTab
+  const isReadOnly = isOffline
+  const hasOfflineSnapshot = Boolean(offlineSnapshot?.lastUser && offlineSnapshot?.lastFamily)
+
+  useEffect(() => {
+    const handleOnline = () => {
+      isOfflineRef.current = false
+      setIsOffline(false)
+    }
+    const handleOffline = () => {
+      isOfflineRef.current = true
+      setIsOffline(true)
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline)
+      window.addEventListener('offline', handleOffline)
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline)
+        window.removeEventListener('offline', handleOffline)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (route.redirectTo) {
@@ -257,14 +299,38 @@ function App() {
       navigate(ROUTES.gym)
     }
   }
+  const navigateWorkouts = () => {
+    if (currentPath !== ROUTES.workouts) {
+      navigate(ROUTES.workouts)
+    }
+  }
 
   useEffect(() => {
     let isActive = true
     const applySnapshot = async (session: AuthSession | null, user: AuthUser | null) => {
       if (!isActive) return
-      setAuthSession(session)
-      setAuthUser(user)
+      const offline = isOfflineRef.current
+      const cached = offlineSnapshotRef.current
+
       if (!session || !user) {
+        if (offline && cached?.lastUser && cached?.lastFamily) {
+          setAuthSession({
+            id: `offline-${cached.lastUser.id}`,
+            userId: cached.lastUser.id,
+            provider: cached.lastUser.provider ?? 'google',
+            createdAt: cached.lastUser.createdAt ?? new Date().toISOString(),
+          })
+          setAuthUser(cached.lastUser)
+          setFamily(cached.lastFamily)
+          setFamilyId(cached.lastFamily.id)
+          setUnauthStep('welcome')
+          setMenuAnchorEl(null)
+          setDataStale(true)
+          setLastSyncAt(cached.lastSyncAt ?? null)
+          return
+        }
+        setAuthSession(session)
+        setAuthUser(user)
         setFamilyId(null)
         setFamily(null)
         setUnauthStep('welcome')
@@ -275,6 +341,20 @@ function App() {
         clearCacheMeta()
         return
       }
+
+      setAuthSession(session)
+      setAuthUser(user)
+
+      if (offline) {
+        const cachedFamily = cached?.lastFamily ?? null
+        setFamily(cachedFamily)
+        setFamilyId(cachedFamily?.id ?? null)
+        if (cachedFamily) {
+          persistOfflineSnapshot({ lastUser: user, lastFamily: cachedFamily })
+        }
+        return
+      }
+
       let currentFamily: Family | null = null
       try {
         currentFamily = await getCurrentFamily()
@@ -284,6 +364,9 @@ function App() {
       if (!isActive) return
       setFamily(currentFamily)
       setFamilyId(currentFamily?.id ?? null)
+      if (currentFamily) {
+        persistOfflineSnapshot({ lastUser: user, lastFamily: currentFamily })
+      }
     }
     const bootstrap = async () => {
       const snapshot = await getSession()
@@ -307,6 +390,13 @@ function App() {
       if (!isFamilyDialogOpen) return
       setFamilyMembersLoading(true)
       setFamilyMembersError(null)
+      if (isReadOnly) {
+        if (!isActive) return
+        setFamilyMembers([])
+        setFamilyMembersError('Нет соединения. Доступ только для просмотра.')
+        setFamilyMembersLoading(false)
+        return
+      }
       try {
         const members = await listFamilyMembers()
         if (!isActive) return
@@ -324,7 +414,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [isFamilyDialogOpen])
+  }, [isFamilyDialogOpen, isReadOnly])
 
   const theme = useMemo(() => {
     const primaryMain = state.settings.themeMode === 'dark' ? '#4db6ac' : '#1f6b63'
@@ -376,6 +466,30 @@ function App() {
       })
     }, [state.settings.themeMode])
 
+  const persistOfflineSnapshot = (payload: {
+    lastUser?: AuthUser | null
+    lastFamily?: Family | null
+    lastSyncAt?: string | null
+  }) => {
+    const current = offlineSnapshotRef.current ?? {}
+    const next = {
+      lastUser: payload.lastUser ?? current.lastUser ?? undefined,
+      lastFamily: payload.lastFamily ?? current.lastFamily ?? undefined,
+      lastSyncAt:
+        payload.lastSyncAt !== undefined ? payload.lastSyncAt : current.lastSyncAt ?? null,
+    }
+    if (!next.lastUser || !next.lastFamily) return
+    saveOfflineCache(next)
+    offlineSnapshotRef.current = next
+    setOfflineSnapshot(next)
+  }
+
+  const clearOfflineSnapshot = () => {
+    clearOfflineCache()
+    offlineSnapshotRef.current = null
+    setOfflineSnapshot(null)
+  }
+
   const updateState = (updater: (prev: StorageState) => StorageState) => {
     setState((prev) => {
       const next = updater(prev)
@@ -394,14 +508,20 @@ function App() {
   useEffect(() => {
     let isActive = true
     const loadData = async () => {
-      if (!authSession || !familyId) return
+      if (!familyId) return
+      if (!authSession && !isOfflineRef.current) return
       const cacheMeta = loadCacheMeta(familyId)
+      const hasLocalData =
+        state.expenses.length > 0 || state.tags.length > 0 || state.todoLists.length > 0
       if (isActive) {
-        setLastSyncAt(cacheMeta?.lastSyncAt ?? null)
+        setLastSyncAt(
+          cacheMeta?.lastSyncAt ?? offlineSnapshotRef.current?.lastSyncAt ?? null,
+        )
         setDataStale(false)
       }
-      const hasCache = Boolean(cacheMeta)
-      setDataLoading(!hasCache)
+      const hasCache = Boolean(cacheMeta) || hasLocalData
+      const offline = isOfflineRef.current
+      setDataLoading(!hasCache && !offline)
       if (hasCache) {
         setExpensesTotal((prev) => Math.max(prev, state.expenses.length))
         setExpensesOffset(state.expenses.length)
@@ -410,6 +530,13 @@ function App() {
         setExpensesOffset(0)
       }
       setExpensesLoadingMore(false)
+      if (offline) {
+        if (hasCache) {
+          setDataStale(true)
+        }
+        if (isActive) setDataLoading(false)
+        return
+      }
       try {
         const [expensePage, tags, todoListPage] = await Promise.all([
           listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
@@ -428,6 +555,7 @@ function App() {
         const now = new Date().toISOString()
         setLastSyncAt(now)
         saveCacheMeta({ familyId, lastSyncAt: now })
+        persistOfflineSnapshot({ lastSyncAt: now })
       } catch {
         if (!isActive) return
         if (hasCache) {
@@ -459,6 +587,8 @@ function App() {
         ? 'To Do листы'
         : activeApp === 'gym'
           ? 'Тренировки'
+          : activeApp === 'workouts'
+            ? 'Workouts'
           : 'Миниаппы'
 
   const formattedLastSyncAt = useMemo(() => {
@@ -473,9 +603,15 @@ function App() {
     }
   }, [lastSyncAt])
 
+  const guardReadOnly = () => {
+    if (!isReadOnly) return false
+    setDataStale(true)
+    return true
+  }
+
   const canRefreshTodo = activeApp === 'todo'
   const canRefreshExpenses = activeApp === 'expenses' && activeTab === 'expenses'
-  const canRefresh = canRefreshTodo || canRefreshExpenses
+  const canRefresh = !isReadOnly && (canRefreshTodo || canRefreshExpenses)
   const isRefreshing = canRefreshTodo
     ? isTodoRefreshing
     : canRefreshExpenses
@@ -503,6 +639,9 @@ function App() {
   const handleFamilyComplete = (nextFamily: Family) => {
     setFamily(nextFamily)
     setFamilyId(nextFamily.id)
+    if (authUser) {
+      persistOfflineSnapshot({ lastUser: authUser, lastFamily: nextFamily })
+    }
     navigateHome(true)
   }
 
@@ -531,6 +670,7 @@ function App() {
     setUnauthStep('welcome')
     setMenuAnchorEl(null)
     clearCacheMeta()
+    clearOfflineSnapshot()
   }
 
   const handleLeaveFamily = async () => {
@@ -551,6 +691,7 @@ function App() {
     updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setMenuAnchorEl(null)
     clearCacheMeta()
+    clearOfflineSnapshot()
   }
 
   const handleCopyFamilyCode = async (event?: MouseEvent<HTMLElement>) => {
@@ -577,6 +718,7 @@ function App() {
 
   const handleRemoveMember = async (member: FamilyMember) => {
     if (!family || member.role === 'owner') return
+    if (guardReadOnly()) return
     setRemovingMemberId(member.userId)
     setFamilyMembersError(null)
     try {
@@ -590,6 +732,9 @@ function App() {
   }
 
   const handleCreateExpense = async (expense: Expense) => {
+    if (guardReadOnly()) {
+      throw new Error('read_only')
+    }
     const created = await createExpense(expense)
     updateState((prev) => ({
       ...prev,
@@ -600,6 +745,9 @@ function App() {
   }
 
   const handleUpdateExpense = async (expense: Expense) => {
+    if (guardReadOnly()) {
+      throw new Error('read_only')
+    }
     const updated = await updateExpense(expense)
     updateState((prev) => ({
       ...prev,
@@ -608,6 +756,9 @@ function App() {
   }
 
   const handleDeleteExpense = async (expenseId: string) => {
+    if (guardReadOnly()) {
+      throw new Error('read_only')
+    }
     await deleteExpense(expenseId)
     updateState((prev) => ({
       ...prev,
@@ -618,6 +769,7 @@ function App() {
   }
 
   const handleLoadMoreExpenses = async () => {
+    if (guardReadOnly()) return
     if (isExpensesLoadingMore) return
     if (state.expenses.length >= expensesTotal) return
     setExpensesLoadingMore(true)
@@ -638,6 +790,12 @@ function App() {
   }
 
   const handleCreateTag = async (name: string): Promise<Tag> => {
+    if (guardReadOnly()) {
+      const trimmed = name.trim()
+      const existing = findTagByName(state.tags, trimmed)
+      if (existing) return existing
+      throw new Error('read_only')
+    }
     const trimmed = name.trim()
     const existing = findTagByName(state.tags, trimmed)
     if (existing) return existing
@@ -650,6 +808,9 @@ function App() {
   }
 
   const handleUpdateTag = async (tagId: string, name: string): Promise<Tag> => {
+    if (guardReadOnly()) {
+      throw new Error('read_only')
+    }
     const trimmed = name.trim()
     const existing = findTagByName(state.tags, trimmed)
     if (existing && existing.id !== tagId) {
@@ -664,6 +825,7 @@ function App() {
   }
 
   const handleDeleteTag = async (tagId: string): Promise<void> => {
+    if (guardReadOnly()) return
     await deleteTag(tagId)
     updateState((prev) => ({
       ...prev,
@@ -676,6 +838,7 @@ function App() {
   }
 
   const handleRefreshExpenses = async () => {
+    if (guardReadOnly()) return
     if (!authSession || !familyId || isExpensesRefreshing) return
     setExpensesRefreshing(true)
     setDataStale(false)
@@ -691,6 +854,7 @@ function App() {
       const now = new Date().toISOString()
       setLastSyncAt(now)
       saveCacheMeta({ familyId, lastSyncAt: now })
+      persistOfflineSnapshot({ lastSyncAt: now })
     } catch {
       setDataStale(true)
     } finally {
@@ -699,6 +863,7 @@ function App() {
   }
 
   const handleRefreshTodoLists = async () => {
+    if (guardReadOnly()) return
     if (!authSession || !familyId || isTodoRefreshing) return
     setTodoRefreshing(true)
     setDataStale(false)
@@ -711,6 +876,7 @@ function App() {
       const now = new Date().toISOString()
       setLastSyncAt(now)
       saveCacheMeta({ familyId, lastSyncAt: now })
+      persistOfflineSnapshot({ lastSyncAt: now })
     } catch {
       setDataStale(true)
     } finally {
@@ -719,6 +885,7 @@ function App() {
   }
 
   const handleCreateTodoList = async (title: string) => {
+    if (guardReadOnly()) return
     const created = await createTodoList(title)
     updateTodoLists((prev) => [created, ...prev])
   }
@@ -727,6 +894,7 @@ function App() {
     listId: string,
     archiveCompleted: boolean,
   ) => {
+    if (guardReadOnly()) return
     const updated = await updateTodoList(listId, {
       settings: { archiveCompleted },
     })
@@ -748,6 +916,7 @@ function App() {
   }
 
   const handleToggleTodoListCollapsed = async (listId: string, isCollapsed: boolean) => {
+    if (guardReadOnly()) return
     updateTodoLists((prev) =>
       prev.map((list) => (list.id === listId ? { ...list, isCollapsed } : list)),
     )
@@ -759,6 +928,7 @@ function App() {
   }
 
   const handleMoveTodoList = async (listId: string, direction: 'up' | 'down') => {
+    if (guardReadOnly()) return
     const sorted = [...state.todoLists].sort((a, b) => {
       const aOrder = a.order ?? Number.MAX_SAFE_INTEGER
       const bOrder = b.order ?? Number.MAX_SAFE_INTEGER
@@ -789,11 +959,13 @@ function App() {
   }
 
   const handleDeleteTodoList = async (listId: string) => {
+    if (guardReadOnly()) return
     await deleteTodoList(listId)
     updateTodoLists((prev) => prev.filter((list) => list.id !== listId))
   }
 
   const handleCreateTodoItem = async (listId: string, title: string) => {
+    if (guardReadOnly()) return
     const tempId = `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const optimisticItem: TodoItem = {
       id: tempId,
@@ -836,6 +1008,7 @@ function App() {
     itemId: string,
     isCompleted: boolean,
   ) => {
+    if (guardReadOnly()) return
     const list = state.todoLists.find((entry) => entry.id === listId)
     const currentItem = list?.items.find((item) => item.id === itemId) ?? null
     const nextCompleted = !isCompleted
@@ -903,6 +1076,7 @@ function App() {
     itemId: string,
     title: string,
   ) => {
+    if (guardReadOnly()) return
     const list = state.todoLists.find((entry) => entry.id === listId)
     const currentItem = list?.items.find((item) => item.id === itemId) ?? null
 
@@ -950,6 +1124,7 @@ function App() {
   }
 
   const handleDeleteTodoItem = async (listId: string, itemId: string) => {
+    if (guardReadOnly()) return
     const list = state.todoLists.find((entry) => entry.id === listId)
       const removedIndex = list ? list.items.findIndex((item) => item.id === itemId) : -1
       const removedItem =
@@ -1016,15 +1191,24 @@ function App() {
                   color="inherit"
                   onClick={() => {
                     const isGymNested = currentPath.startsWith(`${ROUTES.gym}/`)
+                    const isWorkoutsNested = currentPath.startsWith(`${ROUTES.workouts}/`)
                     if (activeApp === 'gym') {
                       if (isGymNested) {
                         navigate(ROUTES.gym)
                       } else {
                         navigateHome()
                       }
-                    } else {
-                      navigateHome()
+                      return
                     }
+                    if (activeApp === 'workouts') {
+                      if (isWorkoutsNested) {
+                        navigate(ROUTES.workouts)
+                      } else {
+                        navigateHome()
+                      }
+                      return
+                    }
+                    navigateHome()
                   }}
                   aria-label="На главный экран"
                 >
@@ -1152,7 +1336,7 @@ function App() {
             </ListItemIcon>
             <ListItemText primary={themeLabel} />
           </MenuItem>
-          <MenuItem onClick={handleLeaveFamily}>
+          <MenuItem onClick={handleLeaveFamily} disabled={isReadOnly}>
             <ListItemIcon>
               <GroupRounded />
             </ListItemIcon>
@@ -1216,7 +1400,7 @@ function App() {
                 {familyMembers.map((member, index) => {
                   const isOwnerMember = member.role === 'owner'
                   const isSelf = member.userId === authUser?.id
-                  const canRemove = Boolean(isOwner && !isOwnerMember && !isSelf)
+                  const canRemove = Boolean(isOwner && !isOwnerMember && !isSelf && !isReadOnly)
                   const displayEmail = member.email ?? 'Без почты'
                   const initial = (member.email ?? member.userId).slice(0, 1).toUpperCase()
 
@@ -1263,7 +1447,7 @@ function App() {
                                 size="small"
                                 color="error"
                                 onClick={() => handleRemoveMember(member)}
-                                disabled={removingMemberId === member.userId}
+                                disabled={isReadOnly || removingMemberId === member.userId}
                                 aria-label="Исключить участника"
                               >
                                 <DeleteOutlineRounded fontSize="small" />
@@ -1286,6 +1470,12 @@ function App() {
 
       <Container maxWidth="md" sx={{ pt: 2, pb: activeApp === 'expenses' ? 12 : 6 }}>
         <Stack spacing={3}>
+          {isReadOnly ? (
+            <Alert severity="info">
+              Оффлайн: только просмотр.
+              {formattedLastSyncAt ? ` Последнее обновление: ${formattedLastSyncAt}.` : ''}
+            </Alert>
+          ) : null}
           {isDataStale ? (
             <Alert severity="warning">
               Нет соединения. Данные могут быть неактуальны.
@@ -1298,12 +1488,14 @@ function App() {
               onOpenExpenses={() => navigateExpenseTab('expenses')}
               onOpenTodo={navigateTodo}
               onOpenGym={navigateGym}
+              onOpenWorkouts={navigateWorkouts}
             />
           )}
 
           {activeApp === 'todo' ? (
             <TodoScreen
               lists={state.todoLists}
+              readOnly={isReadOnly}
               onCreateList={handleCreateTodoList}
               onDeleteList={handleDeleteTodoList}
               onToggleArchiveSetting={handleUpdateTodoListArchiveSetting}
@@ -1321,30 +1513,36 @@ function App() {
               expenses={state.expenses}
               tags={state.tags}
               total={expensesTotal}
-              hasMore={state.expenses.length < expensesTotal}
+              hasMore={!isReadOnly && state.expenses.length < expensesTotal}
               isLoadingMore={isExpensesLoadingMore}
               onLoadMore={handleLoadMoreExpenses}
               onCreateExpense={handleCreateExpense}
               onUpdateExpense={handleUpdateExpense}
               onDeleteExpense={handleDeleteExpense}
               onCreateTag={handleCreateTag}
+              readOnly={isReadOnly}
             />
           ) : null}
 
           {activeApp === 'expenses' && activeTab === 'analytics' ? (
             <AnalyticsScreen
               tags={state.tags}
+              readOnly={isReadOnly}
               onUpdateTag={handleUpdateTag}
               onDeleteTag={handleDeleteTag}
             />
           ) : null}
 
           {activeApp === 'expenses' && activeTab === 'reports' ? (
-            <ReportsScreen />
+            <ReportsScreen readOnly={isReadOnly} />
           ) : null}
 
           {activeApp === 'gym' ? (
-            <GymScreen />
+            <GymScreen readOnly={isReadOnly} />
+          ) : null}
+
+          {activeApp === 'workouts' ? (
+            <WorkoutsScreen />
           ) : null}
         </Stack>
       </Container>
@@ -1401,6 +1599,9 @@ function App() {
 
     if (isBootstrapping) {
       return <AppLoadingScreen />
+    }
+    if (isOffline && !hasOfflineSnapshot && (!authSession || !authUser || !familyId)) {
+      return <OfflineBlockedScreen />
     }
     if (!authSession || !authUser) {
       return unauthStep === 'welcome' ? (

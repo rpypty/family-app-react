@@ -32,7 +32,11 @@ const resolveRange = (range: RangeOption): MonthRange => {
   }
 }
 
-export function ReportsScreen() {
+type ReportsScreenProps = {
+  readOnly?: boolean
+}
+
+export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
   const theme = useTheme()
   const [range, setRange] = useState<RangeOption>('all')
   const [rows, setRows] = useState<Array<{ month: string; total: number; count: number }>>([])
@@ -43,6 +47,14 @@ export function ReportsScreen() {
 
   useEffect(() => {
     let isActive = true
+    if (readOnly) {
+      setLoading(false)
+      setError('Оффлайн: отчет недоступен.')
+      setRows([])
+      return () => {
+        isActive = false
+      }
+    }
     const loadReport = async () => {
       setLoading(true)
       setError(null)
@@ -66,7 +78,7 @@ export function ReportsScreen() {
     return () => {
       isActive = false
     }
-  }, [monthRange.fromMonth, monthRange.toMonth])
+  }, [readOnly, monthRange.fromMonth, monthRange.toMonth])
 
   const grouped = useMemo(() => {
     const result: Record<string, number> = {}

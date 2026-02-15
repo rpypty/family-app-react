@@ -22,6 +22,7 @@ interface CalendarTabProps {
   onEditWorkout: (workoutId: string) => void
   onAddWorkout: (date: string) => void
   onDeleteWorkout?: (workoutId: string) => void | Promise<any>
+  readOnly?: boolean
 }
 
 export function CalendarTab({
@@ -31,8 +32,11 @@ export function CalendarTab({
   onEditWorkout,
   onAddWorkout,
   onDeleteWorkout,
+  readOnly = false,
 }: CalendarTabProps) {
   const [removingIds, setRemovingIds] = useState<string[]>([])
+  const canEdit = !readOnly
+  const canDelete = Boolean(onDeleteWorkout) && !readOnly
 
   const visibleWorkouts = useMemo(() => workouts.filter((w) => !removingIds.includes(w.id)), [workouts, removingIds])
   const workoutsByDate = useMemo(() => {
@@ -119,10 +123,12 @@ export function CalendarTab({
   const workoutStartX = useRef<number | null>(null)
 
   const handleWorkoutTouchStart = (e: any) => {
+    if (!canDelete) return
     workoutStartX.current = e.touches?.[0]?.clientX ?? null
   }
 
   const handleWorkoutTouchEnd = (e: any, id: string) => {
+    if (!canDelete) return
     const startX = workoutStartX.current
     const endX = e.changedTouches?.[0]?.clientX
     workoutStartX.current = null
@@ -281,12 +287,13 @@ export function CalendarTab({
                           transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                           cursor: 'pointer',
                         }}
-                        onClick={async (ev) => {
-                          ev.stopPropagation()
-                          if (!onDeleteWorkout) {
-                            setSwipedWorkoutId(null)
-                            return
-                          }
+                          onClick={async (ev) => {
+                            if (!canDelete) return
+                            ev.stopPropagation()
+                            if (!onDeleteWorkout) {
+                              setSwipedWorkoutId(null)
+                              return
+                            }
                           setRemovingIds((prev) => [...prev, w.id])
                           try {
                             const res = onDeleteWorkout(w.id)
@@ -306,12 +313,13 @@ export function CalendarTab({
                       variant="outlined"
                       sx={{
                         borderRadius: 2,
-                        cursor: 'pointer',
+                        cursor: canEdit ? 'pointer' : 'default',
                         transform: swipedWorkoutId === w.id ? 'translateX(-80px)' : 'translateX(0px)',
                         transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                         zIndex: 1,
                       }}
                       onClick={() => {
+                        if (!canEdit) return
                         if (swipedWorkoutId === w.id) {
                           setSwipedWorkoutId(null)
                           return
@@ -377,6 +385,7 @@ export function CalendarTab({
                               cursor: 'pointer',
                             }}
                             onClick={async (ev) => {
+                              if (!canDelete) return
                               ev.stopPropagation()
                               if (!onDeleteWorkout) {
                                 setSwipedWorkoutId(null)
@@ -401,12 +410,13 @@ export function CalendarTab({
                             variant="outlined"
                             sx={{
                               borderRadius: 2,
-                              cursor: 'pointer',
+                              cursor: canEdit ? 'pointer' : 'default',
                               transform: swipedWorkoutId === w.id ? 'translateX(-80px)' : 'translateX(0px)',
                               transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
                               zIndex: 1,
                             }}
                             onClick={() => {
+                              if (!canEdit) return
                               if (swipedWorkoutId === w.id) {
                                 setSwipedWorkoutId(null)
                                 return
@@ -434,18 +444,25 @@ export function CalendarTab({
         </Box>
       </Stack>
 
-      <Fab
-        color="primary"
-        aria-label="Добавить тренировку"
-        onClick={() => onAddWorkout(selectedDate ?? `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`)}
-        sx={{
-          position: 'fixed',
-          right: 16,
-          bottom: 60,
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {canEdit ? (
+        <Fab
+          color="primary"
+          aria-label="Добавить тренировку"
+          onClick={() =>
+            onAddWorkout(
+              selectedDate ??
+                `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`,
+            )
+          }
+          sx={{
+            position: 'fixed',
+            right: 16,
+            bottom: 60,
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      ) : null}
     </Box>
   )
 }

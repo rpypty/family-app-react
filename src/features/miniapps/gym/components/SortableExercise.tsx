@@ -11,10 +11,21 @@ type Props = {
   onRemoveSet: (exerciseName: string, setId: string) => void
   onUpdateSet: (exerciseName: string, setId: string, field: 'weightKg' | 'reps', value: any) => void
   onRemoveExercise: (name: string) => void
+  readOnly?: boolean
 }
 
-export function SortableExercise({ item, onAddSet, onRemoveSet, onUpdateSet, onRemoveExercise }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.name })
+export function SortableExercise({
+  item,
+  onAddSet,
+  onRemoveSet,
+  onUpdateSet,
+  onRemoveExercise,
+  readOnly = false,
+}: Props) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: item.name,
+    disabled: readOnly,
+  })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -29,6 +40,7 @@ export function SortableExercise({ item, onAddSet, onRemoveSet, onUpdateSet, onR
         onRemoveSet={(setId) => onRemoveSet(item.name, setId)}
         onUpdateSet={(setId, field, value) => onUpdateSet(item.name, setId, field, value)}
         onRemoveExercise={() => onRemoveExercise(item.name)}
+        readOnly={readOnly}
       />
     </div>
   )

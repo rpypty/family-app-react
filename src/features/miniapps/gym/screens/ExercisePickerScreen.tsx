@@ -23,9 +23,14 @@ import AddIcon from '@mui/icons-material/Add'
 interface ExercisePickerScreenProps {
   exercises: string[]
   onSelect: (name: string) => void
+  readOnly?: boolean
 }
 
-export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScreenProps) {
+export function ExercisePickerScreen({
+  exercises,
+  onSelect,
+  readOnly = false,
+}: ExercisePickerScreenProps) {
   const [query, setQuery] = useState('')
   const [customName, setCustomName] = useState('')
   const [isCreateOpen, setCreateOpen] = useState(false)
@@ -62,7 +67,7 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
           <List disablePadding sx={{ border: 1, borderColor: 'divider' }}>
             {filtered.map((name, index) => (
               <Box key={name}>
-                <ListItemButton onClick={() => onSelect(name)}>
+                <ListItemButton onClick={() => onSelect(name)} disabled={readOnly}>
                   <ListItemText
                     primary={name}
                     primaryTypographyProps={{ fontWeight: 600 }}
@@ -75,16 +80,18 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
         )}
       </Stack>
 
-      <Fab
-        variant="extended"
-        color="primary"
-        aria-label="Создать новое"
-        onClick={() => setCreateOpen(true)}
-        sx={{ position: 'fixed', right: 16, bottom: 60 }}
-      >
-        <AddIcon />
-        <Box sx={{ ml: 1, fontWeight: 600 }}>Создать новое</Box>
-      </Fab>
+      {!readOnly ? (
+        <Fab
+          variant="extended"
+          color="primary"
+          aria-label="Создать новое"
+          onClick={() => setCreateOpen(true)}
+          sx={{ position: 'fixed', right: 16, bottom: 60 }}
+        >
+          <AddIcon />
+          <Box sx={{ ml: 1, fontWeight: 600 }}>Создать новое</Box>
+        </Fab>
+      ) : null}
 
       <Dialog
         open={isCreateOpen}
@@ -102,6 +109,7 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
             placeholder="Название упражнения"
             fullWidth
             sx={{ mt: 1 }}
+            disabled={readOnly}
           />
         </DialogContent>
         <DialogActions>
@@ -114,7 +122,7 @@ export function ExercisePickerScreen({ exercises, onSelect }: ExercisePickerScre
               setCustomName('')
               setCreateOpen(false)
             }}
-            disabled={!customName.trim()}
+            disabled={readOnly || !customName.trim()}
           >
             Создать новое
           </Button>
