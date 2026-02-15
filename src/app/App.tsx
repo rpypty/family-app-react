@@ -97,7 +97,6 @@ import { AppLoadingScreen } from '../features/onboarding/screens/AppLoadingScree
 import { OfflineBlockedScreen } from '../features/onboarding/screens/OfflineBlockedScreen'
 import { MiniAppsScreen } from '../features/home/screens/MiniAppsScreen'
 import { TodoScreen } from '../features/miniapps/todo/screens/TodoScreen'
-import { GymScreen } from '../features/miniapps/gym/screens/GymScreen'
 import { WorkoutsScreen } from '../features/miniapps/workouts/screens/WorkoutsScreen'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
@@ -319,11 +318,6 @@ function App() {
   const navigateTodo = () => {
     if (currentPath !== ROUTES.todo) {
       navigate(ROUTES.todo)
-    }
-  }
-  const navigateGym = () => {
-    if (currentPath !== ROUTES.gym) {
-      navigate(ROUTES.gym)
     }
   }
   const navigateWorkouts = () => {
@@ -1516,7 +1510,6 @@ function App() {
             <MiniAppsScreen
               onOpenExpenses={() => navigateExpenseTab('expenses')}
               onOpenTodo={navigateTodo}
-              onOpenGym={navigateGym}
               onOpenWorkouts={navigateWorkouts}
             />
           )}
@@ -1566,9 +1559,6 @@ function App() {
             <ReportsScreen readOnly={isReadOnly} />
           ) : null}
 
-          {activeApp === 'gym' ? (
-            <GymScreen readOnly={isReadOnly} />
-          ) : null}
 
           {activeApp === 'workouts' ? (
             <WorkoutsScreen />

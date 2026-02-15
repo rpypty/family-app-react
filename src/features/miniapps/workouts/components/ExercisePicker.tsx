@@ -58,8 +58,8 @@ export function ExercisePicker({ open, exercises, onClose, onSelect, onCreate }:
                 const name = query.trim()
                 if (!name) return
                 onCreate(name)
-                onSelect(name)
                 setQuery('')
+                onClose()
               }}
             >
               Создать «{query.trim()}»

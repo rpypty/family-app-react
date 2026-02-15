@@ -7,9 +7,11 @@ import GridViewRounded from '@mui/icons-material/GridViewRounded'
 import QueryStatsRounded from '@mui/icons-material/QueryStatsRounded'
 import { useWorkoutsData } from '../hooks/useWorkoutsData'
 import { WorkoutsHome } from './WorkoutsHome'
-import { WorkoutsExercises } from './WorkoutsExercises'
 import { WorkoutsAnalytics } from './WorkoutsAnalytics'
 import { WorkoutEditor } from './WorkoutEditor'
+import { WorkoutsTemplates } from './WorkoutsTemplates'
+import { ExerciseEditor } from './ExerciseEditor'
+import { TemplateEditor } from './TemplateEditor'
 
 export function WorkoutsScreen() {
   const location = useLocation()
@@ -24,12 +26,16 @@ export function WorkoutsScreen() {
     workouts,
     exercises,
     exerciseMeta,
+    templates,
     createWorkout,
     updateWorkout,
     deleteWorkout,
     addExercise,
     upsertExerciseMeta,
     renameExercise,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
   } = useWorkoutsData()
 
   useEffect(() => {
@@ -49,7 +55,13 @@ export function WorkoutsScreen() {
     if (segments[0] !== 'miniapps' || segments[1] !== 'workouts') {
       return { view: 'home' as const }
     }
-    if (segments[2] === 'exercises') return { view: 'exercises' as const }
+    if (segments[2] === 'exercise' && segments[3]) {
+      return { view: 'exercise' as const, exerciseName: segments[3] }
+    }
+    if (segments[2] === 'templates' && segments[3]) {
+      return { view: 'template' as const, templateId: segments[3] }
+    }
+    if (segments[2] === 'templates') return { view: 'templates' as const }
     if (segments[2] === 'analytics') return { view: 'analytics' as const }
     if (segments[2] === 'workout' && segments[3]) {
       if (segments[4] === 'exercises') {
@@ -60,7 +72,7 @@ export function WorkoutsScreen() {
     return { view: 'home' as const }
   }, [location.pathname])
 
-  const activeTab = route.view === 'analytics' ? 2 : route.view === 'exercises' ? 1 : 0
+  const activeTab = route.view === 'analytics' ? 2 : route.view === 'templates' ? 1 : 0
   const workoutId =
     route.view === 'workout' || route.view === 'workout-exercises' ? route.workoutId : null
   const editingWorkout = workoutId ? workouts.find((w) => w.id === workoutId) || null : null
@@ -133,7 +145,22 @@ export function WorkoutsScreen() {
           Workouts
         </Typography>
 
-        {editingWorkout && editingWorkout ? (
+        {route.view === 'exercise' ? (
+          <ExerciseEditor
+            exerciseMeta={exerciseMeta}
+            onAddExercise={addExercise}
+            onUpsertMeta={upsertExerciseMeta}
+            onRenameExercise={renameExercise}
+          />
+        ) : route.view === 'template' ? (
+          <TemplateEditor
+            templateId={route.templateId}
+            templates={templates}
+            exercises={exercises}
+            onCreateTemplate={createTemplate}
+            onUpdateTemplate={updateTemplate}
+          />
+        ) : editingWorkout && editingWorkout ? (
           <WorkoutEditor
             workout={editingWorkout}
             allWorkouts={workouts}
@@ -153,10 +180,14 @@ export function WorkoutsScreen() {
               navigate('/miniapps/workouts')
             }}
           />
-        ) : route.view === 'exercises' ? (
-          <WorkoutsExercises
+        ) : route.view === 'templates' ? (
+          <WorkoutsTemplates
+            templates={templates}
             exercises={exercises}
             exerciseMeta={exerciseMeta}
+            onCreateTemplate={createTemplate}
+            onUpdateTemplate={updateTemplate}
+            onDeleteTemplate={deleteTemplate}
             onAddExercise={addExercise}
             onUpsertMeta={upsertExerciseMeta}
             onRenameExercise={renameExercise}
@@ -180,7 +211,7 @@ export function WorkoutsScreen() {
         )}
       </Box>
 
-      {!editingWorkout && (
+      {!editingWorkout && route.view !== 'exercise' && route.view !== 'template' && (
         <Paper
           elevation={0}
           square
@@ -198,7 +229,7 @@ export function WorkoutsScreen() {
           <BottomNavigation
             value={activeTab}
             onChange={(_, value) => {
-              if (value === 1) navigate('/miniapps/workouts/exercises')
+              if (value === 1) navigate('/miniapps/workouts/templates')
               else if (value === 2) navigate('/miniapps/workouts/analytics')
               else navigate('/miniapps/workouts')
             }}
@@ -206,7 +237,7 @@ export function WorkoutsScreen() {
             sx={{ height: 82, bgcolor: theme.palette.background.paper }}
           >
             <BottomNavigationAction label="Главная" icon={<RocketLaunchRounded />} />
-            <BottomNavigationAction label="Упражнения" icon={<GridViewRounded />} />
+            <BottomNavigationAction label="Тренировки" icon={<GridViewRounded />} />
             <BottomNavigationAction label="Аналитика" icon={<QueryStatsRounded />} />
           </BottomNavigation>
         </Paper>

@@ -1,4 +1,4 @@
-import type { Workout, WorkoutSet } from '../types'
+import type { Workout, WorkoutSet, WorkoutTemplate } from '../types'
 import { apiFetch } from '../../../../shared/api/client'
 
 type ApiWorkoutSet = {
@@ -17,9 +17,31 @@ type ApiWorkout = {
   updated_at: string
 }
 
+type ApiTemplateExercise = {
+  id: string
+  name: string
+  reps: number
+  sets: number
+  weights?: number[]
+}
+
+type ApiWorkoutTemplate = {
+  id: string
+  family_id: string
+  user_id: string
+  name: string
+  exercises: ApiTemplateExercise[]
+  created_at: string
+  updated_at: string
+}
+
 type WorkoutListResponse = {
   items: ApiWorkout[]
   total: number
+}
+
+type TemplateListResponse = {
+  items: ApiWorkoutTemplate[]
 }
 
 type ExerciseListResponse = {
@@ -45,6 +67,19 @@ const mapWorkout = (workout: ApiWorkout): Workout => {
   }
 }
 
+const mapTemplate = (template: ApiWorkoutTemplate): WorkoutTemplate => ({
+  id: template.id,
+  name: template.name,
+  exercises: template.exercises.map((ex) => ({
+    name: ex.name,
+    reps: ex.reps,
+    sets: ex.sets,
+    weights: Array.isArray(ex.weights) ? ex.weights.map((w) => Number(w) || 0) : undefined,
+  })),
+  createdAt: new Date(template.created_at).getTime(),
+})
+
+// Workout API
 export const listWorkouts = async (): Promise<Workout[]> => {
   const response = await apiFetch<WorkoutListResponse>('/gym/workouts')
   return response.items.map(mapWorkout)
@@ -88,6 +123,41 @@ export const deleteWorkout = async (workoutId: string): Promise<void> => {
   await apiFetch<void>(`/gym/workouts/${workoutId}`, { method: 'DELETE' })
 }
 
+// Template API
+export const listTemplates = async (): Promise<WorkoutTemplate[]> => {
+  const response = await apiFetch<TemplateListResponse>('/gym/templates')
+  return response.items.map(mapTemplate)
+}
+
+export const createTemplate = async (
+  template: Omit<WorkoutTemplate, 'id' | 'createdAt'>
+): Promise<WorkoutTemplate> => {
+  const response = await apiFetch<ApiWorkoutTemplate>('/gym/templates', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: template.name,
+      exercises: template.exercises,
+    }),
+  })
+  return mapTemplate(response)
+}
+
+export const updateTemplate = async (template: WorkoutTemplate): Promise<WorkoutTemplate> => {
+  const response = await apiFetch<ApiWorkoutTemplate>(`/gym/templates/${template.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: template.name,
+      exercises: template.exercises,
+    }),
+  })
+  return mapTemplate(response)
+}
+
+export const deleteTemplate = async (templateId: string): Promise<void> => {
+  await apiFetch<void>(`/gym/templates/${templateId}`, { method: 'DELETE' })
+}
+
+// Exercise API
 export const listExercises = async (): Promise<string[]> => {
   const response = await apiFetch<ExerciseListResponse>('/gym/exercises')
   return response.exercises
