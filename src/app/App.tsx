@@ -119,6 +119,33 @@ const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
   reports: ROUTES.expenseReports,
 }
 
+const toOfflineAuthUser = (cachedUser: {
+  id: string
+  name: string
+  email: string
+  provider?: string
+  createdAt?: string
+  avatarUrl?: string
+}): AuthUser => ({
+  id: cachedUser.id,
+  name: cachedUser.name,
+  email: cachedUser.email,
+  provider: 'google',
+  createdAt: cachedUser.createdAt ?? new Date().toISOString(),
+  avatarUrl: cachedUser.avatarUrl,
+})
+
+const toOfflineFamily = (
+  cachedFamily: { id: string; name: string; code?: string; ownerId?: string; createdAt?: string },
+  fallbackOwnerId?: string,
+): Family => ({
+  id: cachedFamily.id,
+  name: cachedFamily.name,
+  code: cachedFamily.code ?? '',
+  ownerId: cachedFamily.ownerId ?? fallbackOwnerId ?? '',
+  createdAt: cachedFamily.createdAt ?? new Date().toISOString(),
+})
+
 type ResolvedRoute = {
   activeApp: AppId
   activeTab: TabId
@@ -314,15 +341,17 @@ function App() {
 
       if (!session || !user) {
         if (offline && cached?.lastUser && cached?.lastFamily) {
+          const offlineUser = toOfflineAuthUser(cached.lastUser)
+          const offlineFamily = toOfflineFamily(cached.lastFamily, offlineUser.id)
           setAuthSession({
-            id: `offline-${cached.lastUser.id}`,
-            userId: cached.lastUser.id,
-            provider: cached.lastUser.provider ?? 'google',
-            createdAt: cached.lastUser.createdAt ?? new Date().toISOString(),
+            id: `offline-${offlineUser.id}`,
+            userId: offlineUser.id,
+            provider: offlineUser.provider,
+            createdAt: offlineUser.createdAt,
           })
-          setAuthUser(cached.lastUser)
-          setFamily(cached.lastFamily)
-          setFamilyId(cached.lastFamily.id)
+          setAuthUser(offlineUser)
+          setFamily(offlineFamily)
+          setFamilyId(offlineFamily.id)
           setUnauthStep('welcome')
           setMenuAnchorEl(null)
           setDataStale(true)
@@ -346,7 +375,7 @@ function App() {
       setAuthUser(user)
 
       if (offline) {
-        const cachedFamily = cached?.lastFamily ?? null
+        const cachedFamily = cached?.lastFamily ? toOfflineFamily(cached.lastFamily, user.id) : null
         setFamily(cachedFamily)
         setFamilyId(cachedFamily?.id ?? null)
         if (cachedFamily) {
