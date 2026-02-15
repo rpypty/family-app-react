@@ -135,7 +135,6 @@ export function MicroCalendar({ selectedDate, workoutDates, onSelectDate }: Micr
               sx={{
                 minWidth: 64,
                 height: 84,
-                borderRadius: 3,
                 textTransform: 'none',
                 flexDirection: 'column',
                 gap: 0.5,
@@ -245,9 +244,10 @@ export function MicroCalendar({ selectedDate, workoutDates, onSelectDate }: Micr
               if (!cell.day || !cell.iso) {
                 return <Box key={cell.key} sx={{ height: 40 }} />
               }
+              const cellIso = cell.iso
               const disabled = cell.iso > todayISO()
-              const isSelected = selectedDate === cell.iso
-              const hasWorkout = workoutDates.has(cell.iso)
+              const isSelected = selectedDate === cellIso
+              const hasWorkout = workoutDates.has(cellIso)
               return (
                 <Button
                   key={cell.key}
@@ -255,7 +255,7 @@ export function MicroCalendar({ selectedDate, workoutDates, onSelectDate }: Micr
                   size="small"
                   disabled={disabled}
                   onClick={() => {
-                    onSelectDate(isSelected ? null : cell.iso)
+                    onSelectDate(isSelected ? null : cellIso)
                     closeFullCalendar()
                   }}
                   sx={{
