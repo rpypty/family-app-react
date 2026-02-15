@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
   Button,
@@ -12,6 +12,7 @@ import type { ExerciseMeta } from '../types'
 import { exerciseKey } from '../utils/workout'
 
 interface ExerciseEditorProps {
+  exerciseName?: string
   exerciseMeta: Record<string, ExerciseMeta>
   onAddExercise: (name: string) => void
   onUpsertMeta: (meta: ExerciseMeta) => void
@@ -25,13 +26,14 @@ type Draft = {
 }
 
 export function ExerciseEditor({
+  exerciseName: exerciseNameProp,
   exerciseMeta,
   onAddExercise,
   onUpsertMeta,
   onRenameExercise,
 }: ExerciseEditorProps) {
   const navigate = useNavigate()
-  const { exerciseName } = useParams<{ exerciseName: string }>()
+  const exerciseName = exerciseNameProp
   const isEditing = exerciseName && exerciseName !== 'new'
   
   const [draft, setDraft] = useState<Draft>({ name: '', note: '', isWeightless: false })

@@ -29,6 +29,7 @@ interface WorkoutsTemplatesProps {
   onAddExercise: (name: string) => void
   onUpsertMeta: (meta: ExerciseMeta) => void
   onRenameExercise: (from: string, to: string) => void
+  onDeleteExercise: (name: string) => void
 }
 
 type Mode = 'templates' | 'exercises'
@@ -38,6 +39,7 @@ export function WorkoutsTemplates({
   exercises,
   exerciseMeta,
   onDeleteTemplate,
+  onDeleteExercise,
 }: WorkoutsTemplatesProps) {
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('templates')
@@ -95,8 +97,7 @@ export function WorkoutsTemplates({
   }, [swipedExercise])
 
   const handleDeleteExercise = (name: string) => {
-    // For now, just navigate to edit - actual deletion can be implemented later
-    openEditExercise(name)
+    onDeleteExercise(name)
   }
 
   return (
@@ -227,8 +228,8 @@ export function WorkoutsTemplates({
                         top: 0,
                         bottom: 0,
                         width: 80,
-                        bgcolor: 'error.main',
-                        borderRadius: 'var(--wk-radius-sm)',
+                        bgcolor: '#f44336',
+                        borderRadius: '0 var(--wk-radius-sm) var(--wk-radius-sm) 0',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -242,7 +243,7 @@ export function WorkoutsTemplates({
                         setSwipedExercise(null)
                       }}
                     >
-                      <DeleteIcon sx={{ color: 'white' }} />
+                      <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
                     </Box>
 
                     {/* Card (Front) */}
