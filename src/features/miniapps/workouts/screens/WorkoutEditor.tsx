@@ -81,7 +81,6 @@ export function WorkoutEditor({
   const [swipedExerciseKey, setSwipedExerciseKey] = useState<string | null>(null)
   const touchStartX = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isHydrating = useRef(false)
   const lastSaved = useRef<string>('')
 
@@ -213,23 +212,18 @@ export function WorkoutEditor({
     onAddExercise(exercise)
   }
 
-  useEffect(() => {
+  // Manual save function (called on blur)
+  const handleSave = useCallback(() => {
     if (isHydrating.current) return
     const snapshot = serialize(name, date, sets)
     if (snapshot === lastSaved.current) return
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      lastSaved.current = snapshot
-      onSave({
-        ...workout,
-        name: name.trim() || 'Тренировка',
-        date,
-        sets,
-      })
-    }, 500)
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-    }
+    lastSaved.current = snapshot
+    onSave({
+      ...workout,
+      name: name.trim() || 'Тренировка',
+      date,
+      sets,
+    })
   }, [date, name, onSave, sets, workout, serialize])
 
   // Close swiped card when clicking outside
@@ -273,6 +267,7 @@ export function WorkoutEditor({
                   <TextField
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    onBlur={handleSave}
                     placeholder="Название тренировки"
                     variant="standard"
                     InputProps={{
@@ -305,6 +300,7 @@ export function WorkoutEditor({
                   label="Дата"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
+                  onBlur={handleSave}
                   InputLabelProps={{ shrink: true }}
                   fullWidth
                 />
@@ -473,6 +469,7 @@ export function WorkoutEditor({
                                 type="number"
                                 value={set.reps}
                                 onChange={(e) => handleUpdateSet(set.id, { reps: Number(e.target.value) || 0 })}
+                                onBlur={handleSave}
                                 size="small"
                                 sx={{ minWidth: 0 }}
                               />
@@ -482,6 +479,7 @@ export function WorkoutEditor({
                                   type="number"
                                   value={set.weightKg || ''}
                                   onChange={(e) => handleUpdateSet(set.id, { weightKg: Number(e.target.value) || 0 })}
+                                  onBlur={handleSave}
                                   size="small"
                                   sx={{ minWidth: 0 }}
                                 />

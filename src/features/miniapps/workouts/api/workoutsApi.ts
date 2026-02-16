@@ -84,8 +84,11 @@ export const listWorkouts = async (): Promise<Workout[]> => {
   return response.items.map(mapWorkout)
 }
 
-export const createWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>): Promise<Workout> => {
-  const payload = {
+export const createWorkout = async (
+  workout: Omit<Workout, 'id' | 'createdAt'>,
+  templateId?: string
+): Promise<Workout> => {
+  const payload: any = {
     date: workout.date,
     name: workout.name,
     sets: workout.sets.map((set) => ({
@@ -93,6 +96,9 @@ export const createWorkout = async (workout: Omit<Workout, 'id' | 'createdAt'>):
       weight_kg: set.weightKg,
       reps: set.reps,
     })),
+  }
+  if (templateId) {
+    payload.template_id = templateId
   }
   const response = await apiFetch<ApiWorkout>('/gym/workouts', {
     method: 'POST',

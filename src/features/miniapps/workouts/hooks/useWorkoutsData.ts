@@ -104,7 +104,7 @@ export function useWorkoutsData() {
     [backendExercises, localExercises]
   )
 
-  const createWorkout = async (date?: string, name?: string) => {
+  const createWorkout = async (date?: string, name?: string, templateId?: string) => {
     // Create workout locally first for instant UI feedback
     const localWorkout = createWorkoutLocal({
       date: (date || todayISO()).trim(),
@@ -122,7 +122,7 @@ export function useWorkoutsData() {
         date: localWorkout.date,
         name: localWorkout.name,
         sets: [],
-      })
+      }, templateId)
       
       // Replace local workout with server workout
       const updatedWorkouts = sortWorkouts(

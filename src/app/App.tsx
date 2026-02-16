@@ -1209,12 +1209,13 @@ function App() {
                 gap: 0.5,
               }}
             >
-              <Tooltip title="На главный экран">
+              <Tooltip title="Назад">
                 <IconButton
                   color="inherit"
                   onClick={() => {
                     const isGymNested = currentPath.startsWith(`${ROUTES.gym}/`)
                     const isWorkoutsNested = currentPath.startsWith(`${ROUTES.workouts}/`)
+                    
                     if (activeApp === 'gym') {
                       if (isGymNested) {
                         navigate(ROUTES.gym)
@@ -1223,17 +1224,38 @@ function App() {
                       }
                       return
                     }
+                    
                     if (activeApp === 'workouts') {
                       if (isWorkoutsNested) {
-                        navigate(ROUTES.workouts)
+                        // Parse workouts route to determine parent
+                        const pathAfterWorkouts = currentPath.slice(ROUTES.workouts.length + 1)
+                        const segments = pathAfterWorkouts.split('/').filter(Boolean)
+                        
+                        if (segments[0] === 'templates' && segments[1]) {
+                          // From template editor -> templates tab
+                          navigate(`${ROUTES.workouts}/templates`)
+                        } else if (segments[0] === 'exercise') {
+                          // From exercise editor -> templates tab
+                          navigate(`${ROUTES.workouts}/templates`)
+                        } else if (segments[0] === 'workout' || segments[0] === 'new') {
+                          // From workout editor or picker -> home tab
+                          navigate(ROUTES.workouts)
+                        } else if (segments[0] === 'templates' || segments[0] === 'analytics') {
+                          // From templates/analytics tab -> home
+                          navigateHome()
+                        } else {
+                          // Default: go to workouts home
+                          navigate(ROUTES.workouts)
+                        }
                       } else {
                         navigateHome()
                       }
                       return
                     }
+                    
                     navigateHome()
                   }}
-                  aria-label="На главный экран"
+                  aria-label="Назад"
                 >
                   <ArrowBackRounded />
                 </IconButton>

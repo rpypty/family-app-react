@@ -58,8 +58,8 @@ export function TemplateEditor({
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [swipedExercise, setSwipedExercise] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
-  const applyingRemote = useRef(false)
-  const isEditing = useRef(false)
+  const isHydrating = useRef(false)
+  const lastSaved = useRef<string>('')
   const touchStartX = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
 
@@ -67,31 +67,64 @@ export function TemplateEditor({
     return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
   }, [])
 
-  // Load template data (only on initial load or template change)
+  // Serialize local state (what we're editing)
+  const serialize = useCallback((n: string, its: DraftExercise[]) => {
+    return JSON.stringify({
+      name: n.trim(),
+      items: its.map(it => ({
+        name: it.name,
+        sets: it.sets.map(s => ({
+          id: s.id,
+          weightKg: s.weightKg,
+          reps: s.reps,
+        }))
+      }))
+    })
+  }, [])
+
+  // Serialize template from props (what comes from parent)
+  const serializeTemplate = useCallback((template: WorkoutTemplate | undefined) => {
+    if (!template) return ''
+    const grouped = new Map<string, DraftSet[]>()
+    for (const set of template.sets || []) {
+      if (!grouped.has(set.exercise)) {
+        grouped.set(set.exercise, [])
+      }
+      grouped.get(set.exercise)!.push({
+        id: set.id || cryptoRandomId(),
+        weightKg: set.weightKg || 0,
+        reps: set.reps || 8,
+      })
+    }
+    const items = Array.from(grouped.entries()).map(([name, sets]) => ({
+      name,
+      sets,
+    }))
+    return serialize(template.name, items)
+  }, [cryptoRandomId, serialize])
+
+  // Create signature from incoming template
+  const templateSignature = serializeTemplate(
+    isNew ? undefined : templates.find((t) => t.id === templateId)
+  )
+
+  // Load template data when signature changes (like WorkoutEditor)
   useEffect(() => {
-    console.log('TemplateEditor: Loading template', { templateId, isNew, templatesCount: templates.length })
-    
     if (isNew) {
-      console.log('TemplateEditor: Is new template, clearing form')
+      isHydrating.current = true
       setName('')
       setItems([])
-      isEditing.current = false
-      return
+      lastSaved.current = ''
+      const t = setTimeout(() => {
+        isHydrating.current = false
+      }, 0)
+      return () => clearTimeout(t)
     }
 
     if (templateId) {
       const template = templates.find((t) => t.id === templateId)
-      console.log('TemplateEditor: Found template?', { found: !!template, template })
-      
-      // Skip reload if user is actively editing
-      if (isEditing.current && template) {
-        console.log('TemplateEditor: Skipping reload - user is editing')
-        return
-      }
-      
       if (template) {
-        applyingRemote.current = true
-        setName(template.name)
+        isHydrating.current = true
         
         // Convert flat TemplateSet[] to grouped DraftExercise[]
         const grouped = new Map<string, DraftSet[]>()
@@ -106,85 +139,65 @@ export function TemplateEditor({
           })
         }
         
-        setItems(
-          Array.from(grouped.entries()).map(([name, sets]) => ({
-            name,
-            sets,
-          }))
-        )
-        
-        console.log('TemplateEditor: Loaded template data', { name: template.name, setsCount: template.sets?.length })
-        setTimeout(() => {
-          applyingRemote.current = false
-        }, 50)
-      }
-    }
-  }, [templateId, templates, isNew, cryptoRandomId])
-
-  // Auto-save with debounce
-  useEffect(() => {
-    if (applyingRemote.current) {
-      console.log('TemplateEditor: Skipping auto-save (applying remote)')
-      return
-    }
-    if (!name.trim() || items.length === 0) {
-      console.log('TemplateEditor: Skipping auto-save (empty data)', { name: name.trim(), itemsLength: items.length })
-      return
-    }
-
-    console.log('TemplateEditor: Setting up auto-save timer', { name, itemsLength: items.length, templateId, isNew })
-
-    const timer = setTimeout(async () => {
-      // Convert DraftExercise[] to flat TemplateSet[]
-      const converted: TemplateSet[] = items.flatMap((it) =>
-        it.sets.map((s) => ({
-          id: s.id,
-          exercise: it.name,
-          reps: s.reps,
-          weightKg: s.weightKg,
+        const newItems = Array.from(grouped.entries()).map(([name, sets]) => ({
+          name,
+          sets,
         }))
-      )
-
-      console.log('TemplateEditor: Auto-saving template', { isNew, templateId, name, sets: converted })
-
-      try {
-        if (isNew) {
-          console.log('TemplateEditor: Creating new template')
-          const created = await onCreateTemplate(name.trim(), converted)
-          console.log('TemplateEditor: Created template', created)
-          isEditing.current = false
-          navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
-        } else if (templateId) {
-          console.log('TemplateEditor: Updating existing template', templateId)
-          await onUpdateTemplate({
-            id: templateId,
-            name: name.trim(),
-            sets: converted,
-            createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
-          })
-          console.log('TemplateEditor: Updated template')
-          // Reset editing flag after successful save
-          setTimeout(() => {
-            isEditing.current = false
-          }, 100)
-        }
-      } catch (error) {
-        console.error('TemplateEditor: Failed to save template:', error)
+        
+        setName(template.name)
+        setItems(newItems)
+        lastSaved.current = templateSignature
+        
+        const t = setTimeout(() => {
+          isHydrating.current = false
+        }, 0)
+        return () => clearTimeout(t)
       }
-    }, 500)
-
-    return () => {
-      console.log('TemplateEditor: Clearing auto-save timer')
-      clearTimeout(timer)
     }
-  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates])
+  }, [templateSignature, templateId, isNew, cryptoRandomId])
+
+  // Manual save function (called on blur)
+  const handleSave = useCallback(async () => {
+    if (isHydrating.current) return
+    if (!name.trim() || items.length === 0) return
+    
+    const snapshot = serialize(name, items)
+    if (snapshot === lastSaved.current) return
+    
+    lastSaved.current = snapshot
+    
+    // Convert DraftExercise[] to flat TemplateSet[]
+    const converted: TemplateSet[] = items.flatMap((it) =>
+      it.sets.map((s) => ({
+        id: s.id,
+        exercise: it.name,
+        reps: s.reps,
+        weightKg: s.weightKg,
+      }))
+    )
+
+    try {
+      if (isNew) {
+        const created = await onCreateTemplate(name.trim(), converted)
+        navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
+      } else if (templateId) {
+        await onUpdateTemplate({
+          id: templateId,
+          name: name.trim(),
+          sets: converted,
+          createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
+        })
+      }
+    } catch (error) {
+      console.error('TemplateEditor: Failed to save template:', error)
+    }
+  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates, serialize])
 
   const handleAddExercise = (exerciseName: string) => {
     const n = (exerciseName || '').trim()
     if (!n) return
     const key = exerciseKey(n)
     if (items.some((it) => exerciseKey(it.name) === key)) return
-    isEditing.current = true
     setItems((prev) => [
       ...prev,
       { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }] },
@@ -193,7 +206,6 @@ export function TemplateEditor({
   }
 
   const handleAddSet = (exerciseName: string) => {
-    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
@@ -204,7 +216,6 @@ export function TemplateEditor({
   }
 
   const handleRemoveSet = (exerciseName: string, setId: string) => {
-    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName ? { ...it, sets: it.sets.filter((s) => s.id !== setId) } : it
@@ -218,7 +229,6 @@ export function TemplateEditor({
     field: 'weightKg' | 'reps',
     value: number
   ) => {
-    isEditing.current = true
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
@@ -229,7 +239,6 @@ export function TemplateEditor({
   }
 
   const handleRemoveExercise = (exerciseName: string) => {
-    isEditing.current = true
     setItems((prev) => prev.filter((it) => it.name !== exerciseName))
   }
 
@@ -237,7 +246,6 @@ export function TemplateEditor({
     const { active, over } = event
     if (!over || active.id === over.id) return
 
-    isEditing.current = true
     setItems((items) => {
       const oldIndex = items.findIndex((item) => item.name === active.id)
       const newIndex = items.findIndex((item) => item.name === over.id)
@@ -283,10 +291,8 @@ export function TemplateEditor({
         <TextField
           label="Название шаблона"
           value={name}
-          onChange={(e) => {
-            isEditing.current = true
-            setName(e.target.value)
-          }}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={handleSave}
           fullWidth
           autoFocus
           sx={{
@@ -330,6 +336,7 @@ export function TemplateEditor({
                     onRemoveSet={handleRemoveSet}
                     onUpdateSet={handleUpdateSet}
                     onRemoveExercise={handleRemoveExercise}
+                    onSave={handleSave}
                   />
                 ))}
               </Stack>
@@ -399,6 +406,7 @@ interface SortableExerciseCardProps {
   onRemoveSet: (exerciseName: string, setId: string) => void
   onUpdateSet: (exerciseName: string, setId: string, field: 'weightKg' | 'reps', value: number) => void
   onRemoveExercise: (exerciseName: string) => void
+  onSave: () => void
 }
 
 function SortableExerciseCard({
@@ -410,6 +418,7 @@ function SortableExerciseCard({
   setConfirm,
   onAddSet,
   onUpdateSet,
+  onSave,
 }: SortableExerciseCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.name,
@@ -533,6 +542,7 @@ function SortableExerciseCard({
                       onChange={(e) =>
                         onUpdateSet(item.name, set.id, 'reps', parseInt(e.target.value) || 0)
                       }
+                      onBlur={onSave}
                       size="small"
                       sx={{ minWidth: 0 }}
                     />
@@ -543,6 +553,7 @@ function SortableExerciseCard({
                       onChange={(e) =>
                         onUpdateSet(item.name, set.id, 'weightKg', parseFloat(e.target.value) || 0)
                       }
+                      onBlur={onSave}
                       size="small"
                       sx={{ minWidth: 0 }}
                     />
