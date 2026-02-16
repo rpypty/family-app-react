@@ -12,6 +12,7 @@ import { WorkoutEditor } from './WorkoutEditor'
 import { WorkoutsTemplates } from './WorkoutsTemplates'
 import { ExerciseEditor } from './ExerciseEditor'
 import { TemplateEditor } from './TemplateEditor'
+import { WorkoutPicker } from './WorkoutPicker'
 
 export function WorkoutsScreen() {
   const location = useLocation()
@@ -56,6 +57,10 @@ export function WorkoutsScreen() {
     if (segments[0] !== 'miniapps' || segments[1] !== 'workouts') {
       return { view: 'home' as const }
     }
+    if (segments[2] === 'new') {
+      const params = new URLSearchParams(location.search)
+      return { view: 'new' as const, date: params.get('date') || undefined }
+    }
     if (segments[2] === 'exercise' && segments[3]) {
       return { view: 'exercise' as const, exerciseName: segments[3] }
     }
@@ -71,7 +76,7 @@ export function WorkoutsScreen() {
       return { view: 'workout' as const, workoutId: segments[3] }
     }
     return { view: 'home' as const }
-  }, [location.pathname])
+  }, [location.pathname, location.search])
 
   const activeTab = route.view === 'analytics' ? 2 : route.view === 'templates' ? 1 : 0
   const workoutId =
@@ -146,7 +151,37 @@ export function WorkoutsScreen() {
           Workouts
         </Typography>
 
-        {route.view === 'exercise' ? (
+        {route.view === 'new' ? (
+          <WorkoutPicker
+            templates={templates}
+            selectedDate={route.date}
+            onCreateFromTemplate={(templateId) => {
+              void (async () => {
+                try {
+                  const template = templates.find(t => t.id === templateId)
+                  if (!template) return
+                  
+                  const created = await createWorkout(route.date, template.name, templateId)
+                  navigate(`/miniapps/workouts/workout/${created.id}`)
+                } catch (error) {
+                  console.error('Failed to create workout from template:', error)
+                }
+              })()
+            }}
+            onCreateCustom={() => {
+              void (async () => {
+                try {
+                  console.log('Creating custom workout')
+                  const created = await createWorkout(route.date)
+                  console.log('Created workout:', created.id)
+                  navigate(`/miniapps/workouts/workout/${created.id}`)
+                } catch (error) {
+                  console.error('Failed to create custom workout:', error)
+                }
+              })()
+            }}
+          />
+        ) : route.view === 'exercise' ? (
           <ExerciseEditor
             exerciseName={route.exerciseName}
             exerciseMeta={exerciseMeta}
@@ -205,16 +240,14 @@ export function WorkoutsScreen() {
             onSelectDate={setSelectedDate}
             onOpenWorkout={(id) => navigate(`/miniapps/workouts/workout/${id}`)}
             onCreateWorkout={(date) => {
-              void (async () => {
-                const created = await createWorkout(date)
-                navigate(`/miniapps/workouts/workout/${created.id}`)
-              })()
+              const dateParam = date ? `?date=${date}` : ''
+              navigate(`/miniapps/workouts/new${dateParam}`)
             }}
           />
         )}
       </Box>
 
-      {!editingWorkout && route.view !== 'exercise' && route.view !== 'template' && (
+      {!editingWorkout && route.view !== 'exercise' && route.view !== 'template' && route.view !== 'new' && (
         <Paper
           elevation={0}
           square
