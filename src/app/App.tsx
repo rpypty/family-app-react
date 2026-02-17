@@ -611,7 +611,7 @@ function App() {
         : activeApp === 'gym'
           ? 'Тренировки'
           : activeApp === 'workouts'
-            ? 'Workouts'
+            ? 'Тренировки'
           : 'Миниаппы'
 
   const formattedLastSyncAt = useMemo(() => {

@@ -467,8 +467,8 @@ export function WorkoutEditor({
                               <TextField
                                 label="Повт."
                                 type="number"
-                                value={set.reps}
-                                onChange={(e) => handleUpdateSet(set.id, { reps: Number(e.target.value) || 0 })}
+                                value={set.reps || ''}
+                                onChange={(e) => handleUpdateSet(set.id, { reps: e.target.value === '' ? 0 : Number(e.target.value) })}
                                 onBlur={handleSave}
                                 size="small"
                                 sx={{ minWidth: 0 }}
@@ -478,7 +478,7 @@ export function WorkoutEditor({
                                   label="Вес"
                                   type="number"
                                   value={set.weightKg || ''}
-                                  onChange={(e) => handleUpdateSet(set.id, { weightKg: Number(e.target.value) || 0 })}
+                                  onChange={(e) => handleUpdateSet(set.id, { weightKg: e.target.value === '' ? 0 : Number(e.target.value) })}
                                   onBlur={handleSave}
                                   size="small"
                                   sx={{ minWidth: 0 }}
@@ -588,7 +588,11 @@ export function WorkoutEditor({
         open={isExercisePickerOpen}
         exercises={exercises}
         onClose={onCloseExercisePicker}
-        onCreate={onAddExercise}
+        onCreate={(name) => {
+          onAddExercise(name)
+          handleAddSetToExercise(name)
+          onCloseExercisePicker()
+        }}
         onSelect={(name) => {
           handleAddSetToExercise(name)
           onCloseExercisePicker()

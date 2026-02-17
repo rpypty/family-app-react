@@ -57,6 +57,7 @@ export type ExerciseSummary = {
   lastReps: number | null
   maxVolumeDay: number | null
   prCount: number
+  oneRepMax: number | null
 }
 
 export type ExerciseSeriesPoint = {
