@@ -196,12 +196,46 @@ export function WorkoutEditor({
   }
 
   const handleRemoveSet = (setId: string) => {
-    setSets((prev) => prev.filter((s) => s.id !== setId))
+    setSets((prev) => {
+      const updated = prev.filter((s) => s.id !== setId)
+      
+      // Save with the new state
+      setTimeout(() => {
+        const snapshot = serialize(name, date, updated)
+        if (snapshot === lastSaved.current) return
+        lastSaved.current = snapshot
+        onSave({
+          ...workout,
+          name: name.trim() || 'Тренировка',
+          date,
+          sets: updated,
+        })
+      }, 0)
+      
+      return updated
+    })
   }
 
   const handleRemoveExercise = (exerciseName: string) => {
     const key = exerciseKey(exerciseName)
-    setSets((prev) => prev.filter((s) => exerciseKey(s.exercise) !== key))
+    setSets((prev) => {
+      const updated = prev.filter((s) => exerciseKey(s.exercise) !== key)
+      
+      // Save with the new state
+      setTimeout(() => {
+        const snapshot = serialize(name, date, updated)
+        if (snapshot === lastSaved.current) return
+        lastSaved.current = snapshot
+        onSave({
+          ...workout,
+          name: name.trim() || 'Тренировка',
+          date,
+          sets: updated,
+        })
+      }, 0)
+      
+      return updated
+    })
   }
 
   const handleAddSetToExercise = (exerciseName: string) => {

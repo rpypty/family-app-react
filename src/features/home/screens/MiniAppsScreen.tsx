@@ -93,7 +93,7 @@ export function MiniAppsScreen({ onOpenExpenses, onOpenTodo, onOpenWorkouts }: M
           </Box>
           <Stack spacing={0.5} sx={{ flex: 1 }}>
             <Typography variant="h6" fontWeight={700}>
-              Workouts
+              Тренировки
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Новый журнал тренировок.

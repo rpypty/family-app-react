@@ -190,6 +190,7 @@ export function WorkoutsScreen() {
             templateId={route.templateId}
             templates={templates}
             exercises={exercises}
+            exerciseMeta={exerciseMeta}
             onCreateTemplate={createTemplate}
             onUpdateTemplate={updateTemplate}
           />
