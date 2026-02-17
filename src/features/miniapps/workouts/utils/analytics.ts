@@ -30,6 +30,7 @@ export const buildExerciseSummaries = (
       lastReps: null,
       maxVolumeDay: null,
       prCount: 0,
+      oneRepMax: null,
     }
 
     existing.totalSets += 1
@@ -53,6 +54,14 @@ export const buildExerciseSummaries = (
       const weight = Number(entry.weightKg) || 0
       if (existing.bestWeight === null || weight > existing.bestWeight) {
         existing.bestWeight = weight
+      }
+      
+      // Calculate 1RM using Epley formula: 1RM = weight × (1 + reps / 30)
+      if (weight > 0 && reps > 0) {
+        const estimated1RM = weight * (1 + reps / 30)
+        if (existing.oneRepMax === null || estimated1RM > existing.oneRepMax) {
+          existing.oneRepMax = estimated1RM
+        }
       }
     }
 

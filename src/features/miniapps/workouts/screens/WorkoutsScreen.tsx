@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Box, CircularProgress, Paper, BottomNavigation, BottomNavigationAction, Typography } from '@mui/material'
+import { Box, CircularProgress, Paper, BottomNavigation, BottomNavigationAction } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import RocketLaunchRounded from '@mui/icons-material/RocketLaunchRounded'
 import GridViewRounded from '@mui/icons-material/GridViewRounded'
@@ -147,10 +147,6 @@ export function WorkoutsScreen() {
       />
 
       <Box sx={{ position: 'relative', zIndex: 1 }}>
-        <Typography variant="h5" fontWeight={800} sx={{ mb: 2, color: 'var(--wk-ink)' }}>
-          Workouts
-        </Typography>
-
         {route.view === 'new' ? (
           <WorkoutPicker
             templates={templates}

@@ -105,51 +105,45 @@ export function useWorkoutsData() {
   )
 
   const createWorkout = async (date?: string, name?: string, templateId?: string) => {
-    // Create workout locally first for instant UI feedback
-    const localWorkout = createWorkoutLocal({
-      date: (date || todayISO()).trim(),
-      name: (name || 'Тренировка').trim() || 'Тренировка',
-      sets: [],
-    })
-    
-    const newWorkouts = sortWorkouts([localWorkout, ...workouts])
-    setWorkouts(newWorkouts)
-    saveWorkoutsStore(newWorkouts)
-    
-    // Try to sync with server in background
+    // Try to create on server first
     try {
       const serverWorkout = await createWorkoutApi({
-        date: localWorkout.date,
-        name: localWorkout.name,
+        date: (date || todayISO()).trim(),
+        name: (name || 'Тренировка').trim() || 'Тренировка',
         sets: [],
       }, templateId)
       
-      // Replace local workout with server workout
-      const updatedWorkouts = sortWorkouts(
-        newWorkouts.map((w) => (w.id === localWorkout.id ? serverWorkout : w))
-      )
-      setWorkouts(updatedWorkouts)
-      saveWorkoutsStore(updatedWorkouts)
+      // Add to state and save locally
+      const newWorkouts = sortWorkouts([serverWorkout, ...workouts])
+      setWorkouts(newWorkouts)
+      saveWorkoutsStore(newWorkouts)
       return serverWorkout
     } catch (error) {
-      console.warn('Failed to sync workout with server, keeping local copy', error)
+      console.warn('Failed to create workout on server, saving locally', error)
+      // Fallback to local-only workout
+      const localWorkout = createWorkoutLocal({
+        date: (date || todayISO()).trim(),
+        name: (name || 'Тренировка').trim() || 'Тренировка',
+        sets: [],
+      })
+      const newWorkouts = sortWorkouts([localWorkout, ...workouts])
+      setWorkouts(newWorkouts)
+      saveWorkoutsStore(newWorkouts)
       return localWorkout
     }
   }
 
   const updateWorkout = async (workout: Workout) => {
-    // Update locally first
+    // Update locally first for instant UI feedback
     const updatedWorkouts = sortWorkouts(workouts.map((w) => (w.id === workout.id ? workout : w)))
     setWorkouts(updatedWorkouts)
     saveWorkoutsStore(updatedWorkouts)
     
-    // Try to sync with server
+    // Try to sync with server in background
     try {
-      const serverWorkout = await updateWorkoutApi(workout)
-      const syncedWorkouts = sortWorkouts(updatedWorkouts.map((w) => (w.id === serverWorkout.id ? serverWorkout : w)))
-      setWorkouts(syncedWorkouts)
-      saveWorkoutsStore(syncedWorkouts)
-      return serverWorkout
+      await updateWorkoutApi(workout)
+      // No need to update state again - data is already current
+      return workout
     } catch (error) {
       console.warn('Failed to sync workout update with server, keeping local copy', error)
       return workout
@@ -290,17 +284,18 @@ export function useWorkoutsData() {
   }
 
   const updateTemplate = async (template: WorkoutTemplate) => {
+    // Update locally first for instant UI feedback
     const updatedTemplates = templates.map((t) => (t.id === template.id ? template : t))
+    setTemplates(updatedTemplates)
+    saveTemplates(updatedTemplates)
+    
+    // Try to sync with server in background
     try {
-      const updated = await updateTemplateApi(template)
-      const serverTemplates = templates.map((t) => (t.id === updated.id ? updated : t))
-      setTemplates(serverTemplates)
-      saveTemplates(serverTemplates)
-      return updated
+      await updateTemplateApi(template)
+      // No need to update state again - data is already current
+      return template
     } catch (error) {
-      console.warn('Failed to update template on server, saving locally', error)
-      setTemplates(updatedTemplates)
-      saveTemplates(updatedTemplates)
+      console.warn('Failed to update template on server, keeping local copy', error)
       return template
     }
   }

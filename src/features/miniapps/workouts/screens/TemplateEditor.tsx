@@ -157,7 +157,7 @@ export function TemplateEditor({
   }, [templateSignature, templateId, isNew, cryptoRandomId])
 
   // Manual save function (called on blur)
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (isHydrating.current) return
     if (!name.trim() || items.length === 0) return
     
@@ -176,20 +176,22 @@ export function TemplateEditor({
       }))
     )
 
-    try {
-      if (isNew) {
-        const created = await onCreateTemplate(name.trim(), converted)
-        navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
-      } else if (templateId) {
-        await onUpdateTemplate({
-          id: templateId,
-          name: name.trim(),
-          sets: converted,
-          createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
-        })
-      }
-    } catch (error) {
-      console.error('TemplateEditor: Failed to save template:', error)
+    if (isNew) {
+      void (async () => {
+        try {
+          const created = await onCreateTemplate(name.trim(), converted)
+          navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
+        } catch (error) {
+          console.error('TemplateEditor: Failed to create template:', error)
+        }
+      })()
+    } else if (templateId) {
+      void onUpdateTemplate({
+        id: templateId,
+        name: name.trim(),
+        sets: converted,
+        createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
+      })
     }
   }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates, serialize])
 
@@ -251,6 +253,9 @@ export function TemplateEditor({
       const newIndex = items.findIndex((item) => item.name === over.id)
       return arrayMove(items, oldIndex, newIndex)
     })
+    
+    // Save after reordering
+    setTimeout(handleSave, 0)
   }
 
   // Close swiped card when clicking outside
@@ -276,9 +281,15 @@ export function TemplateEditor({
       <ExercisePicker
         open={isPickerOpen}
         exercises={exercises}
-        onSelect={handleAddExercise}
+        onSelect={(name) => {
+          handleAddExercise(name)
+          setIsPickerOpen(false)
+        }}
         onClose={() => setIsPickerOpen(false)}
-        onCreate={handleAddExercise}
+        onCreate={(name) => {
+          handleAddExercise(name)
+          setIsPickerOpen(false)
+        }}
       />
 
       <Stack spacing={2.5}>
@@ -540,7 +551,7 @@ function SortableExerciseCard({
                       type="number"
                       value={set.reps || ''}
                       onChange={(e) =>
-                        onUpdateSet(item.name, set.id, 'reps', parseInt(e.target.value) || 0)
+                        onUpdateSet(item.name, set.id, 'reps', e.target.value === '' ? 0 : parseInt(e.target.value))
                       }
                       onBlur={onSave}
                       size="small"
@@ -551,7 +562,7 @@ function SortableExerciseCard({
                       type="number"
                       value={set.weightKg || ''}
                       onChange={(e) =>
-                        onUpdateSet(item.name, set.id, 'weightKg', parseFloat(e.target.value) || 0)
+                        onUpdateSet(item.name, set.id, 'weightKg', e.target.value === '' ? 0 : parseFloat(e.target.value))
                       }
                       onBlur={onSave}
                       size="small"

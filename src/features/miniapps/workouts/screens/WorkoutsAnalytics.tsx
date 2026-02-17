@@ -3,10 +3,12 @@ import {
   Box,
   Card,
   CardContent,
-  Chip,
   Divider,
   Stack,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
 } from '@mui/material'
 import type { ExerciseMeta, Workout } from '../types'
 import { buildExerciseSummaries, computeMaxVolumeByDay, computeSeries } from '../utils/analytics'
@@ -18,19 +20,34 @@ interface WorkoutsAnalyticsProps {
   exerciseMeta: Record<string, ExerciseMeta>
 }
 
+type DateFilter = 'all' | '30d' | '90d' | '180d' | '365d'
+
 export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsProps) {
   const [expandedKey, setExpandedKey] = useState<string>('')
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [hoveredPoint, setHoveredPoint] = useState<{ exercise: string; index: number } | null>(null)
 
-  const entries = useMemo(() => workoutEntries(workouts), [workouts])
+  const filteredWorkouts = useMemo(() => {
+    if (dateFilter === 'all') return workouts
+    
+    const now = new Date()
+    const daysMap: Record<Exclude<DateFilter, 'all'>, number> = {
+      '30d': 30,
+      '90d': 90,
+      '180d': 180,
+      '365d': 365,
+    }
+    const days = daysMap[dateFilter as Exclude<DateFilter, 'all'>]
+    const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+    
+    return workouts.filter(w => {
+      const workoutDate = new Date(w.date)
+      return workoutDate >= cutoffDate
+    })
+  }, [workouts, dateFilter])
+
+  const entries = useMemo(() => workoutEntries(filteredWorkouts), [filteredWorkouts])
   const summaries = useMemo(() => buildExerciseSummaries(entries, exerciseMeta), [entries, exerciseMeta])
-
-  const renderTrend = (count: number) => (
-    <Chip
-      label={`PR x${count}`}
-      size="small"
-      sx={{ bgcolor: count > 0 ? 'var(--wk-accent-soft)' : 'var(--wk-ink-soft)', fontWeight: 600 }}
-    />
-  )
 
   const renderSparkline = (exercise: string, isWeightless: boolean) => {
     const points = computeSeries(entries, exercise, isWeightless)
@@ -86,7 +103,38 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
                 style={{ color: 'var(--wk-accent)' }}
               />
               {points.map((p, i) => (
-                <circle key={p.dateISO} cx={toX(i)} cy={toY(p.value)} r={3} fill="var(--wk-accent)" />
+                <Tooltip
+                  key={p.dateISO}
+                  title={
+                    <Box>
+                      <Typography variant="caption" display="block">
+                        {formatShortDate(p.dateISO)}
+                      </Typography>
+                      <Typography variant="caption" display="block" fontWeight={700}>
+                        {formatValue(p.value)} {unit}
+                      </Typography>
+                    </Box>
+                  }
+                  arrow
+                  open={hoveredPoint?.exercise === exercise && hoveredPoint?.index === i}
+                >
+                  <circle
+                    cx={toX(i)}
+                    cy={toY(p.value)}
+                    r={hoveredPoint?.exercise === exercise && hoveredPoint?.index === i ? 5 : 3}
+                    fill="var(--wk-accent)"
+                    style={{ cursor: 'pointer', transition: 'r 0.2s' }}
+                    onMouseEnter={() => setHoveredPoint({ exercise, index: i })}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                    onClick={() => {
+                      if (hoveredPoint?.exercise === exercise && hoveredPoint?.index === i) {
+                        setHoveredPoint(null)
+                      } else {
+                        setHoveredPoint({ exercise, index: i })
+                      }
+                    }}
+                  />
+                </Tooltip>
               ))}
             </svg>
             <Stack
@@ -109,11 +157,23 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
               </Typography>
             </Stack>
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              mt: 0.5,
+              width: width,
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'left', flex: '0 0 auto' }}>
               {formatShortDate(points[0]?.dateISO ?? '')}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            {points.length > 2 && (
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', flex: '1 1 auto' }}>
+                {formatShortDate(points[Math.floor(points.length / 2)]?.dateISO ?? '')}
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right', flex: '0 0 auto' }}>
               {formatShortDate(points[points.length - 1]?.dateISO ?? '')}
             </Typography>
           </Box>
@@ -128,6 +188,42 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
         <Typography variant="h6" fontWeight={700} sx={{ color: 'var(--wk-ink)' }}>
           Аналитика
         </Typography>
+
+        <Box>
+          <Typography variant="caption" sx={{ color: 'var(--wk-muted)', mb: 1, display: 'block' }}>
+            Период
+          </Typography>
+          <ToggleButtonGroup
+            value={dateFilter}
+            exclusive
+            onChange={(_, value) => value && setDateFilter(value)}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 2,
+                py: 0.5,
+                fontSize: '0.75rem',
+                textTransform: 'none',
+                borderColor: 'var(--wk-border)',
+                color: 'var(--wk-muted)',
+                '&.Mui-selected': {
+                  bgcolor: 'var(--wk-accent)',
+                  color: 'var(--wk-accent-contrast)',
+                  borderColor: 'var(--wk-accent)',
+                  '&:hover': {
+                    bgcolor: 'var(--wk-accent)',
+                  },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="all">Всё время</ToggleButton>
+            <ToggleButton value="30d">30 дней</ToggleButton>
+            <ToggleButton value="90d">90 дней</ToggleButton>
+            <ToggleButton value="180d">180 дней</ToggleButton>
+            <ToggleButton value="365d">Год</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
 
         {summaries.length === 0 ? (
           <Typography sx={{ color: 'var(--wk-muted)' }}>Нет данных для аналитики</Typography>
@@ -144,12 +240,9 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
               >
                 <CardContent>
                   <Stack spacing={1.25}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ color: 'var(--wk-ink)', minWidth: 0 }}>
-                        {item.name}
-                      </Typography>
-                      {renderTrend(item.prCount)}
-                    </Stack>
+                    <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ color: 'var(--wk-ink)', minWidth: 0 }}>
+                      {item.name}
+                    </Typography>
 
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                       <Box
@@ -190,6 +283,26 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
                             : `${item.bestWeight ?? '—'} кг`}
                         </Typography>
                       </Box>
+                      {!item.isWeightless && item.oneRepMax !== null && (
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            gap: 0.5,
+                            px: 1,
+                            py: 0.5,
+                            borderRadius: 999,
+                            bgcolor: 'var(--wk-accent-soft)',
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
+                            1RM
+                          </Typography>
+                          <Typography variant="body2" fontWeight={700} sx={{ color: 'var(--wk-ink)' }}>
+                            {Math.round(item.oneRepMax)} кг
+                          </Typography>
+                        </Box>
+                      )}
                       <Box
                         sx={{
                           display: 'flex',
@@ -216,24 +329,6 @@ export function WorkoutsAnalytics({ workouts, exerciseMeta }: WorkoutsAnalyticsP
                       <>
                         <Divider />
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'baseline',
-                              gap: 0.5,
-                              px: 1,
-                              py: 0.5,
-                              borderRadius: 999,
-                              bgcolor: 'var(--wk-ink-soft)',
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
-                              Кол-во рекордов
-                            </Typography>
-                            <Typography variant="body2" fontWeight={700} sx={{ color: 'var(--wk-ink)' }}>
-                              {item.prCount}
-                            </Typography>
-                          </Box>
                           <Box
                             sx={{
                               display: 'flex',
