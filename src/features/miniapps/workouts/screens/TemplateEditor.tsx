@@ -22,7 +22,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { WorkoutTemplate, TemplateSet } from '../types'
+import type { ExerciseMeta, WorkoutTemplate, TemplateSet } from '../types'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { exerciseKey } from '../utils/workout'
 
@@ -30,12 +30,13 @@ interface TemplateEditorProps {
   templateId?: string
   templates: WorkoutTemplate[]
   exercises: string[]
+  exerciseMeta: Record<string, ExerciseMeta>
   onCreateTemplate: (name: string, sets: TemplateSet[]) => Promise<WorkoutTemplate>
   onUpdateTemplate: (template: WorkoutTemplate) => Promise<WorkoutTemplate>
 }
 
 type DraftSet = { id: string; weightKg: number; reps: number }
-type DraftExercise = { name: string; sets: DraftSet[] }
+type DraftExercise = { name: string; sets: DraftSet[]; isWeightless: boolean }
 
 type ConfirmState =
   | { open: false }
@@ -46,6 +47,7 @@ export function TemplateEditor({
   templateId: templateIdProp,
   templates,
   exercises,
+  exerciseMeta,
   onCreateTemplate,
   onUpdateTemplate,
 }: TemplateEditorProps) {
@@ -73,6 +75,7 @@ export function TemplateEditor({
       name: n.trim(),
       items: its.map(it => ({
         name: it.name,
+        isWeightless: it.isWeightless,
         sets: it.sets.map(s => ({
           id: s.id,
           weightKg: s.weightKg,
@@ -85,10 +88,15 @@ export function TemplateEditor({
   // Serialize template from props (what comes from parent)
   const serializeTemplate = useCallback((template: WorkoutTemplate | undefined) => {
     if (!template) return ''
+    
+    // Group sets by exercise while preserving order of first appearance
+    const exerciseOrder: string[] = []
     const grouped = new Map<string, DraftSet[]>()
+    
     for (const set of template.sets || []) {
       if (!grouped.has(set.exercise)) {
         grouped.set(set.exercise, [])
+        exerciseOrder.push(set.exercise) // Track order of first appearance
       }
       grouped.get(set.exercise)!.push({
         id: set.id || cryptoRandomId(),
@@ -96,12 +104,20 @@ export function TemplateEditor({
         reps: set.reps || 8,
       })
     }
-    const items = Array.from(grouped.entries()).map(([name, sets]) => ({
-      name,
-      sets,
-    }))
+    
+    // Build items array in the order exercises first appeared
+    const items = exerciseOrder.map(name => {
+      const key = exerciseKey(name)
+      const meta = exerciseMeta[key]
+      return {
+        name,
+        sets: grouped.get(name)!,
+        isWeightless: meta?.isWeightless || false,
+      }
+    })
+    
     return serialize(template.name, items)
-  }, [cryptoRandomId, serialize])
+  }, [cryptoRandomId, serialize, exerciseMeta])
 
   // Create signature from incoming template
   const templateSignature = serializeTemplate(
@@ -139,10 +155,15 @@ export function TemplateEditor({
           })
         }
         
-        const newItems = Array.from(grouped.entries()).map(([name, sets]) => ({
-          name,
-          sets,
-        }))
+        const newItems = Array.from(grouped.entries()).map(([name, sets]) => {
+          const key = exerciseKey(name)
+          const meta = exerciseMeta[key]
+          return {
+            name,
+            sets,
+            isWeightless: meta?.isWeightless || false,
+          }
+        })
         
         setName(template.name)
         setItems(newItems)
@@ -200,9 +221,10 @@ export function TemplateEditor({
     if (!n) return
     const key = exerciseKey(n)
     if (items.some((it) => exerciseKey(it.name) === key)) return
+    const meta = exerciseMeta[key]
     setItems((prev) => [
       ...prev,
-      { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }] },
+      { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }], isWeightless: meta?.isWeightless || false },
     ])
     setIsPickerOpen(false)
   }
@@ -218,11 +240,34 @@ export function TemplateEditor({
   }
 
   const handleRemoveSet = (exerciseName: string, setId: string) => {
-    setItems((prev) =>
-      prev.map((it) =>
+    setItems((prev) => {
+      const updated = prev.map((it) =>
         it.name === exerciseName ? { ...it, sets: it.sets.filter((s) => s.id !== setId) } : it
       )
-    )
+      
+      // Save with the new state
+      setTimeout(() => {
+        const converted = updated.flatMap((it) =>
+          it.sets.map((s) => ({
+            id: s.id,
+            exercise: it.name,
+            reps: s.reps,
+            weightKg: s.weightKg,
+          }))
+        )
+        
+        if (!isNew && templateId) {
+          void onUpdateTemplate({
+            id: templateId,
+            name: name.trim(),
+            sets: converted,
+            createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
+          })
+        }
+      }, 0)
+      
+      return updated
+    })
   }
 
   const handleUpdateSet = (
@@ -241,7 +286,32 @@ export function TemplateEditor({
   }
 
   const handleRemoveExercise = (exerciseName: string) => {
-    setItems((prev) => prev.filter((it) => it.name !== exerciseName))
+    setItems((prev) => {
+      const updated = prev.filter((it) => it.name !== exerciseName)
+      
+      // Save with the new state
+      setTimeout(() => {
+        const converted = updated.flatMap((it) =>
+          it.sets.map((s) => ({
+            id: s.id,
+            exercise: it.name,
+            reps: s.reps,
+            weightKg: s.weightKg,
+          }))
+        )
+        
+        if (!isNew && templateId) {
+          void onUpdateTemplate({
+            id: templateId,
+            name: name.trim(),
+            sets: converted,
+            createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
+          })
+        }
+      }, 0)
+      
+      return updated
+    })
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -251,11 +321,31 @@ export function TemplateEditor({
     setItems((items) => {
       const oldIndex = items.findIndex((item) => item.name === active.id)
       const newIndex = items.findIndex((item) => item.name === over.id)
-      return arrayMove(items, oldIndex, newIndex)
+      const reordered = arrayMove(items, oldIndex, newIndex)
+      
+      // Save after reordering with the new state
+      setTimeout(() => {
+        const converted = reordered.flatMap((it) =>
+          it.sets.map((s) => ({
+            id: s.id,
+            exercise: it.name,
+            reps: s.reps,
+            weightKg: s.weightKg,
+          }))
+        )
+        
+        if (!isNew && templateId) {
+          void onUpdateTemplate({
+            id: templateId,
+            name: name.trim(),
+            sets: converted,
+            createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
+          })
+        }
+      }, 0)
+      
+      return reordered
     })
-    
-    // Save after reordering
-    setTimeout(handleSave, 0)
   }
 
   // Close swiped card when clicking outside
@@ -541,7 +631,9 @@ function SortableExerciseCard({
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: { xs: '1fr 1fr auto', sm: '120px 120px auto' },
+                      gridTemplateColumns: item.isWeightless
+                        ? { xs: '1fr auto', sm: '140px auto' }
+                        : { xs: '1fr 1fr auto', sm: '120px 120px auto' },
                       gap: 1,
                       alignItems: 'center',
                     }}
@@ -557,17 +649,19 @@ function SortableExerciseCard({
                       size="small"
                       sx={{ minWidth: 0 }}
                     />
-                    <TextField
-                      label="Вес"
-                      type="number"
-                      value={set.weightKg || ''}
-                      onChange={(e) =>
-                        onUpdateSet(item.name, set.id, 'weightKg', e.target.value === '' ? 0 : parseFloat(e.target.value))
-                      }
-                      onBlur={onSave}
-                      size="small"
-                      sx={{ minWidth: 0 }}
-                    />
+                    {!item.isWeightless && (
+                      <TextField
+                        label="Вес"
+                        type="number"
+                        value={set.weightKg || ''}
+                        onChange={(e) =>
+                          onUpdateSet(item.name, set.id, 'weightKg', e.target.value === '' ? 0 : parseFloat(e.target.value))
+                        }
+                        onBlur={onSave}
+                        size="small"
+                        sx={{ minWidth: 0 }}
+                      />
+                    )}
                     <IconButton
                       size="small"
                       onClick={() =>
