@@ -2,6 +2,8 @@ export type Currency = 'BYN' | 'USD' | 'EUR' | 'RUB'
 
 export type ThemeMode = 'light' | 'dark'
 
+export type SyncState = 'pending' | 'synced' | 'failed'
+
 export type Expense = {
   id: string
   date: string
@@ -9,6 +11,7 @@ export type Expense = {
   currency: Currency
   title: string
   tagIds: string[]
+  syncState?: SyncState
 }
 
 export type Tag = {
@@ -31,6 +34,7 @@ export type TodoItem = {
   createdAt: string
   completedAt?: string
   completedBy?: TodoUser
+  syncState?: SyncState
 }
 
 export type TodoListSettings = {

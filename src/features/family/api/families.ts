@@ -48,18 +48,52 @@ const mapFamilyMember = (member: ApiFamilyMember): FamilyMember => ({
   avatarUrl: member.avatar_url ?? null,
 })
 
+const CURRENT_FAMILY_CACHE_TTL_MS = 1500
+
+let currentFamilyInFlight: Promise<Family | null> | null = null
+let currentFamilyLastResolvedAt = 0
+let currentFamilyLastValue: Family | null = null
+let hasResolvedCurrentFamily = false
+
+const setCurrentFamilyCache = (family: Family | null) => {
+  currentFamilyLastValue = family
+  currentFamilyLastResolvedAt = Date.now()
+  hasResolvedCurrentFamily = true
+}
+
 export const getCurrentFamily = async (options?: {
   timeoutMs?: number
 }): Promise<Family | null> => {
-  try {
-    const family = await apiFetch<ApiFamily>('/families/me', options)
-    return mapFamily(family)
-  } catch (error) {
-    if (isApiError(error) && (error.status === 404 || error.code === 'family_not_found')) {
-      return null
-    }
-    throw error
+  const now = Date.now()
+  if (
+    hasResolvedCurrentFamily &&
+    now - currentFamilyLastResolvedAt < CURRENT_FAMILY_CACHE_TTL_MS
+  ) {
+    return currentFamilyLastValue
   }
+
+  if (currentFamilyInFlight) {
+    return currentFamilyInFlight
+  }
+
+  currentFamilyInFlight = (async () => {
+    try {
+      const family = await apiFetch<ApiFamily>('/families/me', options)
+      const mapped = mapFamily(family)
+      setCurrentFamilyCache(mapped)
+      return mapped
+    } catch (error) {
+      if (isApiError(error) && (error.status === 404 || error.code === 'family_not_found')) {
+        setCurrentFamilyCache(null)
+        return null
+      }
+      throw error
+    } finally {
+      currentFamilyInFlight = null
+    }
+  })()
+
+  return currentFamilyInFlight
 }
 
 export const getUserFamilyId = async (_userId: string): Promise<string | null> => {
@@ -79,7 +113,9 @@ export const createFamily = async ({ name }: { name: string }): Promise<Family> 
     method: 'POST',
     body: JSON.stringify({ name: name.trim() || 'Моя семья' }),
   })
-  return mapFamily(family)
+  const mapped = mapFamily(family)
+  setCurrentFamilyCache(mapped)
+  return mapped
 }
 
 export const joinFamilyByCode = async ({ code }: { code: string }): Promise<Family> => {
@@ -87,13 +123,16 @@ export const joinFamilyByCode = async ({ code }: { code: string }): Promise<Fami
     method: 'POST',
     body: JSON.stringify({ code }),
   })
-  return mapFamily(family)
+  const mapped = mapFamily(family)
+  setCurrentFamilyCache(mapped)
+  return mapped
 }
 
 export const leaveFamily = async (): Promise<void> => {
   await apiFetch<void>('/families/leave', {
     method: 'POST',
   })
+  setCurrentFamilyCache(null)
 }
 
 export const updateFamilyName = async (name: string): Promise<Family> => {
@@ -101,7 +140,9 @@ export const updateFamilyName = async (name: string): Promise<Family> => {
     method: 'PATCH',
     body: JSON.stringify({ name }),
   })
-  return mapFamily(family)
+  const mapped = mapFamily(family)
+  setCurrentFamilyCache(mapped)
+  return mapped
 }
 
 export const listFamilyMembers = async (): Promise<FamilyMember[]> => {

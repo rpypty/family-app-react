@@ -6,7 +6,7 @@ export function OfflineBlockedScreen() {
       <Stack spacing={3} sx={{ width: '100%' }}>
         <Stack spacing={1}>
           <Typography variant="h5" fontWeight={700}>
-            Не удалось установить соединение, попробуйте позже
+            Что-то пошло не так, попробуйте позже
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Приложение не может загрузить сессию и данные из сети, а локального кэша нет.
