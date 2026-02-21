@@ -6,24 +6,23 @@ export function OfflineBlockedScreen() {
       <Stack spacing={3} sx={{ width: '100%' }}>
         <Stack spacing={1}>
           <Typography variant="h5" fontWeight={700}>
-            Нет подключения к интернету
+            Не удалось установить соединение, попробуйте позже
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Для первого входа нужен интернет. Подключитесь к сети и обновите страницу.
+            Приложение не может загрузить сессию и данные из сети, а локального кэша нет.
           </Typography>
         </Stack>
 
         <Card elevation={0}>
           <CardContent>
             <Alert severity="info">
-              После первого входа приложение сможет открываться оффлайн и показывать
-              последние синхронизированные данные.
+              Проверьте интернет-соединение и повторите попытку.
             </Alert>
           </CardContent>
         </Card>
 
         <Button variant="contained" onClick={() => window.location.reload()}>
-          Обновить страницу
+          Повторить
         </Button>
       </Stack>
     </Container>

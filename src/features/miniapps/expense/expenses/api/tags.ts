@@ -12,8 +12,8 @@ const mapTag = (tag: ApiTag): Tag => ({
   name: tag.name,
 })
 
-export const listTags = async (): Promise<Tag[]> => {
-  const response = await apiFetch<ApiTag[]>('/tags')
+export const listTags = async (options?: { timeoutMs?: number }): Promise<Tag[]> => {
+  const response = await apiFetch<ApiTag[]>('/tags', options)
   return response.map(mapTag)
 }
 

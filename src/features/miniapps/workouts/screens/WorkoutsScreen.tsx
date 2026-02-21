@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Box, CircularProgress, Paper, BottomNavigation, BottomNavigationAction } from '@mui/material'
+import { Box, LinearProgress, Paper, BottomNavigation, BottomNavigationAction } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import RocketLaunchRounded from '@mui/icons-material/RocketLaunchRounded'
 import GridViewRounded from '@mui/icons-material/GridViewRounded'
@@ -84,18 +84,11 @@ export function WorkoutsScreen() {
   const editingWorkout = workoutId ? workouts.find((w) => w.id === workoutId) || null : null
 
   useEffect(() => {
+    if (loading) return
     if (!editingWorkout && (route.view === 'workout' || route.view === 'workout-exercises')) {
       navigate('/miniapps/workouts', { replace: true })
     }
-  }, [editingWorkout, navigate, route.view])
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}>
-        <CircularProgress />
-      </Box>
-    )
-  }
+  }, [editingWorkout, loading, navigate, route.view])
 
   return (
     <Box
@@ -123,6 +116,7 @@ export function WorkoutsScreen() {
         '--wk-selected-dark': themeValue.palette.mode === 'dark' ? '#1F2937' : 'var(--wk-ink)',
       })}
     >
+      {loading ? <LinearProgress sx={{ mb: 1 }} /> : null}
       <Box
         sx={{
           position: 'absolute',

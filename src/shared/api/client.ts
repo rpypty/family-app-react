@@ -12,6 +12,20 @@ export type ApiError = Error & {
   code?: string
 }
 
+type ApiRequestOptions = RequestInit & {
+  timeoutMs?: number
+}
+
+export class ApiTimeoutError extends Error {
+  readonly timeoutMs: number
+
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`)
+    this.name = 'ApiTimeoutError'
+    this.timeoutMs = timeoutMs
+  }
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -48,24 +62,91 @@ const buildError = async (response: Response): Promise<ApiError> => {
   return error
 }
 
+const isAbortError = (error: unknown): boolean => {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return error.name === 'AbortError'
+  }
+  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
+}
+
+const resolveSignal = (
+  externalSignal: AbortSignal | null,
+  timeoutMs?: number,
+): {
+  signal: AbortSignal | undefined
+  isTimedOut: () => boolean
+  cleanup: () => void
+} => {
+  if (timeoutMs === undefined || timeoutMs <= 0) {
+    return {
+      signal: externalSignal ?? undefined,
+      isTimedOut: () => false,
+      cleanup: () => {},
+    }
+  }
+
+  const controller = new AbortController()
+  let timedOut = false
+  const timeoutId: ReturnType<typeof setTimeout> = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+
+  const handleExternalAbort = () => {
+    controller.abort()
+  }
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort()
+    } else {
+      externalSignal.addEventListener('abort', handleExternalAbort)
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    isTimedOut: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timeoutId)
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', handleExternalAbort)
+      }
+    },
+  }
+}
+
 export const apiFetch = async <T>(
   path: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> => {
   const token = await resolveAccessToken()
-  const headers = new Headers(options.headers)
+  const { timeoutMs, signal: externalSignal, ...requestOptions } = options
+  const headers = new Headers(requestOptions.headers)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  if (options.body && !headers.has('Content-Type')) {
+  if (requestOptions.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  const requestSignal = resolveSignal(externalSignal ?? null, timeoutMs)
 
   const url = `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      headers,
+      signal: requestSignal.signal,
+    })
+  } catch (error) {
+    requestSignal.cleanup()
+    if (requestSignal.isTimedOut() && isAbortError(error)) {
+      throw new ApiTimeoutError(timeoutMs ?? 0)
+    }
+    throw error
+  }
+  requestSignal.cleanup()
 
   if (response.status === 204) {
     return undefined as T
@@ -81,4 +162,8 @@ export const apiFetch = async <T>(
 
 export const isApiError = (error: unknown): error is ApiError => {
   return typeof error === 'object' && error !== null && 'status' in error
+}
+
+export const isApiTimeoutError = (error: unknown): error is ApiTimeoutError => {
+  return error instanceof ApiTimeoutError
 }

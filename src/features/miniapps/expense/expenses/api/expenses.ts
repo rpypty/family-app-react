@@ -54,16 +54,20 @@ const buildQuery = (params: ExpenseListParams): string => {
 
 export const listExpensePage = async (
   params: ExpenseListParams = {},
+  options?: { timeoutMs?: number },
 ): Promise<{ items: Expense[]; total: number }> => {
-  const response = await apiFetch<ExpenseListResponse>(`/expenses${buildQuery(params)}`)
+  const response = await apiFetch<ExpenseListResponse>(`/expenses${buildQuery(params)}`, options)
   return {
     items: response.items.map(mapExpense),
     total: response.total,
   }
 }
 
-export const listExpenses = async (params: ExpenseListParams = {}): Promise<Expense[]> => {
-  const response = await listExpensePage(params)
+export const listExpenses = async (
+  params: ExpenseListParams = {},
+  options?: { timeoutMs?: number },
+): Promise<Expense[]> => {
+  const response = await listExpensePage(params, options)
   return response.items
 }
 
