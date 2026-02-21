@@ -12,7 +12,7 @@ import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import GoogleIcon from '@mui/icons-material/Google'
 type AuthScreenProps = {
   onSignIn: () => Promise<void> | void
-  onBack: () => void
+  onBack?: () => void
   isConfigured?: boolean
 }
 
@@ -75,13 +75,15 @@ export function AuthScreen({ onSignIn, onBack, isConfigured = true }: AuthScreen
 
         {error ? <Alert severity="error">{error}</Alert> : null}
 
-        <Button
-          color="inherit"
-          startIcon={<ArrowBackRounded />}
-          onClick={onBack}
-        >
-          Назад
-        </Button>
+        {onBack ? (
+          <Button
+            color="inherit"
+            startIcon={<ArrowBackRounded />}
+            onClick={onBack}
+          >
+            Назад
+          </Button>
+        ) : null}
       </Stack>
     </Container>
   )

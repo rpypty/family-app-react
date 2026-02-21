@@ -25,6 +25,7 @@ import {
   Menu,
   MenuItem,
   Paper,
+  Snackbar,
   Stack,
   Tooltip,
   Typography,
@@ -91,7 +92,6 @@ import {
 import { ExpensesScreen } from '../features/miniapps/expense/expenses/screens/ExpensesScreen'
 import { AnalyticsScreen } from '../features/miniapps/expense/analytics/screens/AnalyticsScreen'
 import { ReportsScreen } from '../features/miniapps/expense/reports/screens/ReportsScreen'
-import { WelcomeScreen } from '../features/onboarding/screens/WelcomeScreen'
 import { AuthScreen } from '../features/auth/screens/AuthScreen'
 import { FamilyScreen } from '../features/family/screens/FamilyScreen'
 import { AppLoadingScreen } from '../features/onboarding/screens/AppLoadingScreen'
@@ -100,6 +100,24 @@ import { MiniAppsScreen } from '../features/home/screens/MiniAppsScreen'
 import { TodoScreen } from '../features/miniapps/todo/screens/TodoScreen'
 import { WorkoutsScreen } from '../features/miniapps/workouts/screens/WorkoutsScreen'
 import { ApiTimeoutError, isApiError, isApiTimeoutError } from '../shared/api/client'
+import { createId } from '../shared/lib/uuid'
+import {
+  syncOfflineBatch,
+  type SyncEntityMapping,
+  type SyncOperation,
+  type SyncOperationResult,
+} from '../features/sync/api/sync'
+import {
+  applyTodoMappingsToOperations,
+  clearOfflineOutbox,
+  createOperationId,
+  loadOfflineOutbox,
+  resolvePendingCreateIds,
+  resolvePendingTodoItemIds,
+  saveOfflineOutbox,
+  upsertTodoToggleOperation,
+  type OfflineOutboxOperation,
+} from '../features/sync/model/offlineOutbox'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
 type AppId = 'home' | 'expenses' | 'todo' | 'gym' | 'workouts'
@@ -305,11 +323,177 @@ const INITIAL_SYNC_TIMEOUT_MS = 5_000
 const AUTO_RETRY_INTERVAL_MS = 20_000
 const MANUAL_RETRY_TIMEOUT_MS = 15_000
 
+const sortExpensesByDateDesc = (expenses: Expense[]) =>
+  [...expenses].sort((left, right) => {
+    if (left.date === right.date) return 0
+    return left.date < right.date ? 1 : -1
+  })
+
+const applySyncEntityMappingsToState = (
+  state: StorageState,
+  mappings: SyncEntityMapping[],
+): StorageState => {
+  if (mappings.length === 0) return state
+
+  const expenseMappings = new Map<string, string>()
+  const todoMappings = new Map<string, string>()
+
+  mappings.forEach((mapping) => {
+    if (mapping.entity === 'expense') {
+      expenseMappings.set(mapping.local_id, mapping.server_id)
+      return
+    }
+    if (mapping.entity === 'todo_item') {
+      todoMappings.set(mapping.local_id, mapping.server_id)
+    }
+  })
+
+  if (expenseMappings.size === 0 && todoMappings.size === 0) {
+    return state
+  }
+
+  const expenses = expenseMappings.size > 0
+    ? state.expenses.map((expense) => ({
+        ...expense,
+        id: expenseMappings.get(expense.id) ?? expense.id,
+      }))
+    : state.expenses
+
+  const todoLists = todoMappings.size > 0
+    ? state.todoLists.map((list) => ({
+        ...list,
+        items: list.items.map((item) => ({
+          ...item,
+          id: todoMappings.get(item.id) ?? item.id,
+        })),
+      }))
+    : state.todoLists
+
+  return {
+    ...state,
+    expenses,
+    todoLists,
+  }
+}
+
+const applyPendingSyncState = (
+  state: StorageState,
+  operations: OfflineOutboxOperation[],
+): StorageState => {
+  const pendingCreateIds = resolvePendingCreateIds(operations)
+  const pendingTodoItemIds = resolvePendingTodoItemIds(operations)
+
+  const expenses = state.expenses.map((expense) => {
+    if (pendingCreateIds.expenseIds.has(expense.id)) {
+      if (expense.syncState === 'pending') return expense
+      return {
+        ...expense,
+        syncState: 'pending' as const,
+      }
+    }
+    if (expense.syncState !== undefined) {
+      const { syncState, ...rest } = expense
+      void syncState
+      return rest
+    }
+    return expense
+  })
+
+  const todoLists = state.todoLists.map((list) => ({
+    ...list,
+    items: list.items.map((item) => {
+      if (pendingTodoItemIds.has(item.id)) {
+        if (item.syncState === 'pending') return item
+        return {
+          ...item,
+          syncState: 'pending' as const,
+        }
+      }
+      if (item.syncState !== undefined) {
+        const { syncState, ...rest } = item
+        void syncState
+        return rest
+      }
+      return item
+    }),
+  }))
+
+  return {
+    ...state,
+    expenses,
+    todoLists,
+  }
+}
+
+const mergeFetchedStateWithPendingCreates = (
+  fetchedState: Pick<StorageState, 'expenses' | 'tags' | 'todoLists'>,
+  previousState: StorageState,
+  operations: OfflineOutboxOperation[],
+): Pick<StorageState, 'expenses' | 'tags' | 'todoLists'> => {
+  const pendingCreateIds = resolvePendingCreateIds(operations)
+  if (pendingCreateIds.expenseIds.size === 0 && pendingCreateIds.todoIds.size === 0) {
+    return fetchedState
+  }
+
+  const pendingExpenses = previousState.expenses.filter((expense) =>
+    pendingCreateIds.expenseIds.has(expense.id),
+  )
+  const mergedExpenseIds = new Set(fetchedState.expenses.map((expense) => expense.id))
+  const mergedExpenses = sortExpensesByDateDesc([
+    ...pendingExpenses.filter((expense) => !mergedExpenseIds.has(expense.id)),
+    ...fetchedState.expenses,
+  ])
+
+  const pendingTodoByList = new Map<string, TodoItem[]>()
+  previousState.todoLists.forEach((list) => {
+    const pendingItems = list.items.filter((item) => pendingCreateIds.todoIds.has(item.id))
+    if (pendingItems.length > 0) {
+      pendingTodoByList.set(list.id, pendingItems)
+    }
+  })
+
+  const mergedTodoLists = fetchedState.todoLists.map((list) => {
+    const pendingItems = pendingTodoByList.get(list.id)
+    if (!pendingItems || pendingItems.length === 0) {
+      return list
+    }
+    const existingIds = new Set(list.items.map((item) => item.id))
+    return {
+      ...list,
+      items: [
+        ...pendingItems.filter((item) => !existingIds.has(item.id)),
+        ...list.items,
+      ],
+    }
+  })
+
+  const fetchedListIds = new Set(fetchedState.todoLists.map((list) => list.id))
+  const pendingOnlyLists = previousState.todoLists
+    .filter((list) => !fetchedListIds.has(list.id))
+    .map((list) => ({
+      ...list,
+      items: list.items.filter((item) => pendingCreateIds.todoIds.has(item.id)),
+    }))
+    .filter((list) => list.items.length > 0)
+
+  return {
+    expenses: mergedExpenses,
+    tags: fetchedState.tags,
+    todoLists: [...pendingOnlyLists, ...mergedTodoLists],
+  }
+}
+
+type OfflineFlushResult = {
+  syncedOperations: number
+  remainingOperations: number
+}
+
 type DataSyncStatus = 'loading' | 'offline' | 'updated' | 'error'
 type DataSyncTrigger = 'initial' | 'auto-retry' | 'manual'
 
 function App() {
   const initialOfflineSnapshot = useRef(loadOfflineCache()).current
+  const initialOfflineOutbox = useRef(loadOfflineOutbox()).current
   const initialOfflineUser =
     initialOfflineSnapshot?.lastUser && initialOfflineSnapshot?.lastFamily
       ? toOfflineAuthUser(initialOfflineSnapshot.lastUser)
@@ -345,14 +529,15 @@ function App() {
   const [isExpensesRefreshing, setExpensesRefreshing] = useState(false)
   const [isTodoRefreshing, setTodoRefreshing] = useState(false)
   const [isCopyingFamilyCode, setCopyingFamilyCode] = useState(false)
+  const [isOfflineSyncNoticeOpen, setOfflineSyncNoticeOpen] = useState(false)
   const [isFamilyDialogOpen, setFamilyDialogOpen] = useState(false)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [familyMembersLoading, setFamilyMembersLoading] = useState(false)
   const [familyMembersError, setFamilyMembersError] = useState<string | null>(null)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
-  const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
   const syncInFlightRef = useRef(false)
+  const offlineOutboxRef = useRef(initialOfflineOutbox)
   const stateRef = useRef(state)
   const location = useLocation()
   const navigate = useNavigate()
@@ -360,7 +545,7 @@ function App() {
   const activeApp = route.activeApp
   const activeTab = route.activeTab
   const isReadOnly = isOffline || dataSyncStatus === 'offline'
-  const hasCachedSessionData = Boolean(offlineSnapshot?.lastUser && offlineSnapshot?.lastFamily)
+  const isOfflineLike = isOffline || dataSyncStatus === 'offline'
   const hasResolvedAppContext = Boolean(authSession && authUser && familyId)
 
   useEffect(() => {
@@ -432,7 +617,6 @@ function App() {
           setAuthUser(offlineUser)
           setFamily(offlineFamily)
           setFamilyId(offlineFamily.id)
-          setUnauthStep('welcome')
           setMenuAnchorEl(null)
           setDataStale(true)
           setDataSyncStatus('offline')
@@ -444,7 +628,6 @@ function App() {
         setAuthUser(user)
         setFamilyId(null)
         setFamily(null)
-        setUnauthStep('welcome')
         setMenuAnchorEl(null)
         navigate(ROUTES.home, { replace: true })
         setDataStale(false)
@@ -457,6 +640,9 @@ function App() {
         }
         setLastSyncAt(null)
         clearCacheMeta()
+        offlineOutboxRef.current = { family_id: null, operations: [] }
+        clearOfflineOutbox()
+        setOfflineSyncNoticeOpen(false)
         return
       }
 
@@ -668,6 +854,123 @@ function App() {
     }))
   }, [updateState])
 
+  const getOutboxOperationsForFamily = useCallback((): OfflineOutboxOperation[] => {
+    if (!familyId) return []
+
+    const current = offlineOutboxRef.current
+    if (current.family_id && current.family_id !== familyId) {
+      const reset = {
+        family_id: familyId,
+        operations: [] as OfflineOutboxOperation[],
+      }
+      offlineOutboxRef.current = reset
+      saveOfflineOutbox(reset)
+      return []
+    }
+
+    if (current.family_id === null) {
+      const adopted = {
+        family_id: familyId,
+        operations: current.operations,
+      }
+      offlineOutboxRef.current = adopted
+      saveOfflineOutbox(adopted)
+      return adopted.operations
+    }
+
+    return current.operations
+  }, [familyId])
+
+  const setOutboxOperations = useCallback((operations: OfflineOutboxOperation[]) => {
+    const next = {
+      family_id: familyId ?? offlineOutboxRef.current.family_id ?? null,
+      operations,
+    }
+    offlineOutboxRef.current = next
+    saveOfflineOutbox(next)
+  }, [familyId])
+
+  const enqueueOfflineOperation = useCallback(
+    (operation: SyncOperation) => {
+      if (!familyId) return
+
+      const currentOperations = getOutboxOperationsForFamily()
+      const nextOperations = operation.type === 'set_todo_completed'
+        ? upsertTodoToggleOperation(currentOperations, operation)
+        : [
+            ...currentOperations,
+            {
+              ...operation,
+              created_at: new Date().toISOString(),
+            },
+          ]
+      setOutboxOperations(nextOperations)
+      updateState((prev) => applyPendingSyncState(prev, nextOperations))
+    },
+    [familyId, getOutboxOperationsForFamily, setOutboxOperations, updateState],
+  )
+
+  const flushOfflineOutbox = useCallback(
+    async ({ timeoutMs }: { timeoutMs: number }): Promise<OfflineFlushResult> => {
+      if (!familyId) {
+        return { syncedOperations: 0, remainingOperations: 0 }
+      }
+
+      const operations = getOutboxOperationsForFamily()
+      if (operations.length === 0) {
+        return { syncedOperations: 0, remainingOperations: 0 }
+      }
+
+      const requestOperations = operations.map((operation) => {
+        const { created_at, ...requestOperation } = operation
+        void created_at
+        return requestOperation
+      })
+      const response = await syncOfflineBatch(
+        {
+          operations: requestOperations,
+        },
+        { timeoutMs },
+      )
+
+      const resultsMap = new Map<string, SyncOperationResult>(
+        response.results.map((result) => [result.operation_id, result]),
+      )
+      const mappedOperations = applyTodoMappingsToOperations(operations, response.mappings)
+      const nextOperations = mappedOperations.filter((operation) => {
+        const result = resultsMap.get(operation.operation_id)
+        if (!result) return true
+        return result.status === 'failed'
+      })
+
+      const syncedOperations = operations.length - nextOperations.length
+      setOutboxOperations(nextOperations)
+      updateState((prev) =>
+        applyPendingSyncState(
+          applySyncEntityMappingsToState(prev, response.mappings),
+          nextOperations,
+        ),
+      )
+
+      if (syncedOperations > 0 && nextOperations.length === 0) {
+        setOfflineSyncNoticeOpen(true)
+      }
+
+      return {
+        syncedOperations,
+        remainingOperations: nextOperations.length,
+      }
+    },
+    [familyId, getOutboxOperationsForFamily, setOutboxOperations, updateState],
+  )
+
+  useEffect(() => {
+    if (!familyId) return
+    const operations = getOutboxOperationsForFamily()
+    if (operations.length === 0) return
+    updateState((prev) => applyPendingSyncState(prev, operations))
+  }, [familyId, getOutboxOperationsForFamily, updateState])
+
   const syncAllData = useCallback(
     async ({
       timeoutMs,
@@ -702,6 +1005,29 @@ function App() {
       })
 
       try {
+        let flushResult: OfflineFlushResult = {
+          syncedOperations: 0,
+          remainingOperations: getOutboxOperationsForFamily().length,
+        }
+
+        try {
+          flushResult = await flushOfflineOutbox({ timeoutMs })
+        } catch (flushError) {
+          if (isNetworkLikeError(flushError)) {
+            throw flushError
+          }
+          logDataSync('offline_flush_failed', {
+            trigger,
+            timeoutMs,
+            message:
+              isApiError(flushError) || isApiTimeoutError(flushError)
+                ? flushError.message
+                : flushError instanceof Error
+                  ? flushError.message
+                  : 'unknown_flush_error',
+          })
+        }
+
         const [expensePage, tags, todoListPage] = await Promise.all([
           listExpensePage(
             { limit: EXPENSES_PAGE_SIZE, offset: 0 },
@@ -714,13 +1040,35 @@ function App() {
           ),
         ])
 
-        updateState((prev) => ({
-          ...prev,
-          expenses: expensePage.items,
-          tags,
-          todoLists: todoListPage.items,
-        }))
-        setExpensesTotal(expensePage.total)
+        const pendingOperations = getOutboxOperationsForFamily()
+        const pendingCreateIds = resolvePendingCreateIds(pendingOperations)
+        const nextSlices = mergeFetchedStateWithPendingCreates(
+          {
+            expenses: expensePage.items,
+            tags,
+            todoLists: todoListPage.items,
+          },
+          stateRef.current,
+          pendingOperations,
+        )
+
+        updateState((prev) =>
+          applyPendingSyncState(
+            {
+              ...prev,
+              expenses: nextSlices.expenses,
+              tags: nextSlices.tags,
+              todoLists: nextSlices.todoLists,
+            },
+            pendingOperations,
+          ),
+        )
+        setExpensesTotal(
+          Math.max(
+            expensePage.total + pendingCreateIds.expenseIds.size,
+            nextSlices.expenses.length,
+          ),
+        )
         setExpensesOffset(expensePage.items.length)
         const now = new Date().toISOString()
         setLastSyncAt(now)
@@ -735,6 +1083,8 @@ function App() {
           durationMs: Math.round(performance.now() - startedAt),
           expensesCount: expensePage.items.length,
           expensesTotal: expensePage.total,
+          syncedOfflineOperations: flushResult.syncedOperations,
+          pendingOfflineOperations: flushResult.remainingOperations,
         })
         return true
       } catch (error) {
@@ -772,7 +1122,14 @@ function App() {
         }
       }
     },
-    [authSession, familyId, persistOfflineSnapshot, updateState],
+    [
+      authSession,
+      familyId,
+      flushOfflineOutbox,
+      getOutboxOperationsForFamily,
+      persistOfflineSnapshot,
+      updateState,
+    ],
   )
 
   useEffect(() => {
@@ -929,6 +1286,8 @@ function App() {
   const handleSignOut = async () => {
     await signOut()
     syncInFlightRef.current = false
+    offlineOutboxRef.current = { family_id: null, operations: [] }
+    clearOfflineOutbox()
     setAuthSession(null)
     setAuthUser(null)
     setFamilyId(null)
@@ -943,8 +1302,8 @@ function App() {
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
+    setOfflineSyncNoticeOpen(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
-    setUnauthStep('welcome')
     setMenuAnchorEl(null)
     clearCacheMeta()
     clearOfflineSnapshot()
@@ -957,6 +1316,8 @@ function App() {
     }
     await leaveFamily()
     syncInFlightRef.current = false
+    offlineOutboxRef.current = { family_id: null, operations: [] }
+    clearOfflineOutbox()
     setFamilyId(null)
     setFamily(null)
     navigateHome(true)
@@ -969,6 +1330,7 @@ function App() {
     setExpensesTotal(0)
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
+    setOfflineSyncNoticeOpen(false)
     updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
     setMenuAnchorEl(null)
     clearCacheMeta()
@@ -1013,16 +1375,59 @@ function App() {
   }
 
   const handleCreateExpense = async (expense: Expense) => {
-    if (guardReadOnly()) {
-      throw new Error('read_only')
+    const addPendingExpense = () => {
+      const hasExisting = stateRef.current.expenses.some((item) => item.id === expense.id)
+      const localExpense: Expense = {
+        ...expense,
+        syncState: 'pending',
+      }
+      updateState((prev) => ({
+        ...prev,
+        expenses: sortExpensesByDateDesc(
+          hasExisting
+            ? prev.expenses.map((item) => (item.id === localExpense.id ? localExpense : item))
+            : [localExpense, ...prev.expenses],
+        ),
+      }))
+      if (!hasExisting) {
+        setExpensesTotal((prev) => prev + 1)
+        setExpensesOffset((prev) => prev + 1)
+      }
+      enqueueOfflineOperation({
+        operation_id: createOperationId(),
+        type: 'create_expense',
+        local_id: localExpense.id,
+        payload: {
+          date: localExpense.date,
+          amount: localExpense.amount,
+          currency: localExpense.currency,
+          title: localExpense.title,
+          tag_ids: localExpense.tagIds,
+        },
+      })
+      setDataStale(true)
     }
-    const created = await createExpense(expense)
-    updateState((prev) => ({
-      ...prev,
-      expenses: [created, ...prev.expenses],
-    }))
-    setExpensesTotal((prev) => prev + 1)
-    setExpensesOffset((prev) => prev + 1)
+
+    if (isOfflineLike) {
+      addPendingExpense()
+      return
+    }
+
+    try {
+      const created = await createExpense(expense)
+      updateState((prev) => ({
+        ...prev,
+        expenses: sortExpensesByDateDesc([created, ...prev.expenses]),
+      }))
+      setExpensesTotal((prev) => prev + 1)
+      setExpensesOffset((prev) => prev + 1)
+    } catch (error) {
+      if (!isNetworkLikeError(error)) {
+        throw error
+      }
+      setDataSyncStatus('offline')
+      addPendingExpense()
+    }
   }
 
   const handleUpdateExpense = async (expense: Expense) => {
@@ -1032,7 +1437,9 @@ function App() {
     const updated = await updateExpense(expense)
     updateState((prev) => ({
       ...prev,
-      expenses: prev.expenses.map((item) => (item.id === updated.id ? updated : item)),
+      expenses: sortExpensesByDateDesc(
+        prev.expenses.map((item) => (item.id === updated.id ? updated : item)),
+      ),
     }))
   }
 
@@ -1063,7 +1470,12 @@ function App() {
         ...prev,
         expenses: [...prev.expenses, ...page.items],
       }))
-      setExpensesTotal(page.total)
+      const pendingCreateCount = resolvePendingCreateIds(
+        getOutboxOperationsForFamily(),
+      ).expenseIds.size
+      setExpensesTotal((prev) =>
+        Math.max(prev, page.total + pendingCreateCount),
+      )
       setExpensesOffset((prev) => prev + page.items.length)
     } finally {
       setExpensesLoadingMore(false)
@@ -1119,68 +1531,26 @@ function App() {
   }
 
   const handleRefreshExpenses = async () => {
-    if (guardReadOnly()) return
     if (!authSession || !familyId || isExpensesRefreshing) return
     setExpensesRefreshing(true)
-    setDataStale(false)
-    setExpensesLoadingMore(false)
-    setSyncErrorMessage(null)
     try {
-      const [expensePage, tags] = await Promise.all([
-        listExpensePage(
-          { limit: EXPENSES_PAGE_SIZE, offset: 0 },
-          { timeoutMs: MANUAL_RETRY_TIMEOUT_MS },
-        ),
-        listTags({ timeoutMs: MANUAL_RETRY_TIMEOUT_MS }),
-      ])
-      updateState((prev) => ({ ...prev, expenses: expensePage.items, tags }))
-      setExpensesTotal(expensePage.total)
-      setExpensesOffset(expensePage.items.length)
-      const now = new Date().toISOString()
-      setLastSyncAt(now)
-      saveCacheMeta({ familyId, lastSyncAt: now })
-      persistOfflineSnapshot({ lastSyncAt: now })
-      setDataSyncStatus('updated')
-    } catch (error) {
-      const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
-      setDataSyncStatus(status)
-      setSyncErrorMessage(
-        status === 'error' && isApiError(error) ? error.message : status === 'error'
-          ? 'Не удалось обновить данные.'
-          : null,
-      )
-      setDataStale(true)
+      await syncAllData({
+        timeoutMs: MANUAL_RETRY_TIMEOUT_MS,
+        trigger: 'manual',
+      })
     } finally {
       setExpensesRefreshing(false)
     }
   }
 
   const handleRefreshTodoLists = async () => {
-    if (guardReadOnly()) return
     if (!authSession || !familyId || isTodoRefreshing) return
     setTodoRefreshing(true)
-    setDataStale(false)
-    setSyncErrorMessage(null)
     try {
-      const todoListPage = await listTodoLists({
-        includeItems: true,
-        itemsArchived: 'all',
-      }, { timeoutMs: MANUAL_RETRY_TIMEOUT_MS })
-      updateTodoLists(() => todoListPage.items)
-      const now = new Date().toISOString()
-      setLastSyncAt(now)
-      saveCacheMeta({ familyId, lastSyncAt: now })
-      persistOfflineSnapshot({ lastSyncAt: now })
-      setDataSyncStatus('updated')
-    } catch (error) {
-      const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
-      setDataSyncStatus(status)
-      setSyncErrorMessage(
-        status === 'error' && isApiError(error) ? error.message : status === 'error'
-          ? 'Не удалось обновить данные.'
-          : null,
-      )
-      setDataStale(true)
+      await syncAllData({
+        timeoutMs: MANUAL_RETRY_TIMEOUT_MS,
+        trigger: 'manual',
+      })
     } finally {
       setTodoRefreshing(false)
     }
@@ -1218,10 +1588,10 @@ function App() {
   }
 
   const handleToggleTodoListCollapsed = async (listId: string, isCollapsed: boolean) => {
-    if (guardReadOnly()) return
     updateTodoLists((prev) =>
       prev.map((list) => (list.id === listId ? { ...list, isCollapsed } : list)),
     )
+    if (isReadOnly) return
     try {
       await updateTodoList(listId, { isCollapsed })
     } catch {
@@ -1267,10 +1637,9 @@ function App() {
   }
 
   const handleCreateTodoItem = async (listId: string, title: string) => {
-    if (guardReadOnly()) return
-    const tempId = `temp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const localId = `local-todo-${createId()}`
     const optimisticItem: TodoItem = {
-      id: tempId,
+      id: localId,
       title,
       isCompleted: false,
       isArchived: false,
@@ -1281,6 +1650,32 @@ function App() {
         list.id === listId ? { ...list, items: [...list.items, optimisticItem] } : list,
       ),
     )
+    if (isOfflineLike) {
+      updateTodoLists((prev) =>
+        prev.map((list) =>
+          list.id === listId
+            ? {
+                ...list,
+                items: list.items.map((item) =>
+                  item.id === localId ? { ...item, syncState: 'pending' } : item,
+                ),
+              }
+            : list,
+        ),
+      )
+      enqueueOfflineOperation({
+        operation_id: createOperationId(),
+        type: 'create_todo',
+        local_id: localId,
+        payload: {
+          list_id: listId,
+          title,
+        },
+      })
+      setDataStale(true)
+      return
+    }
+
     try {
       const created = await createTodoItem(listId, title)
       updateTodoLists((prev) =>
@@ -1288,17 +1683,44 @@ function App() {
           list.id === listId
             ? {
                 ...list,
-                items: list.items.map((item) => (item.id === tempId ? created : item)),
+                items: list.items.map((item) => (item.id === localId ? created : item)),
               }
             : list,
         ),
       )
-    } catch {
+    } catch (error) {
+      if (isNetworkLikeError(error)) {
+        setDataSyncStatus('offline')
+        updateTodoLists((prev) =>
+          prev.map((list) =>
+            list.id === listId
+              ? {
+                  ...list,
+                  items: list.items.map((item) =>
+                    item.id === localId ? { ...item, syncState: 'pending' } : item,
+                  ),
+                }
+              : list,
+          ),
+        )
+        enqueueOfflineOperation({
+          operation_id: createOperationId(),
+          type: 'create_todo',
+          local_id: localId,
+          payload: {
+            list_id: listId,
+            title,
+          },
+        })
+        setDataStale(true)
+        return
+      }
+
       setDataStale(true)
       updateTodoLists((prev) =>
         prev.map((list) =>
           list.id === listId
-            ? { ...list, items: list.items.filter((item) => item.id !== tempId) }
+            ? { ...list, items: list.items.filter((item) => item.id !== localId) }
             : list,
         ),
       )
@@ -1310,7 +1732,6 @@ function App() {
     itemId: string,
     isCompleted: boolean,
   ) => {
-    if (guardReadOnly()) return
     const list = state.todoLists.find((entry) => entry.id === listId)
     const currentItem = list?.items.find((item) => item.id === itemId) ?? null
     const nextCompleted = !isCompleted
@@ -1344,6 +1765,21 @@ function App() {
       )
     }
 
+    const togglePayload =
+      currentItem?.syncState === 'pending'
+        ? { todo_local_id: itemId, is_completed: nextCompleted }
+        : { todo_id: itemId, is_completed: nextCompleted }
+
+    if (isOfflineLike) {
+      enqueueOfflineOperation({
+        operation_id: createOperationId(),
+        type: 'set_todo_completed',
+        payload: togglePayload,
+      })
+      setDataStale(true)
+      return
+    }
+
     try {
       const updated = await updateTodoItem(itemId, { isCompleted: nextCompleted })
       updateTodoLists((prev) =>
@@ -1355,7 +1791,18 @@ function App() {
           }
         }),
       )
-    } catch {
+    } catch (error) {
+      if (isNetworkLikeError(error)) {
+        setDataSyncStatus('offline')
+        enqueueOfflineOperation({
+          operation_id: createOperationId(),
+          type: 'set_todo_completed',
+          payload: togglePayload,
+        })
+        setDataStale(true)
+        return
+      }
+
       setDataStale(true)
       if (currentItem) {
         updateTodoLists((prev) =>
@@ -1812,7 +2259,7 @@ function App() {
                   }}
                   disabled={!canRetrySync || isManualRetrying}
                 >
-                  {isManualRetrying ? 'Retry…' : 'Retry'}
+                  {isManualRetrying ? 'Обновляем…' : 'Обновить'}
                 </Button>
               }
             >
@@ -1832,14 +2279,14 @@ function App() {
                   }}
                   disabled={!canRetrySync || isManualRetrying}
                 >
-                  {isManualRetrying ? 'Retry…' : 'Retry'}
+                  {isManualRetrying ? 'Обновляем…' : 'Обновить'}
                 </Button>
               }
             >
               {syncErrorMessage ?? 'Не удалось обновить данные.'}
             </Alert>
           ) : null}
-          {isDataStale ? (
+          {isDataStale && dataSyncStatus !== 'offline' && dataSyncStatus !== 'error' ? (
             <Alert severity="warning">
               Нет соединения. Данные могут быть неактуальны.
               {formattedLastSyncAt ? ` Последнее обновление: ${formattedLastSyncAt}.` : ''}
@@ -1867,6 +2314,8 @@ function App() {
               onToggleItem={handleToggleTodoItem}
               onUpdateItemTitle={handleUpdateTodoItemTitle}
               onDeleteItem={handleDeleteTodoItem}
+              allowOfflineItemCreate={isOfflineLike}
+              allowOfflineItemToggle={isOfflineLike}
             />
           ) : null}
 
@@ -1883,6 +2332,7 @@ function App() {
               onDeleteExpense={handleDeleteExpense}
               onCreateTag={handleCreateTag}
               readOnly={isReadOnly}
+              allowOfflineCreate={isOfflineLike}
             />
           ) : null}
 
@@ -1944,39 +2394,37 @@ function App() {
           </BottomNavigation>
         </Paper>
       ) : null}
+
+      <Snackbar
+        open={isOfflineSyncNoticeOpen}
+        autoHideDuration={4_000}
+        onClose={() => setOfflineSyncNoticeOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setOfflineSyncNoticeOpen(false)}
+          severity="success"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          Офлайн-изменения успешно загружены
+        </Alert>
+      </Snackbar>
     </>
   )
 
   const content = (() => {
-    // DEV: Skip auth and family setup for local development
-    if (import.meta.env.DEV) {
-      if (isBootstrapping) {
-        return <AppLoadingScreen />
-      }
-      return appShell
-    }
-
     const canRenderFromCache = hasResolvedAppContext
     if (isBootstrapping && !canRenderFromCache) {
       return <AppLoadingScreen />
     }
-    const shouldShowConnectionError =
-      !hasCachedSessionData &&
-      !hasResolvedAppContext &&
-      (isOffline || dataSyncStatus === 'offline')
+    const isUnauthenticated = !authSession || !authUser
+    const shouldShowConnectionError = isUnauthenticated && (isOffline || dataSyncStatus === 'offline')
     if (shouldShowConnectionError) {
       return <OfflineBlockedScreen />
     }
-    if (!authSession || !authUser) {
-      return unauthStep === 'welcome' ? (
-        <WelcomeScreen onContinue={() => setUnauthStep('auth')} />
-      ) : (
-        <AuthScreen
-          onSignIn={handleSignIn}
-          onBack={() => setUnauthStep('welcome')}
-          isConfigured={isSupabaseConfigured}
-        />
-      )
+    if (isUnauthenticated) {
+      return <AuthScreen onSignIn={handleSignIn} isConfigured={isSupabaseConfigured} />
     }
     if (!familyId) {
       return <FamilyScreen onComplete={handleFamilyComplete} />

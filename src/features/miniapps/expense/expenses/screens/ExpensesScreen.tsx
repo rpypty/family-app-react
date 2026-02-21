@@ -6,11 +6,13 @@ import {
   Fab,
   Paper,
   Stack,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
+import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
 import type { Expense, Tag } from '../../../../../shared/types'
 import {
   aggregateByCurrency,
@@ -35,6 +37,7 @@ type ExpensesScreenProps = {
   onDeleteExpense: (expenseId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<Tag>
   readOnly?: boolean
+  allowOfflineCreate?: boolean
 }
 
 export function ExpensesScreen({
@@ -49,12 +52,14 @@ export function ExpensesScreen({
   onDeleteExpense,
   onCreateTag,
   readOnly = false,
+  allowOfflineCreate = false,
 }: ExpensesScreenProps) {
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const maxTagVisible = isSmall ? 2 : 3
+  const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
   const sentinelRef = useInfiniteScroll({
     enabled: hasMore && !readOnly,
@@ -79,7 +84,7 @@ export function ExpensesScreen({
   const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.name])), [tags])
 
   const openCreate = () => {
-    if (readOnly) return
+    if (!canCreate) return
     setEditingExpense(null)
     setFormOpen(true)
   }
@@ -193,6 +198,11 @@ export function ExpensesScreen({
                                     >
                                       {expense.title}
                                     </Typography>
+                                    {expense.syncState && expense.syncState !== 'synced' ? (
+                                      <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
+                                        <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
+                                      </Tooltip>
+                                    ) : null}
                                     <Typography
                                       fontWeight={600}
                                       variant="body2"
@@ -285,7 +295,7 @@ export function ExpensesScreen({
         onCreateTag={onCreateTag}
       />
 
-      {canEdit ? (
+      {canCreate ? (
         <Fab
           color="primary"
           aria-label="Добавить расход"
