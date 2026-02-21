@@ -99,9 +99,11 @@ const buildTodoListQuery = (params: TodoListQuery): string => {
 
 export const listTodoLists = async (
   params: TodoListQuery = {},
+  options?: { timeoutMs?: number },
 ): Promise<{ items: TodoList[]; total: number }> => {
   const response = await apiFetch<TodoListListResponse>(
     `/todo-lists${buildTodoListQuery(params)}`,
+    options,
   )
   return {
     items: response.items.map(mapTodoList),

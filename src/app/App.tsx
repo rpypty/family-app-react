@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -17,6 +17,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemIcon,
@@ -98,6 +99,7 @@ import { OfflineBlockedScreen } from '../features/onboarding/screens/OfflineBloc
 import { MiniAppsScreen } from '../features/home/screens/MiniAppsScreen'
 import { TodoScreen } from '../features/miniapps/todo/screens/TodoScreen'
 import { WorkoutsScreen } from '../features/miniapps/workouts/screens/WorkoutsScreen'
+import { ApiTimeoutError, isApiError, isApiTimeoutError } from '../shared/api/client'
 
 type TabId = 'expenses' | 'analytics' | 'reports'
 type AppId = 'home' | 'expenses' | 'todo' | 'gym' | 'workouts'
@@ -144,6 +146,68 @@ const toOfflineFamily = (
   ownerId: cachedFamily.ownerId ?? fallbackOwnerId ?? '',
   createdAt: cachedFamily.createdAt ?? new Date().toISOString(),
 })
+
+const toOfflineSession = (user: AuthUser): AuthSession => ({
+  id: `offline-${user.id}`,
+  userId: user.id,
+  provider: user.provider,
+  createdAt: user.createdAt,
+})
+
+const isNetworkLikeError = (error: unknown): boolean => {
+  if (isApiTimeoutError(error)) return true
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  if (error instanceof TypeError) return true
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    typeof error.name === 'string' &&
+    error.name === 'AbortError'
+  ) {
+    return true
+  }
+  return false
+}
+
+const logDataSync = (
+  event: string,
+  payload: Record<string, string | number | boolean | null | undefined>,
+) => {
+  const detail = {
+    event,
+    at: new Date().toISOString(),
+    ...payload,
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('family-app:data-sync', {
+        detail,
+      }),
+    )
+  }
+
+  console.info('[data-sync]', detail)
+}
+
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new ApiTimeoutError(timeoutMs))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
+}
 
 type ResolvedRoute = {
   activeApp: AppId
@@ -237,22 +301,42 @@ const TABS: Array<{
 ]
 
 const EXPENSES_PAGE_SIZE = 30
+const INITIAL_SYNC_TIMEOUT_MS = 5_000
+const AUTO_RETRY_INTERVAL_MS = 20_000
+const MANUAL_RETRY_TIMEOUT_MS = 15_000
+
+type DataSyncStatus = 'loading' | 'offline' | 'updated' | 'error'
+type DataSyncTrigger = 'initial' | 'auto-retry' | 'manual'
 
 function App() {
+  const initialOfflineSnapshot = useRef(loadOfflineCache()).current
+  const initialOfflineUser =
+    initialOfflineSnapshot?.lastUser && initialOfflineSnapshot?.lastFamily
+      ? toOfflineAuthUser(initialOfflineSnapshot.lastUser)
+      : null
+  const initialOfflineFamily =
+    initialOfflineSnapshot?.lastFamily && initialOfflineUser
+      ? toOfflineFamily(initialOfflineSnapshot.lastFamily, initialOfflineUser.id)
+      : null
   const [state, setState] = useState<StorageState>(() => loadState())
   const [isOffline, setIsOffline] = useState(() => {
     if (typeof navigator === 'undefined') return false
     return !navigator.onLine
   })
   const isOfflineRef = useRef(isOffline)
-  const [offlineSnapshot, setOfflineSnapshot] = useState(() => loadOfflineCache())
+  const [offlineSnapshot, setOfflineSnapshot] = useState(() => initialOfflineSnapshot)
   const offlineSnapshotRef = useRef(offlineSnapshot)
-  const [authSession, setAuthSession] = useState<AuthSession | null>(null)
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
-  const [familyId, setFamilyId] = useState<string | null>(null)
-  const [family, setFamily] = useState<Family | null>(null)
+  const [authSession, setAuthSession] = useState<AuthSession | null>(
+    initialOfflineUser ? toOfflineSession(initialOfflineUser) : null,
+  )
+  const [authUser, setAuthUser] = useState<AuthUser | null>(initialOfflineUser)
+  const [familyId, setFamilyId] = useState<string | null>(initialOfflineFamily?.id ?? null)
+  const [family, setFamily] = useState<Family | null>(initialOfflineFamily)
   const [isBootstrapping, setBootstrapping] = useState(true)
-  const [isDataLoading, setDataLoading] = useState(false)
+  const [dataSyncStatus, setDataSyncStatus] = useState<DataSyncStatus>('loading')
+  const [isSyncInFlight, setSyncInFlight] = useState(false)
+  const [isManualRetrying, setManualRetrying] = useState(false)
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null)
   const [isDataStale, setDataStale] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
   const [expensesTotal, setExpensesTotal] = useState(0)
@@ -268,13 +352,20 @@ function App() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [unauthStep, setUnauthStep] = useState<'welcome' | 'auth'>('welcome')
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
+  const syncInFlightRef = useRef(false)
+  const stateRef = useRef(state)
   const location = useLocation()
   const navigate = useNavigate()
   const route = useMemo(() => resolveAppRoute(location.pathname), [location.pathname])
   const activeApp = route.activeApp
   const activeTab = route.activeTab
-  const isReadOnly = isOffline
-  const hasOfflineSnapshot = Boolean(offlineSnapshot?.lastUser && offlineSnapshot?.lastFamily)
+  const isReadOnly = isOffline || dataSyncStatus === 'offline'
+  const hasCachedSessionData = Boolean(offlineSnapshot?.lastUser && offlineSnapshot?.lastFamily)
+  const hasResolvedAppContext = Boolean(authSession && authUser && familyId)
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   useEffect(() => {
     const handleOnline = () => {
@@ -337,18 +428,15 @@ function App() {
         if (offline && cached?.lastUser && cached?.lastFamily) {
           const offlineUser = toOfflineAuthUser(cached.lastUser)
           const offlineFamily = toOfflineFamily(cached.lastFamily, offlineUser.id)
-          setAuthSession({
-            id: `offline-${offlineUser.id}`,
-            userId: offlineUser.id,
-            provider: offlineUser.provider,
-            createdAt: offlineUser.createdAt,
-          })
+          setAuthSession(toOfflineSession(offlineUser))
           setAuthUser(offlineUser)
           setFamily(offlineFamily)
           setFamilyId(offlineFamily.id)
           setUnauthStep('welcome')
           setMenuAnchorEl(null)
           setDataStale(true)
+          setDataSyncStatus('offline')
+          setSyncErrorMessage(null)
           setLastSyncAt(cached.lastSyncAt ?? null)
           return
         }
@@ -358,8 +446,15 @@ function App() {
         setFamily(null)
         setUnauthStep('welcome')
         setMenuAnchorEl(null)
-        navigateHome(true)
+        navigate(ROUTES.home, { replace: true })
         setDataStale(false)
+        if (offline) {
+          setDataSyncStatus('offline')
+          setSyncErrorMessage('Не удалось установить соединение, попробуйте позже.')
+        } else {
+          setDataSyncStatus('loading')
+          setSyncErrorMessage(null)
+        }
         setLastSyncAt(null)
         clearCacheMeta()
         return
@@ -367,11 +462,13 @@ function App() {
 
       setAuthSession(session)
       setAuthUser(user)
+      setSyncErrorMessage(null)
 
       if (offline) {
         const cachedFamily = cached?.lastFamily ? toOfflineFamily(cached.lastFamily, user.id) : null
         setFamily(cachedFamily)
         setFamilyId(cachedFamily?.id ?? null)
+        setDataSyncStatus('offline')
         if (cachedFamily) {
           persistOfflineSnapshot({ lastUser: user, lastFamily: cachedFamily })
         }
@@ -380,24 +477,65 @@ function App() {
 
       let currentFamily: Family | null = null
       try {
-        currentFamily = await getCurrentFamily()
-      } catch {
-        currentFamily = null
+        currentFamily = await getCurrentFamily({ timeoutMs: INITIAL_SYNC_TIMEOUT_MS })
+      } catch (error) {
+        if (!isActive) return
+        const cachedFamily = cached?.lastFamily ? toOfflineFamily(cached.lastFamily, user.id) : null
+        setFamily(cachedFamily)
+        setFamilyId(cachedFamily?.id ?? null)
+        setDataStale(true)
+        const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
+        setDataSyncStatus(status)
+        setSyncErrorMessage(status === 'error' ? 'Не удалось загрузить данные семьи.' : null)
+        logDataSync('family_load_failed', {
+          status,
+          hasCachedFamily: Boolean(cachedFamily),
+        })
+        return
       }
       if (!isActive) return
       setFamily(currentFamily)
       setFamilyId(currentFamily?.id ?? null)
+      setDataSyncStatus('loading')
       if (currentFamily) {
         persistOfflineSnapshot({ lastUser: user, lastFamily: currentFamily })
       }
     }
     const bootstrap = async () => {
-      const snapshot = await getSession()
-      await applySnapshot(snapshot.session, snapshot.user)
-      if (!isActive) return
-      setBootstrapping(false)
+      try {
+        const snapshot = await withTimeout(getSession(), INITIAL_SYNC_TIMEOUT_MS)
+        await applySnapshot(snapshot.session, snapshot.user)
+      } catch (error) {
+        if (!isActive) return
+        const cached = offlineSnapshotRef.current
+        const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
+        if (cached?.lastUser && cached?.lastFamily) {
+          const offlineUser = toOfflineAuthUser(cached.lastUser)
+          const offlineFamily = toOfflineFamily(cached.lastFamily, offlineUser.id)
+          setAuthSession(toOfflineSession(offlineUser))
+          setAuthUser(offlineUser)
+          setFamily(offlineFamily)
+          setFamilyId(offlineFamily.id)
+          setDataStale(true)
+          setDataSyncStatus(status)
+          setLastSyncAt(cached.lastSyncAt ?? null)
+        } else {
+          setDataSyncStatus(status)
+          if (status === 'offline') {
+            setSyncErrorMessage('Не удалось установить соединение, попробуйте позже.')
+          }
+        }
+        logDataSync('bootstrap_failed', {
+          status,
+          hasOfflineSnapshot: Boolean(cached?.lastUser && cached?.lastFamily),
+        })
+      } finally {
+        if (isActive) {
+          setBootstrapping(false)
+        }
+      }
     }
-    bootstrap()
+    void bootstrap()
     const unsubscribe = onAuthStateChange((_event, session, user) => {
       void applySnapshot(session, user)
     })
@@ -405,7 +543,9 @@ function App() {
       isActive = false
       unsubscribe()
     }
-  }, [])
+    // Bootstrap should run once; persistOfflineSnapshot is stable via useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate])
 
   useEffect(() => {
     let isActive = true
@@ -489,7 +629,7 @@ function App() {
       })
     }, [state.settings.themeMode])
 
-  const persistOfflineSnapshot = (payload: {
+  const persistOfflineSnapshot = useCallback((payload: {
     lastUser?: AuthUser | null
     lastFamily?: Family | null
     lastSyncAt?: string | null
@@ -505,68 +645,75 @@ function App() {
     saveOfflineCache(next)
     offlineSnapshotRef.current = next
     setOfflineSnapshot(next)
-  }
+  }, [])
 
-  const clearOfflineSnapshot = () => {
+  const clearOfflineSnapshot = useCallback(() => {
     clearOfflineCache()
     offlineSnapshotRef.current = null
     setOfflineSnapshot(null)
-  }
+  }, [])
 
-  const updateState = (updater: (prev: StorageState) => StorageState) => {
+  const updateState = useCallback((updater: (prev: StorageState) => StorageState) => {
     setState((prev) => {
       const next = updater(prev)
       saveState(next)
       return next
     })
-  }
+  }, [])
 
-  const updateTodoLists = (updater: (prev: TodoList[]) => TodoList[]) => {
+  const updateTodoLists = useCallback((updater: (prev: TodoList[]) => TodoList[]) => {
     updateState((prev) => ({
       ...prev,
       todoLists: updater(prev.todoLists),
     }))
-  }
+  }, [updateState])
 
-  useEffect(() => {
-    let isActive = true
-    const loadData = async () => {
-      if (!familyId) return
-      if (!authSession && !isOfflineRef.current) return
-      const cacheMeta = loadCacheMeta(familyId)
+  const syncAllData = useCallback(
+    async ({
+      timeoutMs,
+      trigger,
+    }: {
+      timeoutMs: number
+      trigger: DataSyncTrigger
+    }): Promise<boolean> => {
+      if (!familyId) return false
+      if (!authSession && !isOfflineRef.current) return false
+      if (syncInFlightRef.current) return false
       const hasLocalData =
-        state.expenses.length > 0 || state.tags.length > 0 || state.todoLists.length > 0
-      if (isActive) {
-        setLastSyncAt(
-          cacheMeta?.lastSyncAt ?? offlineSnapshotRef.current?.lastSyncAt ?? null,
-        )
-        setDataStale(false)
+        stateRef.current.expenses.length > 0 ||
+        stateRef.current.tags.length > 0 ||
+        stateRef.current.todoLists.length > 0
+
+      syncInFlightRef.current = true
+      setSyncInFlight(true)
+      if (trigger === 'manual') {
+        setManualRetrying(true)
       }
-      const hasCache = Boolean(cacheMeta) || hasLocalData
-      const offline = isOfflineRef.current
-      setDataLoading(!hasCache && !offline)
-      if (hasCache) {
-        setExpensesTotal((prev) => Math.max(prev, state.expenses.length))
-        setExpensesOffset(state.expenses.length)
-      } else {
-        setExpensesTotal(0)
-        setExpensesOffset(0)
+      if (trigger !== 'auto-retry') {
+        setDataSyncStatus('loading')
       }
-      setExpensesLoadingMore(false)
-      if (offline) {
-        if (hasCache) {
-          setDataStale(true)
-        }
-        if (isActive) setDataLoading(false)
-        return
-      }
+      setSyncErrorMessage(null)
+
+      const startedAt = performance.now()
+      logDataSync('sync_started', {
+        trigger,
+        timeoutMs,
+        hasLocalData,
+      })
+
       try {
         const [expensePage, tags, todoListPage] = await Promise.all([
-          listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
-          listTags(),
-          listTodoLists({ includeItems: true, itemsArchived: 'all' }),
+          listExpensePage(
+            { limit: EXPENSES_PAGE_SIZE, offset: 0 },
+            { timeoutMs },
+          ),
+          listTags({ timeoutMs }),
+          listTodoLists(
+            { includeItems: true, itemsArchived: 'all' },
+            { timeoutMs },
+          ),
         ])
-        if (!isActive) return
+
         updateState((prev) => ({
           ...prev,
           expenses: expensePage.items,
@@ -579,24 +726,115 @@ function App() {
         setLastSyncAt(now)
         saveCacheMeta({ familyId, lastSyncAt: now })
         persistOfflineSnapshot({ lastSyncAt: now })
-      } catch {
-        if (!isActive) return
-        if (hasCache) {
+        setDataSyncStatus('updated')
+        setDataStale(false)
+        setSyncErrorMessage(null)
+        logDataSync('sync_succeeded', {
+          trigger,
+          timeoutMs,
+          durationMs: Math.round(performance.now() - startedAt),
+          expensesCount: expensePage.items.length,
+          expensesTotal: expensePage.total,
+        })
+        return true
+      } catch (error) {
+        const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
+        setDataSyncStatus(status)
+        setSyncErrorMessage(
+          status === 'error'
+            ? isApiError(error)
+              ? error.message
+              : 'Не удалось обновить данные.'
+            : null,
+        )
+        if (hasLocalData) {
           setDataStale(true)
         }
+        logDataSync('sync_failed', {
+          trigger,
+          timeoutMs,
+          status,
+          durationMs: Math.round(performance.now() - startedAt),
+          hasLocalData,
+          message:
+            isApiError(error) || isApiTimeoutError(error)
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : 'unknown_error',
+        })
+        return false
       } finally {
-        if (isActive) setDataLoading(false)
+        syncInFlightRef.current = false
+        setSyncInFlight(false)
+        if (trigger === 'manual') {
+          setManualRetrying(false)
+        }
       }
+    },
+    [authSession, familyId, persistOfflineSnapshot, updateState],
+  )
+
+  useEffect(() => {
+    if (!familyId) return
+    if (!authSession && !isOfflineRef.current) return
+    const hasLocalData =
+      stateRef.current.expenses.length > 0 ||
+      stateRef.current.tags.length > 0 ||
+      stateRef.current.todoLists.length > 0
+    const cacheMeta = loadCacheMeta(familyId)
+    setLastSyncAt(cacheMeta?.lastSyncAt ?? offlineSnapshotRef.current?.lastSyncAt ?? null)
+    setSyncErrorMessage(null)
+    const hasCache = Boolean(cacheMeta) || hasLocalData
+    if (hasCache) {
+      setExpensesTotal((prev) => Math.max(prev, stateRef.current.expenses.length))
+      setExpensesOffset(stateRef.current.expenses.length)
+    } else {
+      setExpensesTotal(0)
+      setExpensesOffset(0)
+    }
+    setExpensesLoadingMore(false)
+
+    if (isOfflineRef.current) {
+      setDataSyncStatus('offline')
+      if (hasCache) {
+        setDataStale(true)
+      }
+      return
     }
 
-    if (authSession && familyId) {
-      void loadData()
-    }
+    void syncAllData({
+      timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
+      trigger: 'initial',
+    })
+  }, [authSession, familyId, syncAllData])
+
+  useEffect(() => {
+    if (!authSession || !familyId) return
+    if (dataSyncStatus !== 'offline' && dataSyncStatus !== 'error') return
+    if (typeof window === 'undefined') return
+
+    const intervalId = window.setInterval(() => {
+      void syncAllData({
+        timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
+        trigger: 'auto-retry',
+      })
+    }, AUTO_RETRY_INTERVAL_MS)
 
     return () => {
-      isActive = false
+      window.clearInterval(intervalId)
     }
-  }, [authSession, familyId])
+  }, [authSession, familyId, dataSyncStatus, syncAllData])
+
+  useEffect(() => {
+    if (isOffline) return
+    if (dataSyncStatus !== 'offline' && dataSyncStatus !== 'error') return
+    if (!authSession || !familyId) return
+    void syncAllData({
+      timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
+      trigger: 'auto-retry',
+    })
+  }, [isOffline, dataSyncStatus, authSession, familyId, syncAllData])
 
   const active = useMemo(
     () => TABS.find((tab) => tab.id === activeTab) ?? TABS[0],
@@ -644,6 +882,8 @@ function App() {
   const themeMode = state.settings.themeMode
   const themeLabel = themeMode === 'dark' ? 'Светлая тема' : 'Тёмная тема'
   const isOwner = family?.ownerId === authUser?.id
+  const isBackgroundSyncVisible = isSyncInFlight || isExpensesRefreshing || isTodoRefreshing
+  const canRetrySync = Boolean(authSession && familyId)
 
   const toggleTheme = () => {
     updateState((prev) => ({
@@ -659,9 +899,19 @@ function App() {
     await signInWithGoogle()
   }
 
+  const handleManualRetry = async () => {
+    if (!authSession || !familyId) return
+    await syncAllData({
+      timeoutMs: MANUAL_RETRY_TIMEOUT_MS,
+      trigger: 'manual',
+    })
+  }
+
   const handleFamilyComplete = (nextFamily: Family) => {
     setFamily(nextFamily)
     setFamilyId(nextFamily.id)
+    setDataSyncStatus('loading')
+    setSyncErrorMessage(null)
     if (authUser) {
       persistOfflineSnapshot({ lastUser: authUser, lastFamily: nextFamily })
     }
@@ -678,12 +928,16 @@ function App() {
 
   const handleSignOut = async () => {
     await signOut()
+    syncInFlightRef.current = false
     setAuthSession(null)
     setAuthUser(null)
     setFamilyId(null)
     setFamily(null)
     navigateHome(true)
-    setDataLoading(false)
+    setSyncInFlight(false)
+    setManualRetrying(false)
+    setDataSyncStatus('loading')
+    setSyncErrorMessage(null)
     setDataStale(false)
     setLastSyncAt(null)
     setExpensesTotal(0)
@@ -702,10 +956,14 @@ function App() {
       return
     }
     await leaveFamily()
+    syncInFlightRef.current = false
     setFamilyId(null)
     setFamily(null)
     navigateHome(true)
-    setDataLoading(false)
+    setSyncInFlight(false)
+    setManualRetrying(false)
+    setDataSyncStatus('loading')
+    setSyncErrorMessage(null)
     setDataStale(false)
     setLastSyncAt(null)
     setExpensesTotal(0)
@@ -866,10 +1124,14 @@ function App() {
     setExpensesRefreshing(true)
     setDataStale(false)
     setExpensesLoadingMore(false)
+    setSyncErrorMessage(null)
     try {
       const [expensePage, tags] = await Promise.all([
-        listExpensePage({ limit: EXPENSES_PAGE_SIZE, offset: 0 }),
-        listTags(),
+        listExpensePage(
+          { limit: EXPENSES_PAGE_SIZE, offset: 0 },
+          { timeoutMs: MANUAL_RETRY_TIMEOUT_MS },
+        ),
+        listTags({ timeoutMs: MANUAL_RETRY_TIMEOUT_MS }),
       ])
       updateState((prev) => ({ ...prev, expenses: expensePage.items, tags }))
       setExpensesTotal(expensePage.total)
@@ -878,7 +1140,15 @@ function App() {
       setLastSyncAt(now)
       saveCacheMeta({ familyId, lastSyncAt: now })
       persistOfflineSnapshot({ lastSyncAt: now })
-    } catch {
+      setDataSyncStatus('updated')
+    } catch (error) {
+      const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
+      setDataSyncStatus(status)
+      setSyncErrorMessage(
+        status === 'error' && isApiError(error) ? error.message : status === 'error'
+          ? 'Не удалось обновить данные.'
+          : null,
+      )
       setDataStale(true)
     } finally {
       setExpensesRefreshing(false)
@@ -890,17 +1160,26 @@ function App() {
     if (!authSession || !familyId || isTodoRefreshing) return
     setTodoRefreshing(true)
     setDataStale(false)
+    setSyncErrorMessage(null)
     try {
       const todoListPage = await listTodoLists({
         includeItems: true,
         itemsArchived: 'all',
-      })
+      }, { timeoutMs: MANUAL_RETRY_TIMEOUT_MS })
       updateTodoLists(() => todoListPage.items)
       const now = new Date().toISOString()
       setLastSyncAt(now)
       saveCacheMeta({ familyId, lastSyncAt: now })
       persistOfflineSnapshot({ lastSyncAt: now })
-    } catch {
+      setDataSyncStatus('updated')
+    } catch (error) {
+      const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
+      setDataSyncStatus(status)
+      setSyncErrorMessage(
+        status === 'error' && isApiError(error) ? error.message : status === 'error'
+          ? 'Не удалось обновить данные.'
+          : null,
+      )
       setDataStale(true)
     } finally {
       setTodoRefreshing(false)
@@ -1394,6 +1673,12 @@ function App() {
             <ListItemText primary="Выйти из аккаунта" />
           </MenuItem>
         </Menu>
+        {isBackgroundSyncVisible ? (
+          <LinearProgress
+            color={dataSyncStatus === 'error' ? 'error' : 'primary'}
+            sx={{ height: 3 }}
+          />
+        ) : null}
       </Paper>
 
       <Dialog
@@ -1515,10 +1800,43 @@ function App() {
 
       <Container maxWidth="md" sx={{ pt: 2, pb: activeApp === 'expenses' ? 12 : 6 }}>
         <Stack spacing={3}>
-          {isReadOnly ? (
-            <Alert severity="info">
-              Оффлайн: только просмотр.
+          {dataSyncStatus === 'offline' ? (
+            <Alert
+              severity="warning"
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    void handleManualRetry()
+                  }}
+                  disabled={!canRetrySync || isManualRetrying}
+                >
+                  {isManualRetrying ? 'Retry…' : 'Retry'}
+                </Button>
+              }
+            >
+              Offline: нет сети, показываем сохраненные данные.
               {formattedLastSyncAt ? ` Последнее обновление: ${formattedLastSyncAt}.` : ''}
+            </Alert>
+          ) : null}
+          {dataSyncStatus === 'error' ? (
+            <Alert
+              severity="error"
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    void handleManualRetry()
+                  }}
+                  disabled={!canRetrySync || isManualRetrying}
+                >
+                  {isManualRetrying ? 'Retry…' : 'Retry'}
+                </Button>
+              }
+            >
+              {syncErrorMessage ?? 'Не удалось обновить данные.'}
             </Alert>
           ) : null}
           {isDataStale ? (
@@ -1638,10 +1956,15 @@ function App() {
       return appShell
     }
 
-    if (isBootstrapping) {
+    const canRenderFromCache = hasResolvedAppContext
+    if (isBootstrapping && !canRenderFromCache) {
       return <AppLoadingScreen />
     }
-    if (isOffline && !hasOfflineSnapshot && (!authSession || !authUser || !familyId)) {
+    const shouldShowConnectionError =
+      !hasCachedSessionData &&
+      !hasResolvedAppContext &&
+      (isOffline || dataSyncStatus === 'offline')
+    if (shouldShowConnectionError) {
       return <OfflineBlockedScreen />
     }
     if (!authSession || !authUser) {
@@ -1657,9 +1980,6 @@ function App() {
     }
     if (!familyId) {
       return <FamilyScreen onComplete={handleFamilyComplete} />
-    }
-    if (isDataLoading) {
-      return <AppLoadingScreen label="Загружаем данные…" />
     }
     return appShell
   })()

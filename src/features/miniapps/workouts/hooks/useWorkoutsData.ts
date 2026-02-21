@@ -49,17 +49,26 @@ export function useWorkoutsData() {
 
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      // Always load from local storage first for instant UI
+    void (async () => {
+      // Local-first hydration: render UI from cache immediately.
       const localWorkouts = loadWorkoutsStore()
       const localTemplates = loadTemplates()
+      if (!alive) return
       if (localWorkouts.length > 0) {
         setWorkouts(sortWorkouts(localWorkouts))
+      } else {
+        setWorkouts([])
       }
       if (localTemplates.length > 0) {
         setTemplates(localTemplates)
+      } else {
+        setTemplates([])
       }
+      setLocalExercises(loadLocalExercises())
+      setExerciseMeta(loadExerciseMeta())
+      setLoading(false)
 
+      // Network refresh happens in background and never blocks first paint.
       try {
         const [workoutsResponse, exerciseResponse, templatesResponse] = await Promise.all([
           listWorkoutsApi(),
@@ -67,33 +76,19 @@ export function useWorkoutsData() {
           listTemplatesApi(),
         ])
         if (!alive) return
-        
-        // Update with server data and save to local storage
+
         setWorkouts(sortWorkouts(workoutsResponse))
         saveWorkoutsStore(workoutsResponse)
-        
         setBackendExercises(Array.isArray(exerciseResponse) ? exerciseResponse : [])
-        
+
         const validTemplates = Array.isArray(templatesResponse) ? templatesResponse : []
         setTemplates(validTemplates)
         saveTemplates(validTemplates)
       } catch (error) {
         console.warn('Workouts load failed, using local data', error)
-        // Load from local storage as fallback
-        if (!alive) return
-        if (localWorkouts.length === 0) {
-          setWorkouts(loadWorkoutsStore())
-        }
-        if (localTemplates.length === 0) {
-          setTemplates(loadTemplates())
-        }
       }
-
-      if (!alive) return
-      setLocalExercises(loadLocalExercises())
-      setExerciseMeta(loadExerciseMeta())
-      setLoading(false)
     })()
+
     return () => {
       alive = false
     }

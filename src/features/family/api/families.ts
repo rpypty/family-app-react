@@ -48,9 +48,11 @@ const mapFamilyMember = (member: ApiFamilyMember): FamilyMember => ({
   avatarUrl: member.avatar_url ?? null,
 })
 
-export const getCurrentFamily = async (): Promise<Family | null> => {
+export const getCurrentFamily = async (options?: {
+  timeoutMs?: number
+}): Promise<Family | null> => {
   try {
-    const family = await apiFetch<ApiFamily>('/families/me')
+    const family = await apiFetch<ApiFamily>('/families/me', options)
     return mapFamily(family)
   } catch (error) {
     if (isApiError(error) && (error.status === 404 || error.code === 'family_not_found')) {
@@ -61,6 +63,7 @@ export const getCurrentFamily = async (): Promise<Family | null> => {
 }
 
 export const getUserFamilyId = async (_userId: string): Promise<string | null> => {
+  void _userId
   const family = await getCurrentFamily()
   return family?.id ?? null
 }

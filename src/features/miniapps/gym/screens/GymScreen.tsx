@@ -4,8 +4,8 @@ import {
   BottomNavigation,
   BottomNavigationAction,
   Box,
-  CircularProgress,
   Container,
+  LinearProgress,
   Paper,
 } from '@mui/material'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
@@ -112,17 +112,10 @@ export function GymScreen({ readOnly = false }: GymScreenProps) {
     navigate(`/miniapps/gym/workout/${w.id}`)
   }
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    )
-  }
-
   return (
     <Container maxWidth="sm" disableGutters>
       <Box sx={{ pb: editingWorkout ? 2 : 10 }}>
+        {loading ? <LinearProgress sx={{ mb: 1 }} /> : null}
         {editingWorkout ? (
           <WorkoutEditScreen
             workout={editingWorkout}

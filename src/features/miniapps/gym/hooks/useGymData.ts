@@ -33,48 +33,12 @@ export function useGymData() {
 
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      let backendData: {
-        workouts: Workout[]
-        entries: ReturnType<typeof flattenWorkoutsToEntries>
-        templates: WorkoutTemplate[]
-        exercises: string[]
-      } | null = null
-
-      const offline = typeof navigator !== 'undefined' && !navigator.onLine
-
-      if (!offline) {
-        try {
-          const last = await getLastSyncTime()
-          const now = Date.now()
-          const SKIP_WINDOW = 60 * 1000 // 60 seconds
-          if (!last || now - last > SKIP_WINDOW) {
-            await syncWithBackend()
-          }
-          const refreshed = await refreshFromBackend()
-          if (refreshed) {
-            backendData = {
-              workouts: refreshed.workouts,
-              entries: refreshed.entries,
-              templates: refreshed.templates,
-              exercises: refreshed.exercises,
-            }
-          }
-        } catch (error) {
-          console.warn('Failed to sync with backend, using local data:', error)
-        }
-      }
-
-      const [loadedWorkouts, loadedEntries, loadedExercises, loadedTemplates] = backendData
-        ? [backendData.workouts, backendData.entries, backendData.exercises, backendData.templates]
-        : await Promise.all([
-            loadWorkouts(),
-            loadGymEntries(),
-            loadExercises(),
-            loadWorkoutTemplates(),
-          ])
-      if (!alive) return
-
+    const applyLoadedData = async (
+      loadedWorkouts: Workout[],
+      loadedEntries: ReturnType<typeof flattenWorkoutsToEntries>,
+      loadedExercises: string[],
+      loadedTemplates: WorkoutTemplate[],
+    ) => {
       const w = Array.isArray(loadedWorkouts) ? loadedWorkouts : []
       if (w.length > 0) {
         setWorkouts(w)
@@ -94,8 +58,45 @@ export function useGymData() {
 
       setExercises(Array.isArray(loadedExercises) ? loadedExercises : [])
       setTemplates(Array.isArray(loadedTemplates) ? loadedTemplates : [])
+    }
+
+    void (async () => {
+      // Local-first hydration: show cached data before any network sync.
+      const [localWorkouts, localEntries, localExercises, localTemplates] = await Promise.all([
+        loadWorkouts(),
+        loadGymEntries(),
+        loadExercises(),
+        loadWorkoutTemplates(),
+      ])
+      if (!alive) return
+      await applyLoadedData(localWorkouts, localEntries, localExercises, localTemplates)
+      if (!alive) return
       setLoading(false)
+
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine
+      if (offline) return
+
+      // Sync and refresh from backend in background.
+      try {
+        const last = await getLastSyncTime()
+        const now = Date.now()
+        const SKIP_WINDOW = 60 * 1000 // 60 seconds
+        if (!last || now - last > SKIP_WINDOW) {
+          await syncWithBackend()
+        }
+        const refreshed = await refreshFromBackend()
+        if (!alive || !refreshed) return
+        await applyLoadedData(
+          refreshed.workouts,
+          refreshed.entries,
+          refreshed.exercises,
+          refreshed.templates,
+        )
+      } catch (error) {
+        console.warn('Failed to sync with backend, using local data:', error)
+      }
     })()
+
     return () => {
       alive = false
     }
