@@ -10,7 +10,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
 import type { Expense, Tag } from '../../../../../shared/types'
@@ -21,6 +21,13 @@ import {
   parseDate,
   formatAmount,
 } from '../../../../../shared/lib/formatters'
+import {
+  getFirstTagColor,
+  getFirstTagEmoji,
+  normalizeTagColor,
+  withTagEmoji,
+  type TagAppearanceInput,
+} from '../../../../../shared/lib/tagAppearance'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
@@ -35,7 +42,7 @@ type ExpensesScreenProps = {
   onCreateExpense: (expense: Expense) => Promise<void>
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
-  onCreateTag: (name: string) => Promise<Tag>
+  onCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
   readOnly?: boolean
   allowOfflineCreate?: boolean
 }
@@ -81,7 +88,7 @@ export function ExpensesScreen({
     return { groupedByDay: grouped, dayKeys: keys }
   }, [expenses])
 
-  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.name])), [tags])
+  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags])
 
   const openCreate = () => {
     if (!canCreate) return
@@ -142,11 +149,13 @@ export function ExpensesScreen({
                       </Stack>
                       <Stack spacing={1}>
                         {dayExpenses.map((expense) => {
-                          const tagNames = expense.tagIds
+                          const expenseTags = expense.tagIds
                             .map((id) => tagMap.get(id))
-                            .filter((name): name is string => Boolean(name))
-                          const visibleTags = tagNames.slice(0, maxTagVisible)
-                          const remainingTags = tagNames.length - visibleTags.length
+                            .filter((tag): tag is Tag => Boolean(tag))
+                          const visibleTags = expenseTags.slice(0, maxTagVisible)
+                          const remainingTags = expenseTags.length - visibleTags.length
+                          const iconEmoji = getFirstTagEmoji(expenseTags)
+                          const iconColor = getFirstTagColor(expenseTags)
                           return (
                             <Paper
                               key={expense.id}
@@ -170,6 +179,7 @@ export function ExpensesScreen({
                                 flexDirection: { xs: 'column', sm: 'row' },
                                 justifyContent: 'space-between',
                                 gap: 1.5,
+                                borderLeft: iconColor ? `3px solid ${alpha(iconColor, 0.85)}` : undefined,
                                 cursor: canEdit ? 'pointer' : 'default',
                                 transition: 'box-shadow 0.2s, border-color 0.2s',
                                 '&:hover': canEdit
@@ -186,7 +196,7 @@ export function ExpensesScreen({
                                 alignItems="center"
                                 sx={{ flex: 1, minWidth: 0 }}
                               >
-                                <ExpenseIcon />
+                                <ExpenseIcon emoji={iconEmoji} color={iconColor} />
                                 <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
                                   <Stack direction="row" spacing={2} alignItems="center">
                                     <Typography
@@ -212,7 +222,7 @@ export function ExpensesScreen({
                                       {formatAmount(expense.amount)} {expense.currency}
                                     </Typography>
                                   </Stack>
-                                  {tagNames.length > 0 ? (
+                                  {expenseTags.length > 0 ? (
                                     <Stack
                                       direction="row"
                                       spacing={1}
@@ -221,25 +231,36 @@ export function ExpensesScreen({
                                         overflow: 'hidden',
                                       }}
                                     >
-                                      {visibleTags.map((name) => (
-                                        <Chip
-                                          key={name}
-                                          label={name}
-                                          size="small"
-                                          variant="outlined"
-                                          sx={{
-                                            flexShrink: 0,
-                                            maxWidth: 140,
-                                            color: 'text.secondary',
-                                            borderColor: 'divider',
-                                            '& .MuiChip-label': {
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap',
-                                            },
-                                          }}
-                                        />
-                                      ))}
+                                      {visibleTags.map((tag) => {
+                                        const tagColor = normalizeTagColor(tag.color)
+                                        return (
+                                          <Chip
+                                            key={tag.id}
+                                            label={withTagEmoji(tag)}
+                                            size="small"
+                                            variant="outlined"
+                                            sx={(theme) => ({
+                                              flexShrink: 0,
+                                              maxWidth: 150,
+                                              color: tagColor ?? theme.palette.text.secondary,
+                                              borderColor: tagColor
+                                                ? alpha(tagColor, 0.5)
+                                                : theme.palette.divider,
+                                              bgcolor: tagColor
+                                                ? alpha(
+                                                    tagColor,
+                                                    theme.palette.mode === 'dark' ? 0.28 : 0.12,
+                                                  )
+                                                : 'transparent',
+                                              '& .MuiChip-label': {
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                              },
+                                            })}
+                                          />
+                                        )
+                                      })}
                                       {remainingTags > 0 ? (
                                         <Chip
                                           label={`${remainingTags}+ тегов`}

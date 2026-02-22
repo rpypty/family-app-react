@@ -1,5 +1,6 @@
 import type { Dispatch, MouseEvent, SetStateAction } from 'react'
 import type { FamilyMember } from '../../../features/family/api/families'
+import type { TagAppearanceInput } from '../../../shared/lib/tagAppearance'
 import type { Expense, Tag } from '../../../shared/types'
 import type { TabId } from '../../routing/routes'
 
@@ -56,8 +57,12 @@ type UseAppShellActionsParams = {
     handleCreateExpense: (expense: Expense) => Promise<void>
     handleUpdateExpense: (expense: Expense) => Promise<void>
     handleDeleteExpense: (expenseId: string) => Promise<void>
-    handleCreateTag: (name: string) => Promise<Tag>
-    handleUpdateTag: (tagId: string, name: string) => Promise<Tag>
+    handleCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+    handleUpdateTag: (
+      tagId: string,
+      name: string,
+      payload?: TagAppearanceInput,
+    ) => Promise<Tag>
     handleDeleteTag: (tagId: string) => Promise<void>
   }
 }

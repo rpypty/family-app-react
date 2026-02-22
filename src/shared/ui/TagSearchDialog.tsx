@@ -21,13 +21,23 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import EditOutlined from '@mui/icons-material/EditOutlined'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import { isApiError } from '../api/client'
 import type { Tag } from '../types'
 import { findTagByName } from '../lib/tagUtils'
+import { EmojiPickerField } from './EmojiPickerField'
+import { TagColorPickerField } from './TagColorPickerField'
+import {
+  DEFAULT_TAG_COLOR,
+  TAG_COLOR_OPTIONS,
+  normalizeTagColor,
+  normalizeTagEmoji,
+  withTagEmoji,
+  type TagAppearanceInput,
+} from '../lib/tagAppearance'
 
 type TagSearchDialogProps = {
   isOpen: boolean
@@ -35,11 +45,12 @@ type TagSearchDialogProps = {
   initialSelected: string[]
   onClose: () => void
   onConfirm: (selected: string[]) => void
-  onCreateTag?: (name: string) => Promise<Tag>
-  onUpdateTag?: (tagId: string, name: string) => Promise<Tag>
+  onCreateTag?: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+  onUpdateTag?: (tagId: string, name: string, payload?: TagAppearanceInput) => Promise<Tag>
   onDeleteTag?: (tagId: string) => Promise<void>
   title?: string
   enableSelectAll?: boolean
+  enableSelection?: boolean
 }
 
 export function TagSearchDialog({
@@ -53,15 +64,20 @@ export function TagSearchDialog({
   onDeleteTag,
   title = 'Поиск тегов',
   enableSelectAll = false,
+  enableSelection = true,
 }: TagSearchDialogProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected))
   const [isCreating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [createColor, setCreateColor] = useState<string | null>(DEFAULT_TAG_COLOR)
+  const [createEmoji, setCreateEmoji] = useState('')
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null)
   const [menuTag, setMenuTag] = useState<Tag | null>(null)
   const [editingTag, setEditingTag] = useState<Tag | null>(null)
   const [editName, setEditName] = useState('')
+  const [editColor, setEditColor] = useState<string | null>(DEFAULT_TAG_COLOR)
+  const [editEmoji, setEditEmoji] = useState('')
   const [isUpdating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null)
@@ -77,10 +93,14 @@ export function TagSearchDialog({
       setSelected(new Set(initialSelected))
       setCreateError('')
       setCreating(false)
+      setCreateColor(DEFAULT_TAG_COLOR)
+      setCreateEmoji('')
       setMenuAnchorEl(null)
       setMenuTag(null)
       setEditingTag(null)
       setEditName('')
+      setEditColor(DEFAULT_TAG_COLOR)
+      setEditEmoji('')
       setUpdating(false)
       setUpdateError('')
       setDeleteTarget(null)
@@ -89,13 +109,23 @@ export function TagSearchDialog({
     }
   }, [isOpen, initialSelected])
 
+  const createAppearancePayload = (): TagAppearanceInput => ({
+    color: createColor === null ? null : normalizeTagColor(createColor) ?? null,
+    emoji: normalizeTagEmoji(createEmoji) ?? null,
+  })
+
+  const editAppearancePayload = (): TagAppearanceInput => ({
+    color: editColor === null ? null : normalizeTagColor(editColor) ?? null,
+    emoji: normalizeTagEmoji(editEmoji) ?? null,
+  })
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return tags
     return tags.filter((tag) => tag.name.toLowerCase().includes(normalized))
   }, [query, tags])
 
-  const allSelected = tags.length > 0 && selected.size === tags.length
+  const allSelected = enableSelection && tags.length > 0 && selected.size === tags.length
   const handleToggleAll = () => {
     if (allSelected) {
       setSelected(new Set())
@@ -128,7 +158,7 @@ export function TagSearchDialog({
     setCreating(true)
     setCreateError('')
     try {
-      const tag = await onCreateTag(name)
+      const tag = await onCreateTag(name, createAppearancePayload())
       setSelected((prev) => new Set(prev).add(tag.id))
     } catch {
       setCreateError('Не удалось создать тег. Попробуйте ещё раз.')
@@ -152,6 +182,8 @@ export function TagSearchDialog({
     if (!menuTag || !onUpdateTag) return
     setEditingTag(menuTag)
     setEditName(menuTag.name)
+    setEditColor(normalizeTagColor(menuTag.color) ?? null)
+    setEditEmoji(normalizeTagEmoji(menuTag.emoji) ?? '')
     setUpdateError('')
     handleCloseMenu()
   }
@@ -171,9 +203,11 @@ export function TagSearchDialog({
     setUpdating(true)
     setUpdateError('')
     try {
-      await onUpdateTag(editingTag.id, name)
+      await onUpdateTag(editingTag.id, name, editAppearancePayload())
       setEditingTag(null)
       setEditName('')
+      setEditColor(DEFAULT_TAG_COLOR)
+      setEditEmoji('')
     } catch (error) {
       if (isApiError(error) && error.code === 'tag_name_taken') {
         setUpdateError('Тег с таким названием уже существует.')
@@ -234,16 +268,33 @@ export function TagSearchDialog({
           <TextField
             label="Найти тег"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              if (createError) setCreateError('')
+            }}
             fullWidth
           />
           {filtered.length === 0 ? (
-            <Stack spacing={1}>
+            <Stack spacing={1.25}>
               <Typography color="text.secondary">Ничего не найдено</Typography>
               {onCreateTag && query.trim() ? (
-                <Button variant="contained" onClick={handleCreate} disabled={isCreating}>
-                  {isCreating ? 'Создаём…' : `Добавить тег "${query.trim()}"`}
-                </Button>
+                <Stack spacing={1.25}>
+                  <EmojiPickerField
+                    value={createEmoji}
+                    onChange={(emoji) => {
+                      setCreateEmoji(emoji)
+                      if (createError) setCreateError('')
+                    }}
+                  />
+                  <TagColorPickerField
+                    value={createColor}
+                    onChange={setCreateColor}
+                    options={TAG_COLOR_OPTIONS}
+                  />
+                  <Button variant="contained" onClick={handleCreate} disabled={isCreating}>
+                    {isCreating ? 'Создаём…' : `Добавить тег "${query.trim()}"`}
+                  </Button>
+                </Stack>
               ) : null}
               {createError ? (
                 <Typography color="error" variant="body2">
@@ -253,49 +304,79 @@ export function TagSearchDialog({
             </Stack>
           ) : (
             <List dense>
-              {filtered.map((tag) => (
-                <ListItem
-                  key={tag.id}
-                  disablePadding
-                  secondaryAction={
-                    hasActions ? (
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={(event) => handleOpenMenu(event, tag)}
-                        aria-label="Открыть меню"
-                      >
-                        <MoreHorizRounded fontSize="small" />
-                      </IconButton>
-                    ) : null
-                  }
-                >
-                  <ListItemButton onClick={() => toggleTag(tag.id)}>
-                    <Checkbox
-                      checked={selected.has(tag.id)}
-                      onChange={() => toggleTag(tag.id)}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                    <ListItemText primary={tag.name} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
+              {filtered.map((tag) => {
+                const tagColor = normalizeTagColor(tag.color)
+                return (
+                  <ListItem
+                    key={tag.id}
+                    disablePadding
+                    secondaryAction={
+                      hasActions ? (
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          onClick={(event) => handleOpenMenu(event, tag)}
+                          aria-label="Открыть меню"
+                        >
+                          <MoreHorizRounded fontSize="small" />
+                        </IconButton>
+                      ) : null
+                    }
+                  >
+                    <ListItemButton
+                      onClick={enableSelection ? () => toggleTag(tag.id) : undefined}
+                      disableRipple={!enableSelection}
+                      sx={{ cursor: enableSelection ? 'pointer' : 'default' }}
+                    >
+                      {enableSelection ? (
+                        <Checkbox
+                          checked={selected.has(tag.id)}
+                          onChange={() => toggleTag(tag.id)}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                      ) : null}
+                      <Box
+                        sx={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          bgcolor: tagColor ?? 'divider',
+                          border: '1px solid',
+                          borderColor: tagColor ? alpha(tagColor, 0.65) : 'divider',
+                          mr: 1.25,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <ListItemText primary={withTagEmoji(tag)} />
+                    </ListItemButton>
+                  </ListItem>
+                )
+              })}
             </List>
           )}
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ justifyContent: enableSelectAll ? 'space-between' : 'flex-end' }}>
-        {enableSelectAll ? (
+      <DialogActions
+        sx={{
+          justifyContent:
+            enableSelection && enableSelectAll ? 'space-between' : 'flex-end',
+        }}
+      >
+        {enableSelection && enableSelectAll ? (
           <Button onClick={handleToggleAll} disabled={tags.length === 0}>
             {allSelected ? 'Убрать все' : 'Выбрать все'}
           </Button>
         ) : null}
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button onClick={onClose}>Отмена</Button>
-          <Button variant="contained" onClick={() => onConfirm(Array.from(selected))}>
-            Готово
-          </Button>
-        </Box>
+        {enableSelection ? (
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={onClose}>Отмена</Button>
+            <Button variant="contained" onClick={() => onConfirm(Array.from(selected))}>
+              Готово
+            </Button>
+          </Box>
+        ) : (
+          <Button onClick={onClose}>Закрыть</Button>
+        )}
       </DialogActions>
 
       <Menu
@@ -328,6 +409,8 @@ export function TagSearchDialog({
         onClose={() => {
           setEditingTag(null)
           setEditName('')
+          setEditColor(DEFAULT_TAG_COLOR)
+          setEditEmoji('')
           setUpdateError('')
         }}
         maxWidth="xs"
@@ -335,7 +418,7 @@ export function TagSearchDialog({
       >
         <DialogTitle>Редактировать тег</DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={1}>
+          <Stack spacing={1.25}>
             <TextField
               value={editName}
               onChange={(event) => setEditName(event.target.value)}
@@ -350,6 +433,25 @@ export function TagSearchDialog({
                 }
               }}
             />
+            <EmojiPickerField
+              value={editEmoji}
+              onChange={(emoji) => setEditEmoji(emoji)}
+            />
+            <Stack direction="row" justifyContent="flex-end">
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => setEditEmoji('')}
+                disabled={!normalizeTagEmoji(editEmoji)}
+              >
+                Убрать эмоджи
+              </Button>
+            </Stack>
+            <TagColorPickerField
+              value={editColor}
+              onChange={setEditColor}
+              options={TAG_COLOR_OPTIONS}
+            />
             {updateError ? (
               <Typography color="error" variant="body2">
                 {updateError}
@@ -362,6 +464,8 @@ export function TagSearchDialog({
             onClick={() => {
               setEditingTag(null)
               setEditName('')
+              setEditColor(DEFAULT_TAG_COLOR)
+              setEditEmoji('')
               setUpdateError('')
             }}
           >

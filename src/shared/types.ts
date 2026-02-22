@@ -17,6 +17,8 @@ export type Expense = {
 export type Tag = {
   id: string
   name: string
+  color?: string
+  emoji?: string
 }
 
 export type TodoUser = {
