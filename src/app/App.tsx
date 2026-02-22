@@ -36,6 +36,7 @@ import PieChartRounded from '@mui/icons-material/PieChartRounded'
 import BarChartRounded from '@mui/icons-material/BarChartRounded'
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import RefreshRounded from '@mui/icons-material/RefreshRounded'
+import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded'
 import LightModeRounded from '@mui/icons-material/LightModeRounded'
 import AccountCircleRounded from '@mui/icons-material/AccountCircleRounded'
@@ -225,6 +226,11 @@ const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => 
         reject(error)
       })
   })
+}
+
+const shouldKeepFailedOperationForRetry = (result: SyncOperationResult): boolean => {
+  if (result.status !== 'failed') return false
+  return result.error?.retryable !== false
 }
 
 type ResolvedRoute = {
@@ -940,10 +946,12 @@ function App() {
       const nextOperations = mappedOperations.filter((operation) => {
         const result = resultsMap.get(operation.operation_id)
         if (!result) return true
-        return result.status === 'failed'
+        return shouldKeepFailedOperationForRetry(result)
       })
 
-      const syncedOperations = operations.length - nextOperations.length
+      const syncedOperations = response.results.filter(
+        (result) => result.status === 'applied' || result.status === 'duplicate',
+      ).length
       setOutboxOperations(nextOperations)
       updateState((prev) =>
         applyPendingSyncState(
@@ -1212,10 +1220,30 @@ function App() {
   const formattedLastSyncAt = useMemo(() => {
     if (!lastSyncAt) return null
     try {
-      return new Date(lastSyncAt).toLocaleString('ru-RU', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
+      const syncedAt = new Date(lastSyncAt)
+      if (Number.isNaN(syncedAt.getTime())) return null
+
+      const now = new Date()
+      const isToday =
+        syncedAt.getFullYear() === now.getFullYear() &&
+        syncedAt.getMonth() === now.getMonth() &&
+        syncedAt.getDate() === now.getDate()
+
+      if (isToday) {
+        return syncedAt.toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      }
+
+      return syncedAt
+        .toLocaleString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+        .replace(' в ', ', ')
     } catch {
       return null
     }
@@ -2250,21 +2278,23 @@ function App() {
           {dataSyncStatus === 'offline' ? (
             <Alert
               severity="warning"
+              iconMapping={{ warning: <CloudOffRounded fontSize="inherit" /> }}
               action={
-                <Button
+                <IconButton
                   color="inherit"
                   size="small"
+                  aria-label="Повторить синхронизацию"
                   onClick={() => {
                     void handleManualRetry()
                   }}
                   disabled={!canRetrySync || isManualRetrying}
                 >
-                  {isManualRetrying ? 'Обновляем…' : 'Обновить'}
-                </Button>
+                  {isManualRetrying ? <CircularProgress size={18} color="inherit" /> : <RefreshRounded />}
+                </IconButton>
               }
             >
-              Offline: нет сети, показываем сохраненные данные.
-              {formattedLastSyncAt ? ` Последнее обновление: ${formattedLastSyncAt}.` : ''}
+              Нет соединения.
+              {formattedLastSyncAt ? ` Последнее обновление в ${formattedLastSyncAt}.` : ''}
             </Alert>
           ) : null}
           {dataSyncStatus === 'error' ? (
