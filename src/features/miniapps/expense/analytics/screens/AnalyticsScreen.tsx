@@ -28,6 +28,12 @@ import {
   parseDate,
 } from '../../../../../shared/lib/formatters'
 import { selectedTags } from '../../../../../shared/lib/tagUtils'
+import {
+  getFirstTagColor,
+  getFirstTagEmoji,
+  withTagEmoji,
+  type TagAppearanceInput,
+} from '../../../../../shared/lib/tagAppearance'
 import { PieChart } from '../components/PieChart'
 import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
 import { TagPickerInput } from '../../../../../shared/ui/TagPickerInput'
@@ -40,7 +46,8 @@ import { listExpensePage } from '../../expenses/api/expenses'
 type AnalyticsScreenProps = {
   tags: Tag[]
   readOnly?: boolean
-  onUpdateTag?: (tagId: string, name: string) => Promise<Tag>
+  onCreateTag?: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+  onUpdateTag?: (tagId: string, name: string, payload?: TagAppearanceInput) => Promise<Tag>
   onDeleteTag?: (tagId: string) => Promise<void>
 }
 
@@ -127,6 +134,7 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
 
 export function AnalyticsScreen({
   tags,
+  onCreateTag,
   onUpdateTag,
   onDeleteTag,
   readOnly = false,
@@ -180,6 +188,7 @@ export function AnalyticsScreen({
   const tagIds = useMemo(() => Array.from(filterTagIds), [filterTagIds])
   const tagIdsKey = tagIds.join(',')
   const tagIdsForApi = tagIds.length > 0 ? tagIds : undefined
+  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags])
 
   const applyQuickRange = (days: number) => {
     const today = dateOnly(new Date())
@@ -320,11 +329,11 @@ export function AnalyticsScreen({
     const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
     return entries.map((row, index) => ({
       id: row.tagId,
-      label: row.tagName || tags.find((tag) => tag.id === row.tagId)?.name || 'Без тега',
+      label: row.tagName || tagMap.get(row.tagId)?.name || 'Без тега',
       value: row.total,
       color: PALETTE[index % PALETTE.length],
     }))
-  }, [rowsForBreakdown, tags])
+  }, [rowsForBreakdown, tagMap])
 
   const totalByTags = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = summary?.currency ?? ''
@@ -590,9 +599,12 @@ export function AnalyticsScreen({
               ) : (
                 <Stack spacing={1}>
                   {filteredSorted.map((expense, index) => {
-                    const tagNames = expense.tagIds
-                      .map((id) => tags.find((tag) => tag.id === id)?.name)
-                      .filter((name): name is string => Boolean(name))
+                    const expenseTags = expense.tagIds
+                      .map((id) => tagMap.get(id))
+                      .filter((tag): tag is Tag => Boolean(tag))
+                    const tagNames = expenseTags.map((tag) => withTagEmoji(tag))
+                    const iconEmoji = getFirstTagEmoji(expenseTags)
+                    const iconColor = getFirstTagColor(expenseTags)
                     return (
                       <Box key={expense.id}>
                         <Stack direction="row" justifyContent="space-between" spacing={2}>
@@ -602,7 +614,7 @@ export function AnalyticsScreen({
                             alignItems="center"
                             sx={{ minWidth: 0, flex: 1 }}
                           >
-                            <ExpenseIcon size={32} />
+                            <ExpenseIcon size={32} emoji={iconEmoji} color={iconColor} />
                             <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
                               <Typography fontWeight={600} noWrap>
                                 {expense.title}
@@ -637,6 +649,7 @@ export function AnalyticsScreen({
           setFilterTagIds(new Set(selected))
           setTagDialogOpen(false)
         }}
+        onCreateTag={readOnly ? undefined : onCreateTag}
         onUpdateTag={readOnly ? undefined : onUpdateTag}
         onDeleteTag={readOnly ? undefined : onDeleteTag}
         enableSelectAll
@@ -670,9 +683,12 @@ export function AnalyticsScreen({
           ) : (
             <Stack spacing={1.5}>
               {drilldownExpenses.map((expense) => {
-                const tagNames = expense.tagIds
-                  .map((id) => tags.find((tag) => tag.id === id)?.name)
-                  .filter((name): name is string => Boolean(name))
+                const expenseTags = expense.tagIds
+                  .map((id) => tagMap.get(id))
+                  .filter((tag): tag is Tag => Boolean(tag))
+                const tagNames = expenseTags.map((tag) => withTagEmoji(tag))
+                const iconEmoji = getFirstTagEmoji(expenseTags)
+                const iconColor = getFirstTagColor(expenseTags)
                 return (
                   <Box
                     key={expense.id}
@@ -684,7 +700,7 @@ export function AnalyticsScreen({
                     }}
                   >
                     <Stack direction="row" spacing={1.5} alignItems="center">
-                      <ExpenseIcon size={32} />
+                      <ExpenseIcon size={32} emoji={iconEmoji} color={iconColor} />
                       <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
                         <Stack direction="row" justifyContent="space-between" spacing={1}>
                           <Typography variant="subtitle2" fontWeight={600} noWrap>

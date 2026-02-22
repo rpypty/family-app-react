@@ -4,6 +4,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,6 +18,16 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import type { Currency, Expense, Tag } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
+import {
+  DEFAULT_TAG_COLOR,
+  TAG_COLOR_OPTIONS,
+  normalizeTagColor,
+  normalizeTagEmoji,
+  withTagEmoji,
+  type TagAppearanceInput,
+} from '../../../../../shared/lib/tagAppearance'
+import { EmojiPickerField } from '../../../../../shared/ui/EmojiPickerField'
+import { TagColorPickerField } from '../../../../../shared/ui/TagColorPickerField'
 import { findTagByName, selectedTags } from '../../../../../shared/lib/tagUtils'
 import { createId } from '../../../../../shared/lib/uuid'
 
@@ -30,6 +41,11 @@ type TagCreateOption = {
 
 type TagOption = Tag | TagCreateOption
 
+type PendingTagCreate = {
+  name: string
+  nextIds: string[]
+}
+
 type ExpenseFormModalProps = {
   isOpen: boolean
   expense?: Expense | null
@@ -37,7 +53,7 @@ type ExpenseFormModalProps = {
   onClose: () => void
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
-  onCreateTag: (name: string) => Promise<Tag>
+  onCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
 }
 
 export function ExpenseFormModal({
@@ -57,6 +73,9 @@ export function ExpenseFormModal({
   const [error, setError] = useState('')
   const [isTagCreating, setTagCreating] = useState(false)
   const [tagCreateError, setTagCreateError] = useState('')
+  const [pendingTagCreate, setPendingTagCreate] = useState<PendingTagCreate | null>(null)
+  const [newTagColor, setNewTagColor] = useState<string | null>(DEFAULT_TAG_COLOR)
+  const [newTagEmoji, setNewTagEmoji] = useState('')
   const [isConfirmOpen, setConfirmOpen] = useState(false)
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
@@ -73,6 +92,9 @@ export function ExpenseFormModal({
     setError('')
     setTagCreateError('')
     setTagCreating(false)
+    setPendingTagCreate(null)
+    setNewTagColor(DEFAULT_TAG_COLOR)
+    setNewTagEmoji('')
     setConfirmOpen(false)
     setSaving(false)
     setDeleting(false)
@@ -118,14 +140,32 @@ export function ExpenseFormModal({
       return
     }
 
+    setSelectedTagIds(nextIds)
+    setPendingTagCreate({
+      name: trimmed,
+      nextIds: Array.from(nextIds),
+    })
+    setNewTagColor(DEFAULT_TAG_COLOR)
+    setNewTagEmoji('')
+  }
+
+  const handleConfirmTagCreate = async () => {
+    if (!pendingTagCreate) return
     setTagCreating(true)
+    setTagCreateError('')
     try {
-      const created = await onCreateTag(trimmed)
+      const created = await onCreateTag(pendingTagCreate.name, {
+        color: newTagColor === null ? null : normalizeTagColor(newTagColor) ?? null,
+        emoji: normalizeTagEmoji(newTagEmoji) ?? null,
+      })
+      const nextIds = new Set(pendingTagCreate.nextIds)
       nextIds.add(created.id)
       setSelectedTagIds(nextIds)
+      setPendingTagCreate(null)
+      setNewTagColor(DEFAULT_TAG_COLOR)
+      setNewTagEmoji('')
     } catch {
       setTagCreateError('Не удалось создать тег. Попробуйте ещё раз.')
-      setSelectedTagIds(nextIds)
     } finally {
       setTagCreating(false)
     }
@@ -254,7 +294,7 @@ export function ExpenseFormModal({
                   getOptionLabel={(option) => {
                     if (typeof option === 'string') return option
                     if ('isNew' in option) return option.name
-                    return option.name
+                    return withTagEmoji(option)
                   }}
                   isOptionEqualToValue={(option, value) => {
                     if (typeof option === 'string' || typeof value === 'string') {
@@ -263,11 +303,60 @@ export function ExpenseFormModal({
                     if ('isNew' in option || 'isNew' in value) return false
                     return option.id === value.id
                   }}
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      {'isNew' in option ? `Добавить тег "${option.name}"` : option.name}
-                    </li>
-                  )}
+                  renderOption={(props, option) => {
+                    if ('isNew' in option) {
+                      return <li {...props}>{`Добавить тег "${option.name}"`}</li>
+                    }
+                    const tagColor = normalizeTagColor(option.color)
+                    return (
+                      <li {...props}>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 999,
+                              bgcolor: tagColor ?? 'divider',
+                              border: '1px solid',
+                              borderColor: tagColor ? alpha(tagColor, 0.5) : 'divider',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Typography variant="body2">{withTagEmoji(option)}</Typography>
+                        </Stack>
+                      </li>
+                    )
+                  }}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => {
+                      if (typeof option === 'string' || 'isNew' in option) {
+                        return (
+                          <Chip
+                            {...getTagProps({ index })}
+                            key={`${option}-${index}`}
+                            label={typeof option === 'string' ? option : option.name}
+                            size="small"
+                          />
+                        )
+                      }
+                      const tagColor = normalizeTagColor(option.color)
+                      return (
+                        <Chip
+                          {...getTagProps({ index })}
+                          key={option.id}
+                          label={withTagEmoji(option)}
+                          size="small"
+                          sx={(theme) => ({
+                            color: tagColor ?? theme.palette.text.secondary,
+                            borderColor: tagColor ? alpha(tagColor, 0.45) : theme.palette.divider,
+                            bgcolor: tagColor
+                              ? alpha(tagColor, theme.palette.mode === 'dark' ? 0.28 : 0.12)
+                              : 'transparent',
+                          })}
+                        />
+                      )
+                    })
+                  }
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -317,6 +406,71 @@ export function ExpenseFormModal({
             })}
           >
             {isSaving ? 'Сохраняем…' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pendingTagCreate)}
+        onClose={() => {
+          if (isTagCreating) return
+          setPendingTagCreate(null)
+          setNewTagColor(DEFAULT_TAG_COLOR)
+          setNewTagEmoji('')
+          setTagCreateError('')
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Новый тег</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <TextField
+              label="Название"
+              value={pendingTagCreate?.name ?? ''}
+              fullWidth
+              disabled
+              size="small"
+            />
+            <EmojiPickerField
+              value={newTagEmoji}
+              onChange={(emoji) => {
+                setNewTagEmoji(emoji)
+                if (tagCreateError) setTagCreateError('')
+              }}
+            />
+            <TagColorPickerField
+              value={newTagColor}
+              onChange={setNewTagColor}
+              options={TAG_COLOR_OPTIONS}
+            />
+            {tagCreateError ? (
+              <Typography color="error" variant="body2">
+                {tagCreateError}
+              </Typography>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setPendingTagCreate(null)
+              setNewTagColor(DEFAULT_TAG_COLOR)
+              setNewTagEmoji('')
+              setTagCreateError('')
+            }}
+            disabled={isTagCreating}
+          >
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              void handleConfirmTagCreate()
+            }}
+            disabled={isTagCreating}
+          >
+            {isTagCreating ? 'Создаём…' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -60,6 +60,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
         <AnalyticsScreen
           tags={model.state.tags}
           readOnly={model.isReadOnly}
+          onCreateTag={model.onCreateTag}
           onUpdateTag={model.onUpdateTag}
           onDeleteTag={model.onDeleteTag}
         />

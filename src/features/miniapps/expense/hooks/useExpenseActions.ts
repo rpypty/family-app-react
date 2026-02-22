@@ -19,6 +19,7 @@ import {
 } from '../../../sync/model/offlineOutbox'
 import { findTagByName } from '../../../../shared/lib/tagUtils'
 import type { Expense, StorageState, Tag } from '../../../../shared/types'
+import type { TagAppearanceInput } from '../../../../shared/lib/tagAppearance'
 import { EXPENSES_PAGE_SIZE } from '../../../../app/sync/constants'
 import { isNetworkLikeError } from '../../../../app/sync/network'
 import type { DataSyncStatus } from '../../../../app/sync/types'
@@ -189,7 +190,7 @@ export function useExpenseActions({
     }
   }
 
-  const handleCreateTag = async (name: string): Promise<Tag> => {
+  const handleCreateTag = async (name: string, payload?: TagAppearanceInput): Promise<Tag> => {
     if (guardReadOnly()) {
       const trimmed = name.trim()
       const existing = findTagByName(state.tags, trimmed)
@@ -199,7 +200,7 @@ export function useExpenseActions({
     const trimmed = name.trim()
     const existing = findTagByName(state.tags, trimmed)
     if (existing) return existing
-    const created = await createTag(trimmed)
+    const created = await createTag(trimmed, payload)
     updateState((prev) => ({
       ...prev,
       tags: [...prev.tags, created],
@@ -207,7 +208,11 @@ export function useExpenseActions({
     return created
   }
 
-  const handleUpdateTag = async (tagId: string, name: string): Promise<Tag> => {
+  const handleUpdateTag = async (
+    tagId: string,
+    name: string,
+    payload?: TagAppearanceInput,
+  ): Promise<Tag> => {
     if (guardReadOnly()) {
       throw new Error('read_only')
     }
@@ -216,7 +221,7 @@ export function useExpenseActions({
     if (existing && existing.id !== tagId) {
       return existing
     }
-    const updated = await updateTag(tagId, trimmed)
+    const updated = await updateTag(tagId, trimmed, payload)
     updateState((prev) => ({
       ...prev,
       tags: prev.tags.map((tag) => (tag.id === updated.id ? updated : tag)),
