@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -9,20 +9,17 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Fab,
-  IconButton,
   Stack,
   TextField,
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { WORKOUTS_ROUTES } from '../../../../app/routing/routes'
 import type { ExerciseMeta, WorkoutTemplate, TemplateSet } from '../types'
+import { TemplateExerciseCard } from '../components/TemplateExerciseCard'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { exerciseKey } from '../utils/workout'
 
@@ -43,6 +40,48 @@ type ConfirmState =
   | { open: true; kind: 'set'; exerciseName: string; setId: string }
   | { open: true; kind: 'exercise'; exerciseName: string }
 
+const createRandomId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+
+const serializeDraft = (name: string, items: DraftExercise[]) => JSON.stringify({
+  name: name.trim(),
+  items: items.map((item) => ({
+    name: item.name,
+    isWeightless: item.isWeightless,
+    sets: item.sets.map((set) => ({
+      id: set.id,
+      weightKg: set.weightKg,
+      reps: set.reps,
+    })),
+  })),
+})
+
+const toDraftItems = (
+  template: WorkoutTemplate,
+  exerciseMeta: Record<string, ExerciseMeta>,
+): DraftExercise[] => {
+  const grouped = new Map<string, DraftSet[]>()
+  for (const set of template.sets || []) {
+    if (!grouped.has(set.exercise)) {
+      grouped.set(set.exercise, [])
+    }
+    grouped.get(set.exercise)!.push({
+      id: set.id || createRandomId(),
+      weightKg: set.weightKg || 0,
+      reps: set.reps || 8,
+    })
+  }
+
+  return Array.from(grouped.entries()).map(([exerciseName, sets]) => {
+    const key = exerciseKey(exerciseName)
+    const meta = exerciseMeta[key]
+    return {
+      name: exerciseName,
+      sets,
+      isWeightless: meta?.isWeightless || false,
+    }
+  })
+}
+
 export function TemplateEditor({
   templateId: templateIdProp,
   templates,
@@ -54,139 +93,35 @@ export function TemplateEditor({
   const navigate = useNavigate()
   const templateId = templateIdProp
   const isNew = templateId === 'new'
+  const sourceTemplate = !isNew && templateId ? templates.find((template) => template.id === templateId) : undefined
+  const initialDraft = useMemo(() => {
+    if (!sourceTemplate) {
+      return { name: '', items: [] as DraftExercise[] }
+    }
+    return {
+      name: sourceTemplate.name,
+      items: toDraftItems(sourceTemplate, exerciseMeta),
+    }
+  }, [sourceTemplate, exerciseMeta])
 
-  const [name, setName] = useState('')
-  const [items, setItems] = useState<DraftExercise[]>([])
+  const [name, setName] = useState(() => initialDraft.name)
+  const [items, setItems] = useState<DraftExercise[]>(() => initialDraft.items)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [swipedExercise, setSwipedExercise] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
-  const isHydrating = useRef(false)
-  const lastSaved = useRef<string>('')
-  const touchStartX = useRef<number | null>(null)
+  const lastSaved = useRef(isNew ? '' : serializeDraft(initialDraft.name, initialDraft.items))
+  const touchStartXRef = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
-
-  const cryptoRandomId = useCallback(() => {
-    return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-  }, [])
-
-  // Serialize local state (what we're editing)
-  const serialize = useCallback((n: string, its: DraftExercise[]) => {
-    return JSON.stringify({
-      name: n.trim(),
-      items: its.map(it => ({
-        name: it.name,
-        isWeightless: it.isWeightless,
-        sets: it.sets.map(s => ({
-          id: s.id,
-          weightKg: s.weightKg,
-          reps: s.reps,
-        }))
-      }))
-    })
-  }, [])
-
-  // Serialize template from props (what comes from parent)
-  const serializeTemplate = useCallback((template: WorkoutTemplate | undefined) => {
-    if (!template) return ''
-    
-    // Group sets by exercise while preserving order of first appearance
-    const exerciseOrder: string[] = []
-    const grouped = new Map<string, DraftSet[]>()
-    
-    for (const set of template.sets || []) {
-      if (!grouped.has(set.exercise)) {
-        grouped.set(set.exercise, [])
-        exerciseOrder.push(set.exercise) // Track order of first appearance
-      }
-      grouped.get(set.exercise)!.push({
-        id: set.id || cryptoRandomId(),
-        weightKg: set.weightKg || 0,
-        reps: set.reps || 8,
-      })
-    }
-    
-    // Build items array in the order exercises first appeared
-    const items = exerciseOrder.map(name => {
-      const key = exerciseKey(name)
-      const meta = exerciseMeta[key]
-      return {
-        name,
-        sets: grouped.get(name)!,
-        isWeightless: meta?.isWeightless || false,
-      }
-    })
-    
-    return serialize(template.name, items)
-  }, [cryptoRandomId, serialize, exerciseMeta])
-
-  // Create signature from incoming template
-  const templateSignature = serializeTemplate(
-    isNew ? undefined : templates.find((t) => t.id === templateId)
-  )
-
-  // Load template data when signature changes (like WorkoutEditor)
-  useEffect(() => {
-    if (isNew) {
-      isHydrating.current = true
-      setName('')
-      setItems([])
-      lastSaved.current = ''
-      const t = setTimeout(() => {
-        isHydrating.current = false
-      }, 0)
-      return () => clearTimeout(t)
-    }
-
-    if (templateId) {
-      const template = templates.find((t) => t.id === templateId)
-      if (template) {
-        isHydrating.current = true
-        
-        // Convert flat TemplateSet[] to grouped DraftExercise[]
-        const grouped = new Map<string, DraftSet[]>()
-        for (const set of template.sets || []) {
-          if (!grouped.has(set.exercise)) {
-            grouped.set(set.exercise, [])
-          }
-          grouped.get(set.exercise)!.push({
-            id: set.id || cryptoRandomId(),
-            weightKg: set.weightKg || 0,
-            reps: set.reps || 8,
-          })
-        }
-        
-        const newItems = Array.from(grouped.entries()).map(([name, sets]) => {
-          const key = exerciseKey(name)
-          const meta = exerciseMeta[key]
-          return {
-            name,
-            sets,
-            isWeightless: meta?.isWeightless || false,
-          }
-        })
-        
-        setName(template.name)
-        setItems(newItems)
-        lastSaved.current = templateSignature
-        
-        const t = setTimeout(() => {
-          isHydrating.current = false
-        }, 0)
-        return () => clearTimeout(t)
-      }
-    }
-  }, [templateSignature, templateId, isNew, cryptoRandomId])
 
   // Manual save function (called on blur)
   const handleSave = useCallback(() => {
-    if (isHydrating.current) return
     if (!name.trim() || items.length === 0) return
-    
-    const snapshot = serialize(name, items)
+
+    const snapshot = serializeDraft(name, items)
     if (snapshot === lastSaved.current) return
-    
+
     lastSaved.current = snapshot
-    
+
     // Convert DraftExercise[] to flat TemplateSet[]
     const converted: TemplateSet[] = items.flatMap((it) =>
       it.sets.map((s) => ({
@@ -201,7 +136,7 @@ export function TemplateEditor({
       void (async () => {
         try {
           const created = await onCreateTemplate(name.trim(), converted)
-          navigate(`/miniapps/workouts/templates/${created.id}`, { replace: true })
+          navigate(WORKOUTS_ROUTES.template(created.id), { replace: true })
         } catch (error) {
           console.error('TemplateEditor: Failed to create template:', error)
         }
@@ -214,7 +149,7 @@ export function TemplateEditor({
         createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
       })
     }
-  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates, serialize])
+  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates])
 
   const handleAddExercise = (exerciseName: string) => {
     const n = (exerciseName || '').trim()
@@ -224,7 +159,7 @@ export function TemplateEditor({
     const meta = exerciseMeta[key]
     setItems((prev) => [
       ...prev,
-      { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }], isWeightless: meta?.isWeightless || false },
+      { name: n, sets: [{ id: createRandomId(), weightKg: 0, reps: 8 }], isWeightless: meta?.isWeightless || false },
     ])
     setIsPickerOpen(false)
   }
@@ -233,7 +168,7 @@ export function TemplateEditor({
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
-          ? { ...it, sets: [...it.sets, { id: cryptoRandomId(), weightKg: 0, reps: 8 }] }
+          ? { ...it, sets: [...it.sets, { id: createRandomId(), weightKg: 0, reps: 8 }] }
           : it
       )
     )
@@ -425,18 +360,21 @@ export function TemplateEditor({
             <SortableContext items={items.map((item) => item.name)} strategy={verticalListSortingStrategy}>
               <Stack spacing={2}>
                 {items.map((item) => (
-                  <SortableExerciseCard
+                  <TemplateExerciseCard
                     key={item.name}
                     item={item}
                     swipedExercise={swipedExercise}
                     onSwipe={setSwipedExercise}
                     cardRefs={cardRefs}
-                    touchStartX={touchStartX}
-                    setConfirm={setConfirm}
+                    touchStartXRef={touchStartXRef}
+                    onConfirmRemoveExercise={(exerciseName) => {
+                      setConfirm({ open: true, kind: 'exercise', exerciseName })
+                    }}
+                    onConfirmRemoveSet={(exerciseName, setId) => {
+                      setConfirm({ open: true, kind: 'set', exerciseName, setId })
+                    }}
                     onAddSet={handleAddSet}
-                    onRemoveSet={handleRemoveSet}
                     onUpdateSet={handleUpdateSet}
-                    onRemoveExercise={handleRemoveExercise}
                     onSave={handleSave}
                   />
                 ))}
@@ -494,220 +432,3 @@ export function TemplateEditor({
     </Box>
   )
 }
-
-// Sortable Exercise Card Component
-interface SortableExerciseCardProps {
-  item: DraftExercise
-  swipedExercise: string | null
-  onSwipe: (name: string | null) => void
-  cardRefs: React.MutableRefObject<Map<string, HTMLElement>>
-  touchStartX: React.MutableRefObject<number | null>
-  setConfirm: (state: ConfirmState) => void
-  onAddSet: (exerciseName: string) => void
-  onRemoveSet: (exerciseName: string, setId: string) => void
-  onUpdateSet: (exerciseName: string, setId: string, field: 'weightKg' | 'reps', value: number) => void
-  onRemoveExercise: (exerciseName: string) => void
-  onSave: () => void
-}
-
-function SortableExerciseCard({
-  item,
-  swipedExercise,
-  onSwipe,
-  cardRefs,
-  touchStartX,
-  setConfirm,
-  onAddSet,
-  onUpdateSet,
-  onSave,
-}: SortableExerciseCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.name,
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-
-  return (
-    <Box
-      ref={(el: HTMLElement | null) => {
-        if (el) cardRefs.current.set(item.name, el)
-        else cardRefs.current.delete(item.name)
-      }}
-      style={style}
-      sx={{ 
-        position: 'relative',
-        opacity: isDragging ? 0.5 : 1,
-      }}
-    >
-      <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          borderRadius: 'var(--wk-radius)',
-          bgcolor: 'error.main',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          pr: 2,
-          color: 'error.contrastText',
-          opacity: swipedExercise === item.name ? 1 : 0,
-          transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-          cursor: 'pointer',
-          pointerEvents: swipedExercise === item.name ? 'auto' : 'none',
-        }}
-        onClick={() => {
-          setConfirm({ open: true, kind: 'exercise', exerciseName: item.name })
-          onSwipe(null)
-        }}
-      >
-        <DeleteOutlineRounded sx={{ fontSize: 36 }} />
-      </Box>
-      <Card
-        ref={setNodeRef}
-        variant="outlined"
-        sx={{
-          borderRadius: 'var(--wk-radius)',
-          borderColor: 'var(--wk-border)',
-          bgcolor: 'var(--wk-card)',
-          transform: swipedExercise === item.name ? 'translateX(-80px)' : 'translateX(0)',
-          transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-          position: 'relative',
-        }}
-        style={{ touchAction: 'pan-y' }}
-        onTouchStart={(e) => {
-          touchStartX.current = e.touches[0]?.clientX ?? null
-        }}
-        onTouchEnd={(e) => {
-          const startX = touchStartX.current
-          const endX = e.changedTouches[0]?.clientX
-          touchStartX.current = null
-
-          if (startX !== null && endX !== undefined) {
-            const delta = startX - endX
-            // Swipe left to reveal delete
-            if (delta > 80) {
-              onSwipe(item.name)
-            }
-            // Swipe right to close
-            else if (delta < -40 && swipedExercise === item.name) {
-              onSwipe(null)
-            }
-          }
-        }}
-      >
-        <CardContent>
-          <Stack spacing={1.5}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                <Box
-                  {...attributes}
-                  {...listeners}
-                  sx={{
-                    cursor: 'grab',
-                    display: 'flex',
-                    color: 'var(--wk-muted)',
-                    touchAction: 'none',
-                    '&:active': { cursor: 'grabbing' },
-                  }}
-                >
-                  <DragIndicatorIcon />
-                </Box>
-                <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ color: 'var(--wk-ink)' }}>
-                  {item.name}
-                </Typography>
-              </Stack>
-            </Stack>
-
-            <Typography variant="caption" sx={{ color: 'var(--wk-muted)', fontStyle: 'italic' }}>
-              Свайпните влево для удаления
-            </Typography>
-
-            <Stack spacing={1}>
-              {item.sets.map((set) => (
-                <Stack key={set.id} spacing={0.75}>
-                  <Box
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: item.isWeightless
-                        ? { xs: '1fr auto', sm: '140px auto' }
-                        : { xs: '1fr 1fr auto', sm: '120px 120px auto' },
-                      gap: 1,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <TextField
-                      label="Повт."
-                      type="number"
-                      value={set.reps || ''}
-                      onChange={(e) =>
-                        onUpdateSet(item.name, set.id, 'reps', e.target.value === '' ? 0 : parseInt(e.target.value))
-                      }
-                      onBlur={onSave}
-                      size="small"
-                      sx={{ minWidth: 0 }}
-                    />
-                    {!item.isWeightless && (
-                      <TextField
-                        label="Вес"
-                        type="number"
-                        value={set.weightKg || ''}
-                        onChange={(e) =>
-                          onUpdateSet(item.name, set.id, 'weightKg', e.target.value === '' ? 0 : parseFloat(e.target.value))
-                        }
-                        onBlur={onSave}
-                        size="small"
-                        sx={{ minWidth: 0 }}
-                      />
-                    )}
-                    <IconButton
-                      size="small"
-                      onClick={() =>
-                        setConfirm({ open: true, kind: 'set', exerciseName: item.name, setId: set.id })
-                      }
-                      sx={{
-                        bgcolor: 'var(--wk-ink-soft)',
-                        width: 28,
-                        height: 28,
-                        justifySelf: 'end',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <DeleteOutlineRounded fontSize="small" sx={{ fontSize: 12 }} />
-                    </IconButton>
-                  </Box>
-                  <Divider />
-                </Stack>
-              ))}
-            </Stack>
-
-            <Button
-              variant="text"
-              size="small"
-              onClick={() => onAddSet(item.name)}
-              startIcon={<AddIcon />}
-              sx={{
-                fontWeight: 700,
-                alignSelf: 'flex-start',
-                textTransform: 'none',
-                borderRadius: 999,
-                color: 'var(--wk-accent)',
-                bgcolor: 'transparent',
-                border: '1px solid transparent',
-                px: 1.5,
-                '&:hover': {
-                  bgcolor: 'transparent',
-                },
-              }}
-            >
-              Добавить подход
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Box>
-  )
-}
-

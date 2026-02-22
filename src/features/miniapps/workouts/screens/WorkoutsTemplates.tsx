@@ -21,6 +21,7 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
+import { WORKOUTS_ROUTES } from '../../../../app/routing/routes'
 import type { ExerciseMeta, WorkoutTemplate, TemplateSet } from '../types'
 import { exerciseKey } from '../utils/workout'
 
@@ -70,20 +71,20 @@ export function WorkoutsTemplates({
 
   // Template handlers
   const openNewTemplate = () => {
-    navigate('/miniapps/workouts/templates/new')
+    navigate(WORKOUTS_ROUTES.template('new'))
   }
 
   const openEditTemplate = (id: string) => {
-    navigate(`/miniapps/workouts/templates/${id}`)
+    navigate(WORKOUTS_ROUTES.template(id))
   }
 
   // Exercise handlers
   const openNewExercise = () => {
-    navigate('/miniapps/workouts/exercise/new')
+    navigate(WORKOUTS_ROUTES.exerciseNew)
   }
 
   const openEditExercise = (name: string) => {
-    navigate(`/miniapps/workouts/exercise/${encodeURIComponent(name)}`)
+    navigate(WORKOUTS_ROUTES.exercise(name))
   }
 
   // Close swiped card when clicking outside

@@ -186,7 +186,7 @@ export function MicroCalendar({ selectedDate, workoutDates, onSelectDate }: Micr
             '--wk-border': border,
             '--wk-ink-soft': inkSoft,
             '--wk-selected-dark': selectedBg,
-          } as any,
+          },
         }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

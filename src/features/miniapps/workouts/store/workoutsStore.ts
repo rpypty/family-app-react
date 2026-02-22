@@ -2,6 +2,15 @@ import type { Workout } from '../types'
 
 const STORAGE_KEY = 'workouts:workouts:v1'
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const toStringValue = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback
+
+const toNumberValue = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
 function randomId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -16,19 +25,27 @@ export const loadWorkouts = (): Workout[] => {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.map((w: any) => ({
-      id: w.id || randomId(),
-      date: w.date || '',
-      name: w.name || 'Тренировка',
-      sets: Array.isArray(w.sets) ? w.sets.map((s: any) => ({
-        id: s.id || randomId(),
-        exercise: s.exercise || '',
-        reps: Number(s.reps) || 0,
-        weightKg: Number(s.weightKg) || 0,
-        createdAt: Number(s.createdAt) || Date.now(),
-      })) : [],
-      createdAt: Number(w.createdAt) || Date.now(),
-    }))
+    return parsed.map((rawWorkout): Workout => {
+      const workout = isPlainObject(rawWorkout) ? rawWorkout : {}
+      const rawSets = Array.isArray(workout.sets) ? workout.sets : []
+
+      return {
+        id: toStringValue(workout.id, randomId()),
+        date: toStringValue(workout.date),
+        name: toStringValue(workout.name, 'Тренировка'),
+        sets: rawSets.map((rawSet) => {
+          const set = isPlainObject(rawSet) ? rawSet : {}
+          return {
+            id: toStringValue(set.id, randomId()),
+            exercise: toStringValue(set.exercise),
+            reps: toNumberValue(set.reps, 0),
+            weightKg: toNumberValue(set.weightKg, 0),
+            createdAt: toNumberValue(set.createdAt, Date.now()),
+          }
+        }),
+        createdAt: toNumberValue(workout.createdAt, Date.now()),
+      }
+    })
   } catch {
     return []
   }
