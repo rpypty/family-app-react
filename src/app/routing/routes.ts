@@ -1,5 +1,14 @@
 export type TabId = 'expenses' | 'analytics' | 'reports'
 export type AppId = 'home' | 'expenses' | 'todo' | 'workouts'
+export type WorkoutsRoute =
+  | { view: 'home' }
+  | { view: 'new'; date?: string }
+  | { view: 'exercise'; exerciseName: string }
+  | { view: 'templates' }
+  | { view: 'template'; templateId: string }
+  | { view: 'analytics' }
+  | { view: 'workout'; workoutId: string }
+  | { view: 'workout-exercises'; workoutId: string }
 
 export const ROUTES = {
   home: '/',
@@ -8,6 +17,24 @@ export const ROUTES = {
   expenseReports: '/miniapps/expenses/reports',
   todo: '/miniapps/todo',
   workouts: '/miniapps/workouts',
+} as const
+
+export const WORKOUTS_ROUTES = {
+  home: ROUTES.workouts,
+  templates: `${ROUTES.workouts}/templates`,
+  analytics: `${ROUTES.workouts}/analytics`,
+  exerciseNew: `${ROUTES.workouts}/exercise/new`,
+  new: (date?: string) => {
+    if (!date) return `${ROUTES.workouts}/new`
+    const params = new URLSearchParams({ date })
+    return `${ROUTES.workouts}/new?${params.toString()}`
+  },
+  template: (templateId: string) => `${ROUTES.workouts}/templates/${templateId}`,
+  exercise: (exerciseName: string) =>
+    `${ROUTES.workouts}/exercise/${encodeURIComponent(exerciseName)}`,
+  workout: (workoutId: string) => `${ROUTES.workouts}/workout/${workoutId}`,
+  workoutExercises: (workoutId: string) =>
+    `${ROUTES.workouts}/workout/${workoutId}/exercises`,
 } as const
 
 export const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
@@ -27,9 +54,73 @@ export const normalizePathname = (pathname: string) => {
   return trimmed.length === 0 ? '/' : trimmed
 }
 
-export const resolveAppRoute = (pathname: string): ResolvedRoute => {
+const getPathSegments = (pathname: string) =>
+  normalizePathname(pathname).split('/').filter(Boolean)
+
+export const resolveWorkoutsRoute = (
+  pathname: string,
+  search = '',
+): WorkoutsRoute => {
+  const segments = getPathSegments(pathname)
+  if (segments[0] !== 'miniapps' || segments[1] !== 'workouts') {
+    return { view: 'home' }
+  }
+
+  if (segments[2] === 'new') {
+    const params = new URLSearchParams(search)
+    return { view: 'new', date: params.get('date') || undefined }
+  }
+  if (segments[2] === 'exercise' && segments[3]) {
+    return { view: 'exercise', exerciseName: segments[3] }
+  }
+  if (segments[2] === 'templates' && segments[3]) {
+    return { view: 'template', templateId: segments[3] }
+  }
+  if (segments[2] === 'templates') {
+    return { view: 'templates' }
+  }
+  if (segments[2] === 'analytics') {
+    return { view: 'analytics' }
+  }
+  if (segments[2] === 'workout' && segments[3]) {
+    if (segments[4] === 'exercises') {
+      return { view: 'workout-exercises', workoutId: segments[3] }
+    }
+    return { view: 'workout', workoutId: segments[3] }
+  }
+
+  return { view: 'home' }
+}
+
+export const resolveWorkoutsBackNavigationTarget = (pathname: string): string => {
   const normalized = normalizePathname(pathname)
-  const segments = normalized.split('/').filter(Boolean)
+  if (normalized === WORKOUTS_ROUTES.home) {
+    return ROUTES.home
+  }
+  if (!normalized.startsWith(`${WORKOUTS_ROUTES.home}/`)) {
+    return ROUTES.home
+  }
+
+  const route = resolveWorkoutsRoute(normalized)
+  if (route.view === 'template' || route.view === 'exercise') {
+    return WORKOUTS_ROUTES.templates
+  }
+  if (
+    route.view === 'workout' ||
+    route.view === 'workout-exercises' ||
+    route.view === 'new'
+  ) {
+    return WORKOUTS_ROUTES.home
+  }
+  if (route.view === 'templates' || route.view === 'analytics') {
+    return ROUTES.home
+  }
+
+  return WORKOUTS_ROUTES.home
+}
+
+export const resolveAppRoute = (pathname: string): ResolvedRoute => {
+  const segments = getPathSegments(pathname)
 
   if (segments.length === 0) {
     return { activeApp: 'home', activeTab: 'expenses' }

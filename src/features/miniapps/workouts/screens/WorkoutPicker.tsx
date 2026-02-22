@@ -199,7 +199,6 @@ export function WorkoutPicker({
                             fullWidth
                             onClick={(e) => {
                               e.stopPropagation()
-                              console.log('Button clicked, template ID:', template.id)
                               onCreateFromTemplate(template.id)
                             }}
                             sx={{

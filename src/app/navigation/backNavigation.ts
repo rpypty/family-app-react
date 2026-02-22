@@ -1,4 +1,8 @@
-import { type AppId, ROUTES } from '../routing/routes'
+import {
+  type AppId,
+  ROUTES,
+  resolveWorkoutsBackNavigationTarget,
+} from '../routing/routes'
 
 export const resolveBackNavigationTarget = ({
   activeApp,
@@ -8,28 +12,7 @@ export const resolveBackNavigationTarget = ({
   currentPath: string
 }): string => {
   if (activeApp === 'workouts') {
-    const isWorkoutsNested = currentPath.startsWith(`${ROUTES.workouts}/`)
-    if (!isWorkoutsNested) {
-      return ROUTES.home
-    }
-
-    const pathAfterWorkouts = currentPath.slice(ROUTES.workouts.length + 1)
-    const segments = pathAfterWorkouts.split('/').filter(Boolean)
-
-    if (segments[0] === 'templates' && segments[1]) {
-      return `${ROUTES.workouts}/templates`
-    }
-    if (segments[0] === 'exercise') {
-      return `${ROUTES.workouts}/templates`
-    }
-    if (segments[0] === 'workout' || segments[0] === 'new') {
-      return ROUTES.workouts
-    }
-    if (segments[0] === 'templates' || segments[0] === 'analytics') {
-      return ROUTES.home
-    }
-
-    return ROUTES.workouts
+    return resolveWorkoutsBackNavigationTarget(currentPath)
   }
 
   return ROUTES.home

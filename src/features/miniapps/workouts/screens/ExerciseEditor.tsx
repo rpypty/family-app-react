@@ -8,6 +8,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { WORKOUTS_ROUTES } from '../../../../app/routing/routes'
 import type { ExerciseMeta } from '../types'
 import { exerciseKey } from '../utils/workout'
 
@@ -76,11 +77,11 @@ export function ExerciseEditor({
       updatedAt: Date.now(),
     })
 
-    navigate('/miniapps/workouts/templates')
+    navigate(WORKOUTS_ROUTES.templates)
   }
 
   const handleCancel = () => {
-    navigate('/miniapps/workouts/templates')
+    navigate(WORKOUTS_ROUTES.templates)
   }
 
   return (

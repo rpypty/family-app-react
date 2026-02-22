@@ -5,6 +5,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import RocketLaunchRounded from '@mui/icons-material/RocketLaunchRounded'
 import GridViewRounded from '@mui/icons-material/GridViewRounded'
 import QueryStatsRounded from '@mui/icons-material/QueryStatsRounded'
+import { WORKOUTS_ROUTES, resolveWorkoutsRoute } from '../../../../app/routing/routes'
 import { useWorkoutsData } from '../hooks/useWorkoutsData'
 import { WorkoutsHome } from './WorkoutsHome'
 import { WorkoutsAnalytics } from './WorkoutsAnalytics'
@@ -51,32 +52,10 @@ export function WorkoutsScreen() {
     document.head.appendChild(style)
   }, [])
 
-  const route = useMemo(() => {
-    const normalized = location.pathname.replace(/\/+$/, '')
-    const segments = normalized.split('/').filter(Boolean)
-    if (segments[0] !== 'miniapps' || segments[1] !== 'workouts') {
-      return { view: 'home' as const }
-    }
-    if (segments[2] === 'new') {
-      const params = new URLSearchParams(location.search)
-      return { view: 'new' as const, date: params.get('date') || undefined }
-    }
-    if (segments[2] === 'exercise' && segments[3]) {
-      return { view: 'exercise' as const, exerciseName: segments[3] }
-    }
-    if (segments[2] === 'templates' && segments[3]) {
-      return { view: 'template' as const, templateId: segments[3] }
-    }
-    if (segments[2] === 'templates') return { view: 'templates' as const }
-    if (segments[2] === 'analytics') return { view: 'analytics' as const }
-    if (segments[2] === 'workout' && segments[3]) {
-      if (segments[4] === 'exercises') {
-        return { view: 'workout-exercises' as const, workoutId: segments[3] }
-      }
-      return { view: 'workout' as const, workoutId: segments[3] }
-    }
-    return { view: 'home' as const }
-  }, [location.pathname, location.search])
+  const route = useMemo(
+    () => resolveWorkoutsRoute(location.pathname, location.search),
+    [location.pathname, location.search],
+  )
 
   const activeTab = route.view === 'analytics' ? 2 : route.view === 'templates' ? 1 : 0
   const workoutId =
@@ -86,7 +65,7 @@ export function WorkoutsScreen() {
   useEffect(() => {
     if (loading) return
     if (!editingWorkout && (route.view === 'workout' || route.view === 'workout-exercises')) {
-      navigate('/miniapps/workouts', { replace: true })
+      navigate(WORKOUTS_ROUTES.home, { replace: true })
     }
   }, [editingWorkout, loading, navigate, route.view])
 
@@ -148,11 +127,11 @@ export function WorkoutsScreen() {
             onCreateFromTemplate={(templateId) => {
               void (async () => {
                 try {
-                  const template = templates.find(t => t.id === templateId)
+                  const template = templates.find((t) => t.id === templateId)
                   if (!template) return
-                  
+
                   const created = await createWorkout(route.date, template.name, templateId)
-                  navigate(`/miniapps/workouts/workout/${created.id}`)
+                  navigate(WORKOUTS_ROUTES.workout(created.id))
                 } catch (error) {
                   console.error('Failed to create workout from template:', error)
                 }
@@ -161,10 +140,8 @@ export function WorkoutsScreen() {
             onCreateCustom={() => {
               void (async () => {
                 try {
-                  console.log('Creating custom workout')
                   const created = await createWorkout(route.date)
-                  console.log('Created workout:', created.id)
-                  navigate(`/miniapps/workouts/workout/${created.id}`)
+                  navigate(WORKOUTS_ROUTES.workout(created.id))
                 } catch (error) {
                   console.error('Failed to create custom workout:', error)
                 }
@@ -198,8 +175,8 @@ export function WorkoutsScreen() {
             exercises={exercises}
             exerciseMeta={exerciseMeta}
             isExercisePickerOpen={route.view === 'workout-exercises'}
-            onOpenExercisePicker={() => navigate(`/miniapps/workouts/workout/${editingWorkout.id}/exercises`)}
-            onCloseExercisePicker={() => navigate(`/miniapps/workouts/workout/${editingWorkout.id}`)}
+            onOpenExercisePicker={() => navigate(WORKOUTS_ROUTES.workoutExercises(editingWorkout.id))}
+            onCloseExercisePicker={() => navigate(WORKOUTS_ROUTES.workout(editingWorkout.id))}
             onAddExercise={(name) => {
               addExercise(name)
             }}
@@ -208,7 +185,7 @@ export function WorkoutsScreen() {
             }}
             onDeleteWorkout={async (workoutId) => {
               await deleteWorkout(workoutId)
-              navigate('/miniapps/workouts')
+              navigate(WORKOUTS_ROUTES.home)
             }}
           />
         ) : route.view === 'templates' ? (
@@ -232,10 +209,9 @@ export function WorkoutsScreen() {
             selectedDate={selectedDate}
             exerciseMeta={exerciseMeta}
             onSelectDate={setSelectedDate}
-            onOpenWorkout={(id) => navigate(`/miniapps/workouts/workout/${id}`)}
+            onOpenWorkout={(id) => navigate(WORKOUTS_ROUTES.workout(id))}
             onCreateWorkout={(date) => {
-              const dateParam = date ? `?date=${date}` : ''
-              navigate(`/miniapps/workouts/new${dateParam}`)
+              navigate(WORKOUTS_ROUTES.new(date))
             }}
           />
         )}
@@ -259,9 +235,9 @@ export function WorkoutsScreen() {
           <BottomNavigation
             value={activeTab}
             onChange={(_, value) => {
-              if (value === 1) navigate('/miniapps/workouts/templates')
-              else if (value === 2) navigate('/miniapps/workouts/analytics')
-              else navigate('/miniapps/workouts')
+              if (value === 1) navigate(WORKOUTS_ROUTES.templates)
+              else if (value === 2) navigate(WORKOUTS_ROUTES.analytics)
+              else navigate(WORKOUTS_ROUTES.home)
             }}
             showLabels
             sx={{ height: 82, bgcolor: theme.palette.background.paper }}

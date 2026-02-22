@@ -1,9 +1,7 @@
 import { useMemo } from 'react'
 import type { AuthSession, AuthUser } from '../../features/auth/api/auth'
 import type { Family } from '../../features/family/api/families'
-import type { TabId } from '../routing/routes'
-
-type AppId = 'home' | 'expenses' | 'todo' | 'workouts'
+import type { AppId, TabId } from '../routing/routes'
 
 const TABS: Array<{
   id: TabId

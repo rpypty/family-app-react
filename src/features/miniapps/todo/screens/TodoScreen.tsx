@@ -2,12 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { MouseEvent, TouchEvent } from 'react'
 import {
   Avatar,
-  Badge,
-  Box,
   Button,
-  ButtonBase,
-  Card,
-  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
@@ -24,23 +19,17 @@ import {
   TextField,
   Tooltip,
   Typography,
-  Checkbox,
-  Collapse,
   ListItemIcon,
   ListItemText,
 } from '@mui/material'
 import AddRounded from '@mui/icons-material/AddRounded'
-import ArchiveRounded from '@mui/icons-material/ArchiveRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import EditOutlined from '@mui/icons-material/EditOutlined'
-import ExpandLessRounded from '@mui/icons-material/ExpandLessRounded'
-import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded'
-import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import ArrowUpwardRounded from '@mui/icons-material/ArrowUpwardRounded'
 import ArrowDownwardRounded from '@mui/icons-material/ArrowDownwardRounded'
-import SettingsRounded from '@mui/icons-material/SettingsRounded'
-import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
 import type { TodoItem, TodoList, TodoUser } from '../../../../shared/types'
+import { TodoArchiveDialog } from '../components/TodoArchiveDialog'
+import { TodoListCard } from '../components/TodoListCard'
 
 type TodoScreenProps = {
   lists: TodoList[]
@@ -342,214 +331,33 @@ export function TodoScreen({
         const collapseId = `todo-list-${list.id}-items`
 
         return (
-          <Card key={list.id} variant="outlined" sx={{ borderRadius: 2 }}>
-            <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Tooltip title={list.isCollapsed ? 'Развернуть' : 'Свернуть'}>
-                  <IconButton
-                    size="small"
-                    onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
-                    aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
-                  >
-                    {list.isCollapsed ? (
-                      <ExpandMoreRounded fontSize="small" />
-                    ) : (
-                      <ExpandLessRounded fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
-                <ButtonBase
-                  onClick={() => onToggleCollapsed(list.id, !list.isCollapsed)}
-                  aria-label={list.isCollapsed ? 'Развернуть список' : 'Свернуть список'}
-                  aria-expanded={!list.isCollapsed}
-                  aria-controls={collapseId}
-                  sx={{
-                    flex: 1,
-                    minWidth: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    textAlign: 'left',
-                    borderRadius: 1,
-                    px: 0.5,
-                    py: 0.25,
-                    gap: 1,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <Typography
-                    variant="subtitle1"
-                    fontWeight={700}
-                    noWrap
-                    sx={{ flex: 1, minWidth: 0 }}
-                  >
-                    {list.title}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ whiteSpace: 'nowrap' }}
-                  >
-                    {completedCount}/{totalCount}
-                  </Typography>
-                </ButtonBase>
-                <Tooltip title="Архив списка">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleOpenArchive(list.id)}
-                    aria-label="Открыть архив"
-                  >
-                    <Badge
-                      color="primary"
-                      badgeContent={archivedCount}
-                      invisible={archivedCount === 0}
-                    >
-                      <ArchiveRounded fontSize="small" />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Настройки">
-                  <IconButton
-                    size="small"
-                    onClick={(event) => handleOpenSettings(event, list.id)}
-                    disabled={readOnly}
-                    aria-label="Настройки списка"
-                  >
-                    <SettingsRounded fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-
-              <Collapse id={collapseId} in={!list.isCollapsed} timeout="auto" unmountOnExit>
-                <Stack spacing={1.5} sx={{ pt: 1.5 }}>
-                  <Divider />
-
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    alignItems="stretch"
-                  >
-                    <TextField
-                      value={draftItems[list.id] ?? ''}
-                      onChange={(event) =>
-                        setDraftItems((prev) => ({ ...prev, [list.id]: event.target.value }))
-                      }
-                      placeholder="Новый пункт"
-                      size="small"
-                      fullWidth
-                      disabled={!canCreateItem}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          handleAddItem(list.id)
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="outlined"
-                      startIcon={<AddRounded />}
-                      onClick={() => handleAddItem(list.id)}
-                      disabled={!canCreateItem}
-                    >
-                      Добавить
-                    </Button>
-                  </Stack>
-
-                  {visibleItems.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      Пока нет пунктов. Добавьте первый пункт.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1}>
-                      {visibleItems.map((item) => (
-                        <Paper
-                          key={item.id}
-                          variant="outlined"
-                          sx={{
-                            px: 1,
-                            py: 0.5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            borderRadius: 1.5,
-                          }}
-                          onTouchStart={(event) => handleStartLongPress(event, list.id, item)}
-                          onTouchEnd={handleCancelLongPress}
-                          onTouchMove={handleCancelLongPress}
-                        >
-                          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                            <Checkbox
-                              checked={item.isCompleted}
-                              onChange={() =>
-                                handleToggleItem(list.id, item.id, item.isCompleted)
-                              }
-                              inputProps={{ 'aria-label': 'Отметить пункт' }}
-                              sx={{ p: 0.5 }}
-                              disabled={!canToggleItem}
-                            />
-                            {item.completedBy ? (
-                              <Tooltip title="Кто отметил">
-                                <IconButton
-                                  size="small"
-                                  onClick={(event) => handleOpenUserPopover(event, item.completedBy!)}
-                                  sx={{
-                                    position: 'absolute',
-                                    right: -6,
-                                    top: 6,
-                                    bgcolor: 'background.paper',
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    p: 0.25,
-                                  }}
-                                  aria-label="Кто отметил"
-                                >
-                                  <Avatar
-                                    src={item.completedBy.avatarUrl}
-                                    alt={item.completedBy.name}
-                                    sx={{ width: 18, height: 18 }}
-                                  >
-                                    {item.completedBy.name.slice(0, 1).toUpperCase()}
-                                  </Avatar>
-                                </IconButton>
-                              </Tooltip>
-                            ) : null}
-                          </Box>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              flex: 1,
-                              color: item.isCompleted ? 'text.secondary' : 'text.primary',
-                              textDecoration: item.isCompleted ? 'line-through' : 'none',
-                              wordBreak: 'break-word',
-                            }}
-                          >
-                            {item.title}
-                          </Typography>
-                          {item.syncState && item.syncState !== 'synced' ? (
-                            <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
-                              <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
-                            </Tooltip>
-                          ) : null}
-                          <Tooltip title="Действия">
-                            <IconButton
-                              size="small"
-                              onClick={(event) =>
-                                handleOpenItemMenu(event.currentTarget, list.id, item)
-                              }
-                              disabled={readOnly}
-                              aria-label="Открыть меню"
-                            >
-                              <MoreHorizRounded fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Paper>
-                      ))}
-                    </Stack>
-                  )}
-                </Stack>
-              </Collapse>
-            </CardContent>
-          </Card>
+          <TodoListCard
+            key={list.id}
+            list={list}
+            visibleItems={visibleItems}
+            archivedCount={archivedCount}
+            completedCount={completedCount}
+            totalCount={totalCount}
+            collapseId={collapseId}
+            draftValue={draftItems[list.id] ?? ''}
+            readOnly={readOnly}
+            canCreateItem={canCreateItem}
+            canToggleItem={canToggleItem}
+            onToggleCollapsed={(listId, isCollapsed) => {
+              void onToggleCollapsed(listId, isCollapsed)
+            }}
+            onOpenArchive={handleOpenArchive}
+            onOpenSettings={handleOpenSettings}
+            onDraftChange={(listId, value) => {
+              setDraftItems((prev) => ({ ...prev, [listId]: value }))
+            }}
+            onAddItem={handleAddItem}
+            onToggleItem={handleToggleItem}
+            onOpenUserPopover={handleOpenUserPopover}
+            onOpenItemMenu={handleOpenItemMenu}
+            onStartLongPress={handleStartLongPress}
+            onCancelLongPress={handleCancelLongPress}
+          />
         )
       })}
 
@@ -754,105 +562,18 @@ export function TodoScreen({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(archiveList)} onClose={handleCloseArchive} fullWidth maxWidth="sm">
-        <DialogTitle>Архив · {archiveList?.title ?? ''}</DialogTitle>
-        <DialogContent dividers>
-          {archivedItems.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Архив пуст.
-            </Typography>
-          ) : (
-            <Stack spacing={1}>
-              {archivedItems.map((item) => (
-                <Paper
-                  key={item.id}
-                  variant="outlined"
-                  sx={{
-                    px: 1,
-                    py: 0.5,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    borderRadius: 1.5,
-                  }}
-                  onTouchStart={(event) => handleStartLongPress(event, archiveList!.id, item)}
-                  onTouchEnd={handleCancelLongPress}
-                  onTouchMove={handleCancelLongPress}
-                >
-                  <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Checkbox
-                      checked={item.isCompleted}
-                      onChange={() =>
-                        handleToggleItem(archiveList!.id, item.id, item.isCompleted)
-                      }
-                      inputProps={{ 'aria-label': 'Снять отметку' }}
-                      sx={{ p: 0.5 }}
-                      disabled={!canToggleItem}
-                    />
-                    {item.completedBy ? (
-                      <Tooltip title="Кто отметил">
-                        <IconButton
-                          size="small"
-                          onClick={(event) => handleOpenUserPopover(event, item.completedBy!)}
-                          sx={{
-                            position: 'absolute',
-                            right: -6,
-                            top: 6,
-                            bgcolor: 'background.paper',
-                            border: 1,
-                            borderColor: 'divider',
-                            p: 0.25,
-                          }}
-                          aria-label="Кто отметил"
-                        >
-                          <Avatar
-                            src={item.completedBy.avatarUrl}
-                            alt={item.completedBy.name}
-                            sx={{ width: 18, height: 18 }}
-                          >
-                            {item.completedBy.name.slice(0, 1).toUpperCase()}
-                          </Avatar>
-                        </IconButton>
-                      </Tooltip>
-                    ) : null}
-                  </Box>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      flex: 1,
-                      color: 'text.secondary',
-                      textDecoration: 'line-through',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {item.title}
-                  </Typography>
-                  {item.syncState && item.syncState !== 'synced' ? (
-                    <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
-                      <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
-                    </Tooltip>
-                  ) : null}
-                  <Tooltip title="Действия">
-                    <IconButton
-                      size="small"
-                      onClick={(event) =>
-                        handleOpenItemMenu(event.currentTarget, archiveList!.id, item)
-                      }
-                      disabled={readOnly}
-                      aria-label="Открыть меню"
-                    >
-                      <MoreHorizRounded fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Paper>
-              ))}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseArchive}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
+      <TodoArchiveDialog
+        archiveList={archiveList}
+        archivedItems={archivedItems}
+        readOnly={readOnly}
+        canToggleItem={canToggleItem}
+        onClose={handleCloseArchive}
+        onToggleItem={handleToggleItem}
+        onOpenUserPopover={handleOpenUserPopover}
+        onOpenItemMenu={handleOpenItemMenu}
+        onStartLongPress={handleStartLongPress}
+        onCancelLongPress={handleCancelLongPress}
+      />
 
       <Popover
         open={Boolean(userAnchorEl) && Boolean(activeUser)}

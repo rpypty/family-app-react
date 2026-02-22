@@ -8,7 +8,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Fab,
   IconButton,
   Menu,
@@ -18,13 +17,14 @@ import {
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import CloseRounded from '@mui/icons-material/CloseRounded'
-import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded'
 import type { ExerciseMeta, Workout, WorkoutSet } from '../types'
+import {
+  WorkoutExerciseGroupCard,
+  type WorkoutExerciseGroup,
+} from '../components/WorkoutExerciseGroupCard'
 import { ExercisePicker } from '../components/ExercisePicker'
-import { WeightChips } from '../components/WeightChips'
-import { createWorkoutSet, exerciseKey, volumeForSet, workoutEntries } from '../utils/workout'
+import { createWorkoutSet, exerciseKey, workoutEntries } from '../utils/workout'
 import { formatDateLabel } from '../utils/date'
 
 interface WorkoutEditorProps {
@@ -38,20 +38,6 @@ interface WorkoutEditorProps {
   onAddExercise: (name: string) => void
   onSave: (workout: Workout) => void
   onDeleteWorkout: (workoutId: string) => void | Promise<void>
-}
-
-type ExerciseGroup = {
-  key: string
-  name: string
-  isWeightless: boolean
-  note: string
-  sets: WorkoutSet[]
-  stats?: {
-    avgWeightChange?: number | null
-    volumeChange?: number | null
-    prevAvgWeight?: number | null
-    prevVolume?: number | null
-  }
 }
 
 type ConfirmState =
@@ -96,12 +82,11 @@ export function WorkoutEditor({
   const [isEditingHeader, setEditingHeader] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
   const [swipedExerciseKey, setSwipedExerciseKey] = useState<string | null>(null)
-  const touchStartXRef = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
   const lastSaved = useRef(serialize(initialName, initialDate, initialSets))
 
   const groups = useMemo(() => {
-    const map = new Map<string, ExerciseGroup>()
+    const map = new Map<string, WorkoutExerciseGroup>()
     for (const set of sets) {
       const display = set.exercise.trim()
       if (!display) continue
@@ -341,220 +326,32 @@ export function WorkoutEditor({
           </Card>
         ) : (
           <Stack spacing={2}>
-            {groups.map((group) => {
-              const hint = suggestions.get(group.key)
-              const volume = group.sets.reduce(
-                (sum, set) => sum + volumeForSet(set, group.isWeightless),
-                0
-              )
-              return (
-                <Box 
-                  key={group.key} 
-                  sx={{ position: 'relative' }}
-                  ref={(el: HTMLDivElement | null) => {
-                    if (el) {
-                      cardRefs.current.set(group.key, el)
-                    } else {
-                      cardRefs.current.delete(group.key)
-                    }
-                  }}
-                >
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: 'var(--wk-radius)',
-                      bgcolor: 'error.main',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      pr: 2,
-                      color: 'error.contrastText',
-                      opacity: swipedExerciseKey === group.key ? 1 : 0,
-                      transition: 'opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-                      cursor: 'pointer',
-                      pointerEvents: swipedExerciseKey === group.key ? 'auto' : 'none',
-                    }}
-                    onClick={() => {
-                      setConfirm({ open: true, kind: 'exercise', exerciseName: group.name })
-                      setSwipedExerciseKey(null)
-                    }}
-                  >
-                    <DeleteOutlineRounded sx={{ fontSize: 36 }} />
-                  </Box>
-                  <Card
-                    variant="outlined"
-                    sx={{
-                      borderRadius: 'var(--wk-radius)',
-                      borderColor: 'var(--wk-border)',
-                      bgcolor: 'var(--wk-card)',
-                      transform: swipedExerciseKey === group.key ? 'translateX(-80px)' : 'translateX(0)',
-                      transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-                      position: 'relative',
-                    }}
-                    style={{ touchAction: 'pan-y' }}
-                    onTouchStart={(e) => {
-                      touchStartXRef.current = e.touches[0]?.clientX ?? null
-                    }}
-                    onTouchEnd={(e) => {
-                      const startX = touchStartXRef.current
-                      const endX = e.changedTouches[0]?.clientX
-                      touchStartXRef.current = null
-                      
-                      if (startX !== null && endX !== undefined) {
-                        const delta = startX - endX
-                        // Swipe left to reveal delete
-                        if (delta > 80) {
-                          setSwipedExerciseKey(group.key)
-                        }
-                        // Swipe right to close
-                        else if (delta < -40 && swipedExerciseKey === group.key) {
-                          setSwipedExerciseKey(null)
-                        }
-                      }
-                    }}
-                  >
-                  <CardContent>
-                    <Stack spacing={1.5}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                          <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ color: 'var(--wk-ink)' }}>
-                            {group.name}
-                          </Typography>
-                          {group.note ? (
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                color: 'var(--wk-muted)',
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              {group.note}
-                            </Typography>
-                          ) : null}
-                          {group.isWeightless ? (
-                            <Typography variant="caption" color="warning.main">
-                              Без веса
-                            </Typography>
-                          ) : null}
-                        </Stack>
-                      </Stack>
-
-                      {group.stats && !group.isWeightless ? (
-                        <Typography variant="caption" sx={{ color: 'var(--wk-muted)', display: 'block' }}>
-                          Вес:{' '}
-                          <Box component="span" sx={{ color: deltaColor(group.stats.avgWeightChange) }}>
-                            {formatPercent(group.stats.avgWeightChange)}
-                          </Box>
-                          {' '}• Пред. вес:{' '}
-                          <Box component="span" sx={{ fontWeight: 600 }}>
-                            {group.stats.prevAvgWeight ? `${group.stats.prevAvgWeight.toFixed(1)} кг` : '—'}
-                          </Box>
-                          <br />
-                          Объем:{' '}
-                          <Box component="span" sx={{ color: deltaColor(group.stats.volumeChange) }}>
-                            {formatPercent(group.stats.volumeChange)}
-                          </Box>
-                        </Typography>
-                      ) : (
-                        <Typography variant="caption" sx={{ color: 'var(--wk-muted)' }}>
-                          Объём: {Math.round(volume)}
-                        </Typography>
-                      )}
-
-                      <Typography variant="caption" sx={{ color: 'var(--wk-muted)', fontStyle: 'italic' }}>
-                        Свайпните влево для удаления
-                      </Typography>
-
-                      <Stack spacing={1}>
-                        {group.sets.map((set) => (
-                          <Stack key={set.id} spacing={0.75}>
-                            <Box
-                              sx={{
-                                display: 'grid',
-                                gridTemplateColumns: group.isWeightless
-                                  ? { xs: '1fr auto', sm: '140px auto' }
-                                  : { xs: '1fr 1fr auto', sm: '120px 120px auto' },
-                                gap: 1,
-                                alignItems: 'center',
-                              }}
-                            >
-                              <TextField
-                                label="Повт."
-                                type="number"
-                                value={set.reps || ''}
-                                onChange={(e) => handleUpdateSet(set.id, { reps: e.target.value === '' ? 0 : Number(e.target.value) })}
-                                onBlur={handleSave}
-                                size="small"
-                                sx={{ minWidth: 0 }}
-                              />
-                              {!group.isWeightless && (
-                                <TextField
-                                  label="Вес"
-                                  type="number"
-                                  value={set.weightKg || ''}
-                                  onChange={(e) => handleUpdateSet(set.id, { weightKg: e.target.value === '' ? 0 : Number(e.target.value) })}
-                                  onBlur={handleSave}
-                                  size="small"
-                                  sx={{ minWidth: 0 }}
-                                />
-                              )}
-                              <IconButton
-                                size="small"
-                                onClick={() => setConfirm({ open: true, kind: 'set', setId: set.id })}
-                                sx={{
-                                  bgcolor: 'var(--wk-ink-soft)',
-                                  width: 28,
-                                  height: 28,
-                                  justifySelf: 'end',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <CloseRounded fontSize="small" sx={{ fontSize: 12 }} />
-                              </IconButton>
-                            </Box>
-                            {!group.isWeightless && hint && !set.weightKg ? (
-                              <WeightChips
-                                lastWeight={hint.lastWeight}
-                                bestWeight={hint.bestWeight}
-                                onSelect={(weight) => handleUpdateSet(set.id, { weightKg: weight })}
-                              />
-                            ) : null}
-                            <Divider />
-                          </Stack>
-                        ))}
-                      </Stack>
-
-                      <Button
-                        variant="text"
-                        size="small"
-                        onClick={() => handleAddSetToExercise(group.name)}
-                        startIcon={<AddIcon />}
-                        sx={{
-                          fontWeight: 700,
-                          alignSelf: 'flex-start',
-                          textTransform: 'none',
-                          borderRadius: 999,
-                          color: 'var(--wk-accent)',
-                          bgcolor: 'transparent',
-                          border: '1px solid transparent',
-                          px: 1.5,
-                          '&:hover': {
-                            bgcolor: 'transparent',
-                          },
-                        }}
-                      >
-                        Добавить подход
-                      </Button>
-                    </Stack>
-                  </CardContent>
-                </Card>
-                </Box>
-              )
-            })}
+            {groups.map((group) => (
+              <WorkoutExerciseGroupCard
+                key={group.key}
+                group={group}
+                hint={suggestions.get(group.key)}
+                isSwiped={swipedExerciseKey === group.key}
+                onSwipeOpen={() => setSwipedExerciseKey(group.key)}
+                onSwipeClose={() => setSwipedExerciseKey(null)}
+                onConfirmDeleteExercise={() => {
+                  setConfirm({ open: true, kind: 'exercise', exerciseName: group.name })
+                }}
+                onConfirmDeleteSet={(setId) => {
+                  setConfirm({ open: true, kind: 'set', setId })
+                }}
+                onUpdateSet={handleUpdateSet}
+                onSave={handleSave}
+                onAddSet={() => handleAddSetToExercise(group.name)}
+                cardRef={(element) => {
+                  if (element) {
+                    cardRefs.current.set(group.key, element)
+                  } else {
+                    cardRefs.current.delete(group.key)
+                  }
+                }}
+              />
+            ))}
           </Stack>
         )}
 
@@ -651,17 +448,4 @@ export function WorkoutEditor({
       </Dialog>
     </Box>
   )
-}
-
-function deltaColor(value?: number | null) {
-  if (value === null || value === undefined || Number.isNaN(value)) return 'var(--wk-muted)'
-  if (value > 0) return 'success.main'
-  if (value < 0) return 'error.main'
-  return 'var(--wk-muted)'
-}
-
-function formatPercent(value?: number | null): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(1)}%`
 }
