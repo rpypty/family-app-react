@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MutableRefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -43,6 +44,48 @@ type ConfirmState =
   | { open: true; kind: 'set'; exerciseName: string; setId: string }
   | { open: true; kind: 'exercise'; exerciseName: string }
 
+const createRandomId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+
+const serializeDraft = (name: string, items: DraftExercise[]) => JSON.stringify({
+  name: name.trim(),
+  items: items.map((item) => ({
+    name: item.name,
+    isWeightless: item.isWeightless,
+    sets: item.sets.map((set) => ({
+      id: set.id,
+      weightKg: set.weightKg,
+      reps: set.reps,
+    })),
+  })),
+})
+
+const toDraftItems = (
+  template: WorkoutTemplate,
+  exerciseMeta: Record<string, ExerciseMeta>,
+): DraftExercise[] => {
+  const grouped = new Map<string, DraftSet[]>()
+  for (const set of template.sets || []) {
+    if (!grouped.has(set.exercise)) {
+      grouped.set(set.exercise, [])
+    }
+    grouped.get(set.exercise)!.push({
+      id: set.id || createRandomId(),
+      weightKg: set.weightKg || 0,
+      reps: set.reps || 8,
+    })
+  }
+
+  return Array.from(grouped.entries()).map(([exerciseName, sets]) => {
+    const key = exerciseKey(exerciseName)
+    const meta = exerciseMeta[key]
+    return {
+      name: exerciseName,
+      sets,
+      isWeightless: meta?.isWeightless || false,
+    }
+  })
+}
+
 export function TemplateEditor({
   templateId: templateIdProp,
   templates,
@@ -54,139 +97,35 @@ export function TemplateEditor({
   const navigate = useNavigate()
   const templateId = templateIdProp
   const isNew = templateId === 'new'
+  const sourceTemplate = !isNew && templateId ? templates.find((template) => template.id === templateId) : undefined
+  const initialDraft = useMemo(() => {
+    if (!sourceTemplate) {
+      return { name: '', items: [] as DraftExercise[] }
+    }
+    return {
+      name: sourceTemplate.name,
+      items: toDraftItems(sourceTemplate, exerciseMeta),
+    }
+  }, [sourceTemplate, exerciseMeta])
 
-  const [name, setName] = useState('')
-  const [items, setItems] = useState<DraftExercise[]>([])
+  const [name, setName] = useState(() => initialDraft.name)
+  const [items, setItems] = useState<DraftExercise[]>(() => initialDraft.items)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [swipedExercise, setSwipedExercise] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
-  const isHydrating = useRef(false)
-  const lastSaved = useRef<string>('')
-  const touchStartX = useRef<number | null>(null)
+  const lastSaved = useRef(isNew ? '' : serializeDraft(initialDraft.name, initialDraft.items))
+  const touchStartXRef = useRef<number | null>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
-
-  const cryptoRandomId = useCallback(() => {
-    return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-  }, [])
-
-  // Serialize local state (what we're editing)
-  const serialize = useCallback((n: string, its: DraftExercise[]) => {
-    return JSON.stringify({
-      name: n.trim(),
-      items: its.map(it => ({
-        name: it.name,
-        isWeightless: it.isWeightless,
-        sets: it.sets.map(s => ({
-          id: s.id,
-          weightKg: s.weightKg,
-          reps: s.reps,
-        }))
-      }))
-    })
-  }, [])
-
-  // Serialize template from props (what comes from parent)
-  const serializeTemplate = useCallback((template: WorkoutTemplate | undefined) => {
-    if (!template) return ''
-    
-    // Group sets by exercise while preserving order of first appearance
-    const exerciseOrder: string[] = []
-    const grouped = new Map<string, DraftSet[]>()
-    
-    for (const set of template.sets || []) {
-      if (!grouped.has(set.exercise)) {
-        grouped.set(set.exercise, [])
-        exerciseOrder.push(set.exercise) // Track order of first appearance
-      }
-      grouped.get(set.exercise)!.push({
-        id: set.id || cryptoRandomId(),
-        weightKg: set.weightKg || 0,
-        reps: set.reps || 8,
-      })
-    }
-    
-    // Build items array in the order exercises first appeared
-    const items = exerciseOrder.map(name => {
-      const key = exerciseKey(name)
-      const meta = exerciseMeta[key]
-      return {
-        name,
-        sets: grouped.get(name)!,
-        isWeightless: meta?.isWeightless || false,
-      }
-    })
-    
-    return serialize(template.name, items)
-  }, [cryptoRandomId, serialize, exerciseMeta])
-
-  // Create signature from incoming template
-  const templateSignature = serializeTemplate(
-    isNew ? undefined : templates.find((t) => t.id === templateId)
-  )
-
-  // Load template data when signature changes (like WorkoutEditor)
-  useEffect(() => {
-    if (isNew) {
-      isHydrating.current = true
-      setName('')
-      setItems([])
-      lastSaved.current = ''
-      const t = setTimeout(() => {
-        isHydrating.current = false
-      }, 0)
-      return () => clearTimeout(t)
-    }
-
-    if (templateId) {
-      const template = templates.find((t) => t.id === templateId)
-      if (template) {
-        isHydrating.current = true
-        
-        // Convert flat TemplateSet[] to grouped DraftExercise[]
-        const grouped = new Map<string, DraftSet[]>()
-        for (const set of template.sets || []) {
-          if (!grouped.has(set.exercise)) {
-            grouped.set(set.exercise, [])
-          }
-          grouped.get(set.exercise)!.push({
-            id: set.id || cryptoRandomId(),
-            weightKg: set.weightKg || 0,
-            reps: set.reps || 8,
-          })
-        }
-        
-        const newItems = Array.from(grouped.entries()).map(([name, sets]) => {
-          const key = exerciseKey(name)
-          const meta = exerciseMeta[key]
-          return {
-            name,
-            sets,
-            isWeightless: meta?.isWeightless || false,
-          }
-        })
-        
-        setName(template.name)
-        setItems(newItems)
-        lastSaved.current = templateSignature
-        
-        const t = setTimeout(() => {
-          isHydrating.current = false
-        }, 0)
-        return () => clearTimeout(t)
-      }
-    }
-  }, [templateSignature, templateId, isNew, cryptoRandomId])
 
   // Manual save function (called on blur)
   const handleSave = useCallback(() => {
-    if (isHydrating.current) return
     if (!name.trim() || items.length === 0) return
-    
-    const snapshot = serialize(name, items)
+
+    const snapshot = serializeDraft(name, items)
     if (snapshot === lastSaved.current) return
-    
+
     lastSaved.current = snapshot
-    
+
     // Convert DraftExercise[] to flat TemplateSet[]
     const converted: TemplateSet[] = items.flatMap((it) =>
       it.sets.map((s) => ({
@@ -214,7 +153,7 @@ export function TemplateEditor({
         createdAt: templates.find((t) => t.id === templateId)?.createdAt || Date.now(),
       })
     }
-  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates, serialize])
+  }, [name, items, templateId, isNew, onCreateTemplate, onUpdateTemplate, navigate, templates])
 
   const handleAddExercise = (exerciseName: string) => {
     const n = (exerciseName || '').trim()
@@ -224,7 +163,7 @@ export function TemplateEditor({
     const meta = exerciseMeta[key]
     setItems((prev) => [
       ...prev,
-      { name: n, sets: [{ id: cryptoRandomId(), weightKg: 0, reps: 8 }], isWeightless: meta?.isWeightless || false },
+      { name: n, sets: [{ id: createRandomId(), weightKg: 0, reps: 8 }], isWeightless: meta?.isWeightless || false },
     ])
     setIsPickerOpen(false)
   }
@@ -233,7 +172,7 @@ export function TemplateEditor({
     setItems((prev) =>
       prev.map((it) =>
         it.name === exerciseName
-          ? { ...it, sets: [...it.sets, { id: cryptoRandomId(), weightKg: 0, reps: 8 }] }
+          ? { ...it, sets: [...it.sets, { id: createRandomId(), weightKg: 0, reps: 8 }] }
           : it
       )
     )
@@ -431,7 +370,7 @@ export function TemplateEditor({
                     swipedExercise={swipedExercise}
                     onSwipe={setSwipedExercise}
                     cardRefs={cardRefs}
-                    touchStartX={touchStartX}
+                    touchStartXRef={touchStartXRef}
                     setConfirm={setConfirm}
                     onAddSet={handleAddSet}
                     onRemoveSet={handleRemoveSet}
@@ -500,8 +439,8 @@ interface SortableExerciseCardProps {
   item: DraftExercise
   swipedExercise: string | null
   onSwipe: (name: string | null) => void
-  cardRefs: React.MutableRefObject<Map<string, HTMLElement>>
-  touchStartX: React.MutableRefObject<number | null>
+  cardRefs: MutableRefObject<Map<string, HTMLElement>>
+  touchStartXRef: MutableRefObject<number | null>
   setConfirm: (state: ConfirmState) => void
   onAddSet: (exerciseName: string) => void
   onRemoveSet: (exerciseName: string, setId: string) => void
@@ -515,7 +454,7 @@ function SortableExerciseCard({
   swipedExercise,
   onSwipe,
   cardRefs,
-  touchStartX,
+  touchStartXRef,
   setConfirm,
   onAddSet,
   onUpdateSet,
@@ -578,12 +517,12 @@ function SortableExerciseCard({
         }}
         style={{ touchAction: 'pan-y' }}
         onTouchStart={(e) => {
-          touchStartX.current = e.touches[0]?.clientX ?? null
+          touchStartXRef.current = e.touches[0]?.clientX ?? null
         }}
         onTouchEnd={(e) => {
-          const startX = touchStartX.current
+          const startX = touchStartXRef.current
           const endX = e.changedTouches[0]?.clientX
-          touchStartX.current = null
+          touchStartXRef.current = null
 
           if (startX !== null && endX !== undefined) {
             const delta = startX - endX
@@ -710,4 +649,3 @@ function SortableExerciseCard({
     </Box>
   )
 }
-

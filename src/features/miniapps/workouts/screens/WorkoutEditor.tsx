@@ -72,18 +72,6 @@ export function WorkoutEditor({
   onSave,
   onDeleteWorkout,
 }: WorkoutEditorProps) {
-  const [name, setName] = useState(workout.name || '')
-  const [date, setDate] = useState(workout.date)
-  const [sets, setSets] = useState<WorkoutSet[]>([...(workout.sets || [])])
-  const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
-  const [isEditingHeader, setEditingHeader] = useState(false)
-  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
-  const [swipedExerciseKey, setSwipedExerciseKey] = useState<string | null>(null)
-  const touchStartX = useRef<number | null>(null)
-  const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const isHydrating = useRef(false)
-  const lastSaved = useRef<string>('')
-
   const serialize = useCallback((n: string, d: string, s: WorkoutSet[]) => {
     return JSON.stringify({
       name: n.trim(),
@@ -97,23 +85,20 @@ export function WorkoutEditor({
     })
   }, [])
 
-  const workoutSignature = useMemo(
-    () => serialize(workout.name || '', workout.date, workout.sets || []),
-    [workout]
-  )
+  const initialName = workout.name || ''
+  const initialDate = workout.date
+  const initialSets = [...(workout.sets || [])]
 
-  useEffect(() => {
-    isHydrating.current = true
-    setName(workout.name || '')
-    setDate(workout.date)
-    setSets([...(workout.sets || [])])
-    setEditingHeader(false)
-    lastSaved.current = workoutSignature
-    const t = setTimeout(() => {
-      isHydrating.current = false
-    }, 0)
-    return () => clearTimeout(t)
-  }, [workoutSignature])
+  const [name, setName] = useState(initialName)
+  const [date, setDate] = useState(initialDate)
+  const [sets, setSets] = useState<WorkoutSet[]>(initialSets)
+  const [confirm, setConfirm] = useState<ConfirmState>({ open: false })
+  const [isEditingHeader, setEditingHeader] = useState(false)
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
+  const [swipedExerciseKey, setSwipedExerciseKey] = useState<string | null>(null)
+  const touchStartXRef = useRef<number | null>(null)
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
+  const lastSaved = useRef(serialize(initialName, initialDate, initialSets))
 
   const groups = useMemo(() => {
     const map = new Map<string, ExerciseGroup>()
@@ -248,7 +233,6 @@ export function WorkoutEditor({
 
   // Manual save function (called on blur)
   const handleSave = useCallback(() => {
-    if (isHydrating.current) return
     const snapshot = serialize(name, date, sets)
     if (snapshot === lastSaved.current) return
     lastSaved.current = snapshot
@@ -410,12 +394,12 @@ export function WorkoutEditor({
                     }}
                     style={{ touchAction: 'pan-y' }}
                     onTouchStart={(e) => {
-                      touchStartX.current = e.touches[0]?.clientX ?? null
+                      touchStartXRef.current = e.touches[0]?.clientX ?? null
                     }}
                     onTouchEnd={(e) => {
-                      const startX = touchStartX.current
+                      const startX = touchStartXRef.current
                       const endX = e.changedTouches[0]?.clientX
-                      touchStartX.current = null
+                      touchStartXRef.current = null
                       
                       if (startX !== null && endX !== undefined) {
                         const delta = startX - endX

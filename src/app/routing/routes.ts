@@ -1,5 +1,5 @@
 export type TabId = 'expenses' | 'analytics' | 'reports'
-export type AppId = 'home' | 'expenses' | 'todo' | 'gym' | 'workouts'
+export type AppId = 'home' | 'expenses' | 'todo' | 'workouts'
 
 export const ROUTES = {
   home: '/',
@@ -7,7 +7,6 @@ export const ROUTES = {
   expenseAnalytics: '/miniapps/expenses/analytics',
   expenseReports: '/miniapps/expenses/reports',
   todo: '/miniapps/todo',
-  gym: '/miniapps/gym',
   workouts: '/miniapps/workouts',
 } as const
 
@@ -72,7 +71,7 @@ export const resolveAppRoute = (pathname: string): ResolvedRoute => {
   }
 
   if (app === 'gym') {
-    return { activeApp: 'gym', activeTab: 'expenses' }
+    return { activeApp: 'workouts', activeTab: 'expenses', redirectTo: ROUTES.workouts }
   }
 
   if (app === 'workouts') {

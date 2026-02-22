@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -25,6 +25,26 @@ type Draft = {
   isWeightless: boolean
 }
 
+const resolveInitialDraft = (
+  exerciseName: string | undefined,
+  exerciseMeta: Record<string, ExerciseMeta>,
+): Draft => {
+  const isEditing = Boolean(exerciseName && exerciseName !== 'new')
+  if (!isEditing || !exerciseName) {
+    return { name: '', note: '', isWeightless: false }
+  }
+
+  const decodedName = decodeURIComponent(exerciseName)
+  const key = exerciseKey(decodedName)
+  const meta = exerciseMeta[key]
+
+  return {
+    name: decodedName,
+    note: meta?.note || '',
+    isWeightless: meta?.isWeightless || false,
+  }
+}
+
 export function ExerciseEditor({
   exerciseName: exerciseNameProp,
   exerciseMeta,
@@ -34,30 +54,14 @@ export function ExerciseEditor({
 }: ExerciseEditorProps) {
   const navigate = useNavigate()
   const exerciseName = exerciseNameProp
-  const isEditing = exerciseName && exerciseName !== 'new'
-  
-  const [draft, setDraft] = useState<Draft>({ name: '', note: '', isWeightless: false })
-
-  useEffect(() => {
-    if (isEditing) {
-      const decodedName = decodeURIComponent(exerciseName)
-      const key = exerciseKey(decodedName)
-      const meta = exerciseMeta[key]
-      setDraft({
-        name: decodedName,
-        note: meta?.note || '',
-        isWeightless: meta?.isWeightless || false,
-      })
-    } else {
-      setDraft({ name: '', note: '', isWeightless: false })
-    }
-  }, [exerciseName, exerciseMeta, isEditing])
+  const isEditing = Boolean(exerciseName && exerciseName !== 'new')
+  const [draft, setDraft] = useState<Draft>(() => resolveInitialDraft(exerciseName, exerciseMeta))
 
   const handleSave = () => {
     const trimmed = draft.name.trim()
     if (!trimmed) return
 
-    if (isEditing) {
+    if (isEditing && exerciseName) {
       const decodedName = decodeURIComponent(exerciseName)
       if (exerciseKey(decodedName) !== exerciseKey(trimmed)) {
         onRenameExercise(decodedName, trimmed)

@@ -3,7 +3,7 @@ import type { AuthSession, AuthUser } from '../../features/auth/api/auth'
 import type { Family } from '../../features/family/api/families'
 import type { TabId } from '../routing/routes'
 
-type AppId = 'home' | 'expenses' | 'todo' | 'gym' | 'workouts'
+type AppId = 'home' | 'expenses' | 'todo' | 'workouts'
 
 const TABS: Array<{
   id: TabId
@@ -70,11 +70,9 @@ export function useShellMeta({
       ? active.title
       : activeApp === 'todo'
         ? 'To Do листы'
-        : activeApp === 'gym'
+        : activeApp === 'workouts'
           ? 'Тренировки'
-          : activeApp === 'workouts'
-            ? 'Тренировки'
-            : 'Миниаппы'
+          : 'Миниаппы'
 
   const formattedLastSyncAt = useMemo(() => {
     if (!lastSyncAt) return null

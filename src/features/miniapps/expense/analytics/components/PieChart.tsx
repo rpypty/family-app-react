@@ -63,15 +63,25 @@ export function PieChart({
     )
   }
 
-  let startAngle = -90
   const center = size / 2
   const radius = size / 2
 
-  const paths = slices.map((slice) => {
+  const paths = slices.reduce<{
+    nextStartAngle: number
+    items: Array<{
+      path: string
+      color: string
+      percent: number
+      labelPos: { x: number; y: number }
+      label: string
+      id?: string
+      offsetPoint: { x: number; y: number }
+    }>
+  }>((acc, slice) => {
     const sweep = (slice.value / total) * 360
-    const endAngle = startAngle + sweep
-    const path = describeArc(center, radius, startAngle, endAngle)
-    const midAngle = startAngle + sweep / 2
+    const endAngle = acc.nextStartAngle + sweep
+    const path = describeArc(center, radius, acc.nextStartAngle, endAngle)
+    const midAngle = acc.nextStartAngle + sweep / 2
     const percent = (slice.value / total) * 100
     const labelPos = polarToCartesian(center, radius * 0.62, midAngle)
     const offset = 8
@@ -80,18 +90,23 @@ export function PieChart({
       x: Math.cos(angleRad) * offset,
       y: Math.sin(angleRad) * offset,
     }
-    const result = {
-      path,
-      color: slice.color,
-      percent,
-      labelPos,
-      label: slice.label,
-      id: slice.id,
-      offsetPoint,
+
+    return {
+      nextStartAngle: endAngle,
+      items: [
+        ...acc.items,
+        {
+          path,
+          color: slice.color,
+          percent,
+          labelPos,
+          label: slice.label,
+          id: slice.id,
+          offsetPoint,
+        },
+      ],
     }
-    startAngle = endAngle
-    return result
-  })
+  }, { nextStartAngle: -90, items: [] }).items
 
   const style: CSSProperties = { width: size, height: size }
 

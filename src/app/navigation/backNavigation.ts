@@ -7,10 +7,6 @@ export const resolveBackNavigationTarget = ({
   activeApp: AppId
   currentPath: string
 }): string => {
-  if (activeApp === 'gym') {
-    return currentPath.startsWith(`${ROUTES.gym}/`) ? ROUTES.gym : ROUTES.home
-  }
-
   if (activeApp === 'workouts') {
     const isWorkoutsNested = currentPath.startsWith(`${ROUTES.workouts}/`)
     if (!isWorkoutsNested) {

@@ -47,6 +47,17 @@ type ExerciseListResponse = {
   exercises: string[]
 }
 
+type WorkoutMutationPayload = {
+  date: string
+  name: string
+  sets: Array<{
+    exercise: string
+    weight_kg: number
+    reps: number
+  }>
+  template_id?: string
+}
+
 const mapSet = (set: ApiWorkoutSet, createdAt: number): WorkoutSet => ({
   id: set.id,
   exercise: set.exercise,
@@ -88,7 +99,7 @@ export const createWorkout = async (
   workout: Omit<Workout, 'id' | 'createdAt'>,
   templateId?: string
 ): Promise<Workout> => {
-  const payload: any = {
+  const payload: WorkoutMutationPayload = {
     date: workout.date,
     name: workout.name,
     sets: workout.sets.map((set) => ({

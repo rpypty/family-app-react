@@ -173,6 +173,7 @@ export function WorkoutsScreen() {
           />
         ) : route.view === 'exercise' ? (
           <ExerciseEditor
+            key={route.exerciseName ?? 'new'}
             exerciseName={route.exerciseName}
             exerciseMeta={exerciseMeta}
             onAddExercise={addExercise}
@@ -181,6 +182,7 @@ export function WorkoutsScreen() {
           />
         ) : route.view === 'template' ? (
           <TemplateEditor
+            key={route.templateId ?? 'new'}
             templateId={route.templateId}
             templates={templates}
             exercises={exercises}
@@ -190,6 +192,7 @@ export function WorkoutsScreen() {
           />
         ) : editingWorkout && editingWorkout ? (
           <WorkoutEditor
+            key={editingWorkout.id}
             workout={editingWorkout}
             allWorkouts={workouts}
             exercises={exercises}

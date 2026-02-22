@@ -262,7 +262,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, range.from, range.to, tagIdsKey])
+  }, [readOnly, range.from, range.to, tagIdsForApi])
 
   useEffect(() => {
     let isActive = true
