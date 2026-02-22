@@ -1,0 +1,4 @@
+export const EXPENSES_PAGE_SIZE = 30
+export const INITIAL_SYNC_TIMEOUT_MS = 5_000
+export const AUTO_RETRY_INTERVAL_MS = 20_000
+export const MANUAL_RETRY_TIMEOUT_MS = 15_000
