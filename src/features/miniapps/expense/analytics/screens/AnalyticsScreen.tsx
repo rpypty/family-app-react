@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Card,
   CardContent,
   Chip,
@@ -14,9 +15,13 @@ import {
   Divider,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
   useMediaQuery,
 } from '@mui/material'
+import BarChartIcon from '@mui/icons-material/BarChart'
+import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import { alpha, useTheme } from '@mui/material/styles'
 import type { Expense, Tag } from '../../../../../shared/types'
 import {
@@ -29,18 +34,21 @@ import {
 } from '../../../../../shared/lib/formatters'
 import { selectedTags } from '../../../../../shared/lib/tagUtils'
 import {
+  DEFAULT_TAG_COLOR,
   getFirstTagColor,
   getFirstTagEmoji,
+  normalizeTagColor,
+  normalizeTagEmoji,
   withTagEmoji,
   type TagAppearanceInput,
 } from '../../../../../shared/lib/tagAppearance'
-import { PieChart } from '../components/PieChart'
+import { PieChart as BreakdownChart } from '../components/PieChart'
+import { TimeseriesBarChart, type AnalyticsBarClickPayload } from '../components/TimeseriesBarChart'
 import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
-import { TagPickerInput } from '../../../../../shared/ui/TagPickerInput'
 import { TagRow } from '../../../../../shared/ui/TagRow'
 import { TagSearchDialog } from '../../../../../shared/ui/TagSearchDialog'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
-import { getAnalyticsByTag, getAnalyticsSummary } from '../api/analytics'
+import { getAnalyticsByTag, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
 
 type AnalyticsScreenProps = {
@@ -50,17 +58,6 @@ type AnalyticsScreenProps = {
   onUpdateTag?: (tagId: string, name: string, payload?: TagAppearanceInput) => Promise<Tag>
   onDeleteTag?: (tagId: string) => Promise<void>
 }
-
-const PALETTE = [
-  '#1f6b63',
-  '#1976d2',
-  '#f57c00',
-  '#d81b60',
-  '#2e7d32',
-  '#3949ab',
-  '#e53935',
-  '#00838f',
-]
 
 const FALLBACK_FROM = '2000-01-01'
 const FILTER_STORAGE_KEY = 'expense:analytics:filters:v1'
@@ -75,6 +72,9 @@ type StoredAnalyticsFilters = {
   toDate: string | null
   tagIds: string[]
 }
+
+type ChartType = 'donut' | 'bar'
+type BarGroupBy = 'week' | 'day' | 'category'
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -149,6 +149,8 @@ export function AnalyticsScreen({
   )
   const [isTagDialogOpen, setTagDialogOpen] = useState(false)
   const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
+  const [chartType, setChartType] = useState<ChartType>('donut')
+  const [barGroupBy, setBarGroupBy] = useState<BarGroupBy>('week')
   const [summary, setSummary] = useState<{
     totalAmount: number
     currency: string
@@ -162,10 +164,21 @@ export function AnalyticsScreen({
   >([])
   const [isLoading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [timeseriesRows, setTimeseriesRows] = useState<
+    Array<{ period: string; total: number; count: number }>
+  >([])
+  const [timeseriesLoading, setTimeseriesLoading] = useState(false)
+  const [timeseriesError, setTimeseriesError] = useState<string | null>(null)
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
   const [isListLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-  const [drilldownTag, setDrilldownTag] = useState<{ id: string; name: string } | null>(null)
+  const [activeSliceId, setActiveSliceId] = useState<string | null>(null)
+  const [drilldownTitle, setDrilldownTitle] = useState<string | null>(null)
+  const [drilldownQuery, setDrilldownQuery] = useState<{
+    from: string
+    to: string
+    tagIds?: string[]
+  } | null>(null)
   const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
   const [drilldownLoading, setDrilldownLoading] = useState(false)
   const [drilldownError, setDrilldownError] = useState<string | null>(null)
@@ -275,6 +288,58 @@ export function AnalyticsScreen({
 
   useEffect(() => {
     let isActive = true
+    if (chartType !== 'bar') {
+      setTimeseriesLoading(false)
+      setTimeseriesError(null)
+      return () => {
+        isActive = false
+      }
+    }
+    if (barGroupBy === 'category') {
+      setTimeseriesLoading(false)
+      setTimeseriesError(null)
+      return () => {
+        isActive = false
+      }
+    }
+    if (readOnly) {
+      setTimeseriesLoading(false)
+      setTimeseriesError('Оффлайн: столбчатая диаграмма недоступна.')
+      setTimeseriesRows([])
+      return () => {
+        isActive = false
+      }
+    }
+
+    const loadTimeseries = async () => {
+      setTimeseriesLoading(true)
+      setTimeseriesError(null)
+      try {
+        const response = await getAnalyticsTimeseries({
+          from: range.from,
+          to: range.to,
+          tagIds: tagIdsForApi,
+          groupBy: barGroupBy,
+        })
+        if (!isActive) return
+        setTimeseriesRows(response)
+      } catch {
+        if (!isActive) return
+        setTimeseriesError('Не удалось загрузить столбчатую диаграмму.')
+        setTimeseriesRows([])
+      } finally {
+        if (isActive) setTimeseriesLoading(false)
+      }
+    }
+
+    void loadTimeseries()
+    return () => {
+      isActive = false
+    }
+  }, [chartType, barGroupBy, readOnly, range.from, range.to, tagIdsForApi])
+
+  useEffect(() => {
+    let isActive = true
     if (!hasFilters) {
       setFilteredExpenses([])
       setListError(null)
@@ -327,12 +392,18 @@ export function AnalyticsScreen({
 
   const slices = useMemo(() => {
     const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
-    return entries.map((row, index) => ({
-      id: row.tagId,
-      label: row.tagName || tagMap.get(row.tagId)?.name || 'Без тега',
-      value: row.total,
-      color: PALETTE[index % PALETTE.length],
-    }))
+    return entries.map((row) => {
+      const linkedTag = tagMap.get(row.tagId)
+      const baseLabel = linkedTag?.name || row.tagName || 'Без тега'
+      const label = linkedTag ? withTagEmoji(linkedTag) : baseLabel
+      return {
+        id: row.tagId,
+        label,
+        emoji: normalizeTagEmoji(linkedTag?.emoji),
+        value: row.total,
+        color: normalizeTagColor(linkedTag?.color) ?? DEFAULT_TAG_COLOR,
+      }
+    })
   }, [rowsForBreakdown, tagMap])
 
   const totalByTags = slices.reduce((sum, slice) => sum + slice.value, 0)
@@ -341,10 +412,73 @@ export function AnalyticsScreen({
   const breakdownRemaining = slices.length - breakdownVisible.length
 
   const selectedTagList = selectedTags(tags, filterTagIds)
-  const activeSliceId = drilldownTag?.id ?? null
+  const pieChartSize = fullScreen ? 220 : 260
+
+  const closeDrilldown = () => {
+    setActiveSliceId(null)
+    setDrilldownTitle(null)
+    setDrilldownQuery(null)
+    setDrilldownExpenses([])
+    setDrilldownError(null)
+  }
+
+  const openDrilldown = (slice: { id?: string; label: string }) => {
+    if (readOnly) return
+    if (!slice.id) return
+    const linkedTag = tagMap.get(slice.id)
+    setActiveSliceId(slice.id)
+    setDrilldownTitle(`Траты по тегу: ${linkedTag?.name ?? slice.label}`)
+    setDrilldownQuery({
+      from: range.from,
+      to: range.to,
+      tagIds: [slice.id],
+    })
+    setDrilldownExpenses([])
+    setDrilldownError(null)
+  }
+
+  const openBarDrilldown = (payload: AnalyticsBarClickPayload) => {
+    if (readOnly) return
+    setActiveSliceId(null)
+    if (payload.mode === 'category') {
+      setDrilldownTitle(`Траты по категории: ${payload.label}`)
+      setDrilldownQuery({
+        from: range.from,
+        to: range.to,
+        tagIds: payload.id ? [payload.id] : tagIdsForApi,
+      })
+      setDrilldownExpenses([])
+      setDrilldownError(null)
+      return
+    }
+
+    const periodStart = dateOnly(parseDate(payload.period))
+    const periodEnd = new Date(periodStart)
+    if (payload.groupBy === 'week') {
+      periodEnd.setDate(periodEnd.getDate() + 6)
+    }
+    const rangeStart = dateOnly(parseDate(range.from))
+    const rangeEnd = dateOnly(parseDate(range.to))
+    const fromDate = periodStart.getTime() < rangeStart.getTime() ? rangeStart : periodStart
+    const toDate = periodEnd.getTime() > rangeEnd.getTime() ? rangeEnd : periodEnd
+    const from = formatDate(fromDate)
+    const to = formatDate(toDate)
+    const fromLabel = formatDateDots(fromDate)
+    const toLabel = formatDateDots(toDate)
+    setDrilldownTitle(
+      payload.groupBy === 'week' ? `Траты за период ${fromLabel} — ${toLabel}` : `Траты за ${fromLabel}`
+    )
+    setDrilldownQuery({
+      from,
+      to,
+      tagIds: tagIdsForApi,
+    })
+    setDrilldownExpenses([])
+    setDrilldownError(null)
+  }
 
   useEffect(() => {
-    if (!drilldownTag) return
+    if (!drilldownQuery) return
     let isActive = true
     if (readOnly) {
       setDrilldownLoading(false)
@@ -359,9 +493,9 @@ export function AnalyticsScreen({
       setDrilldownError(null)
       try {
         const response = await listExpensePage({
-          from: range.from,
-          to: range.to,
-          tagIds: [drilldownTag.id],
+          from: drilldownQuery.from,
+          to: drilldownQuery.to,
+          tagIds: drilldownQuery.tagIds,
           limit: 50,
           offset: 0,
         })
@@ -380,7 +514,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, drilldownTag, range.from, range.to])
+  }, [readOnly, drilldownQuery])
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -397,17 +531,22 @@ export function AnalyticsScreen({
       <Card elevation={0} sx={{ mt: 0.25 }}>
         <CardContent>
           <Stack spacing={2}>
-            <Typography variant="subtitle1" fontWeight={600}>
-              Фильтры
-            </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle1" fontWeight={600}>
+                Фильтры
+              </Typography>
+              <Button size="small" onClick={resetFilters}>
+                Сброс
+              </Button>
+            </Stack>
+            <Stack direction="row" spacing={1.5}>
               <TextField
                 label="Дата от"
                 type="date"
                 value={fromDate ?? ''}
                 onChange={(event) => setFromDate(event.target.value || null)}
                 InputLabelProps={{ shrink: true }}
-                fullWidth
+                sx={{ flex: 1, minWidth: 0 }}
               />
               <TextField
                 label="Дата до"
@@ -415,7 +554,7 @@ export function AnalyticsScreen({
                 value={toDate ?? ''}
                 onChange={(event) => setToDate(event.target.value || null)}
                 InputLabelProps={{ shrink: true }}
-                fullWidth
+                sx={{ flex: 1, minWidth: 0 }}
               />
             </Stack>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -428,125 +567,208 @@ export function AnalyticsScreen({
               <Typography variant="subtitle2" color="text.secondary">
                 Теги
               </Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
-                <Box sx={{ flex: 1, width: '100%' }}>
-                  <TagPickerInput label="Выбрать тег" onClick={() => setTagDialogOpen(true)} />
-                </Box>
-              </Stack>
               {selectedTagList.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Теги не выбраны
-                </Typography>
+                <ButtonBase
+                  onClick={() => setTagDialogOpen(true)}
+                  sx={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 1.5,
+                    border: 1,
+                    borderStyle: 'dashed',
+                    borderColor: 'divider',
+                    px: 1.25,
+                    py: 1,
+                    textAlign: 'left',
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    Выбрать тэги
+                  </Typography>
+                </ButtonBase>
               ) : (
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {selectedTagList.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      label={tag.name}
-                      size="small"
-                      variant="outlined"
-                      onDelete={() =>
-                        setFilterTagIds((prev) => {
-                          const next = new Set(prev)
-                          next.delete(tag.id)
-                          return next
-                        })
-                      }
-                    />
-                  ))}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+                    {selectedTagList.map((tag) => {
+                      const tagColor = normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR
+                      return (
+                        <Chip
+                          key={tag.id}
+                          label={withTagEmoji(tag)}
+                          size="small"
+                          variant="outlined"
+                          onDelete={() =>
+                            setFilterTagIds((prev) => {
+                              const next = new Set(prev)
+                              next.delete(tag.id)
+                              return next
+                            })
+                          }
+                          sx={{
+                            borderColor: alpha(tagColor, 0.55),
+                            bgcolor: alpha(tagColor, 0.14),
+                          }}
+                        />
+                      )
+                    })}
+                  </Stack>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setTagDialogOpen(true)}
+                    sx={{ minWidth: 64, minHeight: 28, px: 1, fontWeight: 600, lineHeight: 1 }}
+                  >
+                    Выбрать
+                  </Button>
                 </Stack>
               )}
             </Stack>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button onClick={resetFilters}>Сбросить фильтры</Button>
-            </Box>
           </Stack>
         </CardContent>
       </Card>
 
       {loadError ? <Alert severity="error">{loadError}</Alert> : null}
 
-      <Card
-        elevation={0}
-        sx={{
-          border: 1,
-          borderColor: (theme) => alpha(theme.palette.primary.main, 0.25),
-          bgcolor: 'background.paper',
-          backgroundImage: (theme) =>
-            `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.18)} 0%, ${alpha(
-              theme.palette.primary.main,
-              0.04,
-            )} 60%, transparent 100%)`,
-          boxShadow: (theme) => `0 12px 24px ${alpha(theme.palette.primary.main, 0.12)}`,
-        }}
-      >
-        <CardContent sx={{ px: 2, py: 1.5, '&:last-child': { pb: 1.5 } }}>
-          {isLoading ? (
-            <Stack spacing={1} alignItems="center">
-              <CircularProgress size={24} />
-              <Typography variant="body2" color="text.secondary">
-                Загружаем аналитику…
-              </Typography>
-            </Stack>
-          ) : summary ? (
-            <Stack spacing={0.75} alignItems="center">
-              <Chip
-                label="Итого"
-                size="small"
-                color="primary"
-                variant="outlined"
-                sx={{ fontWeight: 600 }}
-              />
-              <Typography variant="h4" fontWeight={800}>
-                {formatAmount(summary.totalAmount)} {summary.currency}
-              </Typography>
-            </Stack>
-          ) : (
-            <Stack spacing={0.5} alignItems="center">
-              <Chip
-                label="Итого"
-                size="small"
-                color="primary"
-                variant="outlined"
-                sx={{ fontWeight: 600 }}
-              />
-              <Typography variant="h5" fontWeight={700}>
-                0
-              </Typography>
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
-
       <Card elevation={0}>
         <CardContent>
           <Stack spacing={2}>
-            {slices.length === 0 ? (
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle1" fontWeight={600}>
+                Диаграмма
+              </Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={chartType}
+                onChange={(_, value: ChartType | null) => {
+                  if (value) setChartType(value)
+                }}
+              >
+                <ToggleButton value="donut" title="Бублик" aria-label="Бублик">
+                  <DonutLargeIcon fontSize="small" />
+                </ToggleButton>
+                <ToggleButton value="bar" title="Столбчатая" aria-label="Столбчатая">
+                  <BarChartIcon fontSize="small" />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+
+            {chartType === 'bar' ? (
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip
+                    label="По неделям"
+                    size="small"
+                    color={barGroupBy === 'week' ? 'primary' : 'default'}
+                    variant={barGroupBy === 'week' ? 'filled' : 'outlined'}
+                    onClick={() => setBarGroupBy('week')}
+                  />
+                  <Chip
+                    label="По дням"
+                    size="small"
+                    color={barGroupBy === 'day' ? 'primary' : 'default'}
+                    variant={barGroupBy === 'day' ? 'filled' : 'outlined'}
+                    onClick={() => setBarGroupBy('day')}
+                  />
+                  <Chip
+                    label="По категориям"
+                    size="small"
+                    color={barGroupBy === 'category' ? 'primary' : 'default'}
+                    variant={barGroupBy === 'category' ? 'filled' : 'outlined'}
+                    onClick={() => setBarGroupBy('category')}
+                  />
+                </Stack>
+                {barGroupBy === 'category' ? (
+                  isLoading ? (
+                    <Stack spacing={1} alignItems="center">
+                      <CircularProgress size={24} />
+                      <Typography variant="body2" color="text.secondary">
+                        Загружаем диаграмму по категориям…
+                      </Typography>
+                    </Stack>
+                  ) : slices.length === 0 ? (
+                    <Typography color="text.secondary">Нет данных для диаграммы</Typography>
+                  ) : (
+                    <TimeseriesBarChart
+                      mode="category"
+                      categoryRows={slices.map((slice) => ({
+                        id: slice.id,
+                        label: slice.label,
+                        value: slice.value,
+                        color: slice.color,
+                      }))}
+                      currency={currencyLabel || undefined}
+                      compact={fullScreen}
+                      onBarClick={openBarDrilldown}
+                    />
+                  )
+                ) : timeseriesLoading ? (
+                  <Stack spacing={1} alignItems="center">
+                    <CircularProgress size={24} />
+                    <Typography variant="body2" color="text.secondary">
+                      Загружаем столбчатую диаграмму…
+                    </Typography>
+                  </Stack>
+                ) : timeseriesError ? (
+                  <Typography color="error">{timeseriesError}</Typography>
+                ) : timeseriesRows.length === 0 ? (
+                  <Typography color="text.secondary">Нет данных для диаграммы</Typography>
+                ) : (
+                  <TimeseriesBarChart
+                    mode="time"
+                    rows={timeseriesRows}
+                    groupBy={barGroupBy}
+                    currency={currencyLabel || undefined}
+                    compact={fullScreen}
+                    onBarClick={openBarDrilldown}
+                  />
+                )}
+              </Stack>
+            ) : isLoading ? (
+              <Stack spacing={1} alignItems="center">
+                <CircularProgress size={24} />
+                <Typography variant="body2" color="text.secondary">
+                  Загружаем аналитику…
+                </Typography>
+              </Stack>
+            ) : slices.length === 0 ? (
               <Typography color="text.secondary">Нет данных для диаграммы</Typography>
             ) : (
               <Stack spacing={2}>
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <PieChart
+                  <BreakdownChart
                     slices={slices}
-                    size={180}
+                    size={pieChartSize}
+                    holeRatio={0.58}
+                    centerValue={formatAmount(totalByTags)}
+                    centerLabel={currencyLabel || undefined}
                     activeSliceId={activeSliceId}
                     onSliceClick={(slice) => {
-                      if (readOnly) return
-                      if (!slice.id) return
-                      setDrilldownTag({ id: slice.id, name: slice.label })
-                      setDrilldownExpenses([])
-                      setDrilldownError(null)
+                      openDrilldown(slice)
                     }}
                   />
                 </Box>
                 <Stack spacing={1}>
                   {breakdownVisible.map((slice) => (
-                    <Stack
-                      key={slice.label}
-                      direction="row"
-                      spacing={1.5}
-                      alignItems="center"
-                      justifyContent="space-between"
+                    <ButtonBase
+                      key={slice.id || slice.label}
+                      onClick={() => openDrilldown(slice)}
+                      disabled={readOnly || !slice.id}
+                      sx={{
+                        width: '100%',
+                        borderRadius: 1,
+                        px: 0.5,
+                        py: 0.35,
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        textAlign: 'left',
+                        '&:hover': {
+                          bgcolor:
+                            readOnly || !slice.id
+                              ? 'transparent'
+                              : alpha(theme.palette.primary.main, 0.08),
+                        },
+                      }}
                     >
                       <Stack direction="row" spacing={1.2} alignItems="center" sx={{ minWidth: 0 }}>
                         <Box
@@ -559,8 +781,8 @@ export function AnalyticsScreen({
                         />
                         <Typography noWrap>{slice.label}</Typography>
                       </Stack>
-                      <Stack direction="row" spacing={2}>
-                        <Typography fontWeight={600}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Typography variant="caption" color="text.secondary">
                           {formatPercent(slice.value, totalByTags)}%
                         </Typography>
                         <Typography fontWeight={600}>
@@ -569,7 +791,7 @@ export function AnalyticsScreen({
                             : formatAmount(slice.value)}
                         </Typography>
                       </Stack>
-                    </Stack>
+                    </ButtonBase>
                   ))}
                   {breakdownRemaining > 0 ? (
                     <Button size="small" onClick={() => setShowAllTagBreakdown(true)}>
@@ -583,9 +805,9 @@ export function AnalyticsScreen({
         </CardContent>
       </Card>
 
-      {hasFilters ? (
-        <Card elevation={0}>
-          <CardContent>
+      <Card elevation={0}>
+        <CardContent>
+          {hasFilters ? (
             <Stack spacing={1.5}>
               <Typography variant="subtitle1" fontWeight={600}>
                 Список по фильтрам
@@ -602,7 +824,11 @@ export function AnalyticsScreen({
                     const expenseTags = expense.tagIds
                       .map((id) => tagMap.get(id))
                       .filter((tag): tag is Tag => Boolean(tag))
-                    const tagNames = expenseTags.map((tag) => withTagEmoji(tag))
+                    const tagItems = expenseTags.map((tag) => ({
+                      id: tag.id,
+                      label: withTagEmoji(tag),
+                      color: normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR,
+                    }))
                     const iconEmoji = getFirstTagEmoji(expenseTags)
                     const iconColor = getFirstTagColor(expenseTags)
                     return (
@@ -622,7 +848,7 @@ export function AnalyticsScreen({
                               <Typography variant="body2" color="text.secondary">
                                 {formatDateDots(parseDate(expense.date))}
                               </Typography>
-                              {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                              {tagItems.length > 0 ? <TagRow tags={tagItems} maxVisible={3} /> : null}
                             </Stack>
                           </Stack>
                           <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
@@ -636,9 +862,13 @@ export function AnalyticsScreen({
                 </Stack>
               )}
             </Stack>
-          </CardContent>
-        </Card>
-      ) : null}
+          ) : (
+            <Typography color="text.secondary">
+              Для отображения списка трат активируйте фильтр
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
 
       <TagSearchDialog
         isOpen={isTagDialogOpen}
@@ -656,19 +886,13 @@ export function AnalyticsScreen({
       />
 
       <Dialog
-        open={Boolean(drilldownTag)}
-        onClose={() => {
-          setDrilldownTag(null)
-          setDrilldownExpenses([])
-          setDrilldownError(null)
-        }}
+        open={Boolean(drilldownQuery)}
+        onClose={closeDrilldown}
         fullScreen={fullScreen}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>
-          {drilldownTag ? `Траты по тегу: ${drilldownTag.name}` : 'Траты'}
-        </DialogTitle>
+        <DialogTitle>{drilldownTitle || 'Траты'}</DialogTitle>
         <DialogContent dividers>
           {drilldownLoading ? (
             <Stack alignItems="center" sx={{ py: 3 }}>
@@ -678,7 +902,7 @@ export function AnalyticsScreen({
             <Alert severity="error">{drilldownError}</Alert>
           ) : drilldownExpenses.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Нет трат по выбранному тегу.
+              Нет трат по выбранному периоду или категории.
             </Typography>
           ) : (
             <Stack spacing={1.5}>
@@ -686,7 +910,11 @@ export function AnalyticsScreen({
                 const expenseTags = expense.tagIds
                   .map((id) => tagMap.get(id))
                   .filter((tag): tag is Tag => Boolean(tag))
-                const tagNames = expenseTags.map((tag) => withTagEmoji(tag))
+                const tagItems = expenseTags.map((tag) => ({
+                  id: tag.id,
+                  label: withTagEmoji(tag),
+                  color: normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR,
+                }))
                 const iconEmoji = getFirstTagEmoji(expenseTags)
                 const iconColor = getFirstTagColor(expenseTags)
                 return (
@@ -713,7 +941,7 @@ export function AnalyticsScreen({
                         <Typography variant="caption" color="text.secondary">
                           {formatDateDots(parseDate(expense.date))}
                         </Typography>
-                        {tagNames.length > 0 ? <TagRow tagNames={tagNames} maxVisible={3} /> : null}
+                        {tagItems.length > 0 ? <TagRow tags={tagItems} maxVisible={3} /> : null}
                       </Stack>
                     </Stack>
                   </Box>
@@ -723,15 +951,7 @@ export function AnalyticsScreen({
           )}
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => {
-              setDrilldownTag(null)
-              setDrilldownExpenses([])
-              setDrilldownError(null)
-            }}
-          >
-            Закрыть
-          </Button>
+          <Button onClick={closeDrilldown}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Stack>

@@ -12,16 +12,16 @@ export type TagAppearanceInput = {
 }
 
 export const TAG_COLOR_OPTIONS = [
-  '#D14343',
-  '#E16F3D',
-  '#D7A32C',
-  '#4BA34A',
-  '#2F8F6F',
-  '#2D7EC4',
-  '#5E6AD2',
-  '#8E63CF',
-  '#C857A4',
-  '#B0583F',
+  '#FF1744',
+  '#FF6D00',
+  '#FFD600',
+  '#76FF03',
+  '#00E676',
+  '#00E5FF',
+  '#2979FF',
+  '#651FFF',
+  '#D500F9',
+  '#FF4081',
 ] as const
 
 export const DEFAULT_TAG_COLOR = TAG_COLOR_OPTIONS[0]

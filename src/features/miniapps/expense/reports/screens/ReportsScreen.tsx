@@ -1,9 +1,10 @@
-import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Card, CardContent, Chip, CircularProgress, Popover, Stack, Typography } from '@mui/material'
+import { useEffect, useMemo, useState } from 'react'
+import { Card, CardContent, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import { percentChange } from '../../../../../shared/lib/analytics'
 import { formatAmount, formatMonthHeader, parseDate } from '../../../../../shared/lib/formatters'
 import { getReportsMonthly } from '../api/reports'
+import { ReportsMonthlyBarChart } from '../components/ReportsMonthlyBarChart'
 
 type RangeOption = '3m' | '6m' | '1y' | 'all'
 
@@ -11,8 +12,6 @@ type MonthRange = {
   fromMonth: string
   toMonth: string
 }
-
-const MONTH_SHORT_LABELS = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д']
 
 const formatMonthValue = (date: Date) => {
   const year = date.getFullYear()
@@ -40,17 +39,10 @@ type ReportsScreenProps = {
 
 export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
   const theme = useTheme()
-  const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const [range, setRange] = useState<RangeOption>('all')
   const [rows, setRows] = useState<Array<{ month: string; total: number; count: number }>>([])
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [chartWidth, setChartWidth] = useState(320)
-  const [chartTooltip, setChartTooltip] = useState<{
-    monthKey: string
-    top: number
-    left: number
-  } | null>(null)
 
   const monthRange = useMemo(() => resolveRange(range), [range])
 
@@ -88,24 +80,6 @@ export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
     }
   }, [readOnly, monthRange.fromMonth, monthRange.toMonth])
 
-  useEffect(() => {
-    const element = chartContainerRef.current
-    if (!element) return
-
-    const updateWidth = () => {
-      const nextWidth = Math.max(280, Math.floor(element.clientWidth))
-      setChartWidth((current) => (current !== nextWidth ? nextWidth : current))
-    }
-
-    updateWidth()
-
-    const observer = new ResizeObserver(updateWidth)
-    observer.observe(element)
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
-
   const grouped = useMemo(() => {
     const result: Record<string, number> = {}
     rows.forEach((row) => {
@@ -120,80 +94,10 @@ export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
     () => monthKeysAsc.map((key) => parseDate(key)).sort((a, b) => b.getTime() - a.getTime()),
     [monthKeysAsc],
   )
-  const chartValues = useMemo(() => monthKeysAsc.map((key) => grouped[key] ?? 0), [monthKeysAsc, grouped])
 
   const hasData = months.length > 0
   const isInitialLoading = isLoading && !hasData && !error
   const hasBackgroundError = Boolean(error && hasData)
-
-  const chartHeight = 152
-  const chartPaddingX = 34
-  const chartPaddingY = 14
-  const chartBottomPadding = 24
-  const chartRightPadding = 8
-  const plotWidth = Math.max(1, chartWidth - chartPaddingX - chartRightPadding)
-  const plotHeight = Math.max(1, chartHeight - chartPaddingY - chartBottomPadding)
-  const maxValue = chartValues.length ? Math.max(...chartValues, 0) : 0
-  const slotWidth = chartValues.length > 0 ? plotWidth / chartValues.length : 0
-  const barWidth = chartValues.length > 0 ? Math.min(30, Math.max(8, slotWidth * 0.62)) : 0
-  const chartItems = monthKeysAsc.map((key, index) => {
-    const date = parseDate(key)
-    const value = grouped[key] ?? 0
-    const slotX = chartPaddingX + index * slotWidth
-    const shortLabel = MONTH_SHORT_LABELS[date.getMonth()] ?? ''
-    const rawHeight = maxValue > 0 ? (value / maxValue) * plotHeight : 0
-    const barHeight = value > 0 ? Math.max(1, rawHeight) : 0
-    const barX = slotX + (slotWidth - barWidth) / 2
-    const barY = chartPaddingY + (plotHeight - barHeight)
-    return {
-      key,
-      value,
-      date,
-      shortLabel,
-      fullLabel: formatMonthHeader(date),
-      slotX,
-      centerX: slotX + slotWidth / 2,
-      barX,
-      barY,
-      barHeight,
-    }
-  })
-  const bars = chartItems
-    .map((item) => {
-      if (item.barHeight <= 0) return null
-      return {
-        key: item.key,
-        x: item.barX,
-        y: item.barY,
-        height: item.barHeight,
-      }
-    })
-    .filter((bar): bar is { key: string; x: number; y: number; height: number } => bar !== null)
-  const monthLabels = chartItems.map((item) => item.shortLabel)
-  const maxLabelLength = monthLabels.reduce((max, label) => Math.max(max, label.length), 0)
-  const approxLabelWidth = maxLabelLength > 0 ? maxLabelLength * 7 + 16 : 24
-  const maxLabels = Math.max(2, Math.floor(plotWidth / approxLabelWidth))
-  const labelStep = Math.max(1, Math.ceil(monthLabels.length / maxLabels))
-  const legendValues = maxValue > 0 ? [maxValue, maxValue / 2, 0] : [0]
-  const activeTooltipItem = chartTooltip
-    ? chartItems.find((item) => item.key === chartTooltip.monthKey) ?? null
-    : null
-
-  useEffect(() => {
-    if (!chartTooltip) return
-    if (!monthKeysAsc.includes(chartTooltip.monthKey)) {
-      setChartTooltip(null)
-    }
-  }, [chartTooltip, monthKeysAsc])
-
-  const onMonthClick =
-    (monthKey: string) => (event: ReactMouseEvent<SVGRectElement | SVGTextElement>) => {
-      setChartTooltip({
-        monthKey,
-        top: event.clientY + 10,
-        left: event.clientX + 10,
-      })
-    }
 
   return (
     <Stack spacing={2}>
@@ -222,10 +126,7 @@ export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
                     size="small"
                     variant={range === option.value ? 'filled' : 'outlined'}
                     color={range === option.value ? 'primary' : 'default'}
-                    onClick={() => {
-                      setChartTooltip(null)
-                      setRange(option.value)
-                    }}
+                    onClick={() => setRange(option.value)}
                     disabled={readOnly}
                     sx={{ height: 26, fontSize: 12 }}
                   />
@@ -243,133 +144,11 @@ export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
             ) : !hasData ? (
               <Typography color="text.secondary">Нет данных для отчета</Typography>
             ) : (
-              <Box ref={chartContainerRef} sx={{ width: '100%', overflow: 'hidden' }}>
-                <svg
-                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  width="100%"
-                  height={chartHeight}
-                  preserveAspectRatio="xMinYMin meet"
-                >
-                  {legendValues.map((value, index) => {
-                    const ratio = maxValue > 0 ? value / maxValue : 0
-                    const y = chartPaddingY + (plotHeight - ratio * plotHeight)
-                    return (
-                      <g key={`legend-${index}`}>
-                        <line
-                          x1={chartPaddingX}
-                          x2={chartWidth - chartRightPadding}
-                          y1={y}
-                          y2={y}
-                          stroke={theme.palette.divider}
-                          strokeDasharray="3 3"
-                        />
-                        <text x={8} y={y + 3} fill={theme.palette.text.secondary} fontSize={10}>
-                          {Math.round(value)}
-                        </text>
-                      </g>
-                    )
-                  })}
-                  {chartItems.map((item) => (
-                    <rect
-                      key={`hit-${item.key}`}
-                      x={item.slotX}
-                      y={chartPaddingY}
-                      width={slotWidth}
-                      height={plotHeight + chartBottomPadding}
-                      fill="transparent"
-                      onClick={onMonthClick(item.key)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  ))}
-                  {bars.map((bar) => (
-                    <rect
-                      key={bar.key}
-                      x={bar.x}
-                      y={bar.y}
-                      width={barWidth}
-                      height={bar.height}
-                      rx={Math.min(4, barWidth / 2)}
-                      fill={
-                        activeTooltipItem?.key === bar.key
-                          ? theme.palette.primary.dark
-                          : theme.palette.primary.main
-                      }
-                      opacity={0.85}
-                      onClick={onMonthClick(bar.key)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  ))}
-                  {chartItems.map((item, index) => {
-                    if (
-                      index % labelStep !== 0 &&
-                      index !== 0 &&
-                      index !== monthLabels.length - 1
-                    ) {
-                      return null
-                    }
-                    return (
-                      <text
-                        key={`month-label-${item.key}`}
-                        x={item.centerX}
-                        y={chartHeight - 4}
-                        textAnchor="middle"
-                        fill={
-                          activeTooltipItem?.key === item.key
-                            ? theme.palette.text.primary
-                            : theme.palette.text.secondary
-                        }
-                        fontSize={9}
-                        fontWeight={activeTooltipItem?.key === item.key ? 700 : 500}
-                        onClick={onMonthClick(item.key)}
-                        style={{ cursor: 'pointer', userSelect: 'none' }}
-                      >
-                        {item.shortLabel}
-                      </text>
-                    )
-                  })}
-                </svg>
-              </Box>
+              <ReportsMonthlyBarChart rows={rows} />
             )}
           </Stack>
         </CardContent>
       </Card>
-
-      <Popover
-        open={Boolean(chartTooltip && activeTooltipItem)}
-        onClose={() => setChartTooltip(null)}
-        anchorReference="anchorPosition"
-        anchorPosition={
-          chartTooltip
-            ? {
-                top: chartTooltip.top,
-                left: chartTooltip.left,
-              }
-            : undefined
-        }
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        disableRestoreFocus
-        slotProps={{
-          paper: {
-            sx: {
-              px: 1.25,
-              py: 0.75,
-              border: `1px solid ${theme.palette.divider}`,
-              boxShadow: theme.shadows[3],
-            },
-          },
-        }}
-      >
-        {activeTooltipItem ? (
-          <Stack spacing={0.25}>
-            <Typography variant="caption" color="text.secondary">
-              {activeTooltipItem.fullLabel}
-            </Typography>
-            <Typography variant="body2" fontWeight={700}>
-              {formatAmount(activeTooltipItem.value)} BYN
-            </Typography>
-          </Stack>
-        ) : null}
-      </Popover>
 
       {hasBackgroundError ? (
         <Card elevation={0}>
