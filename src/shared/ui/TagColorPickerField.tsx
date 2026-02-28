@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import ColorLensRounded from '@mui/icons-material/ColorLensRounded'
 import {
   Box,
@@ -24,7 +24,6 @@ export function TagColorPickerField({
   label = 'Цвет тэга',
   clearLabel = 'Убрать цвет',
 }: TagColorPickerFieldProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
   const normalizedValue = normalizeTagColor(value)
 
   const palette = useMemo(
@@ -83,11 +82,10 @@ export function TagColorPickerField({
         })}
 
         <Box
-          component="button"
-          type="button"
+          component="label"
           aria-label="Выбрать кастомный цвет"
-          onClick={() => inputRef.current?.click()}
           sx={{
+            position: 'relative',
             width: 26,
             height: 26,
             borderRadius: 999,
@@ -104,6 +102,7 @@ export function TagColorPickerField({
             display: 'grid',
             placeItems: 'center',
             cursor: 'pointer',
+            overflow: 'hidden',
             transition: 'border-color 0.2s, transform 0.15s',
             '&:hover': {
               borderColor: 'text.primary',
@@ -111,23 +110,25 @@ export function TagColorPickerField({
           }}
         >
           <ColorLensRounded sx={{ fontSize: 15 }} />
+          <Box
+            component="input"
+            type="color"
+            value={pickerValue}
+            onChange={(event) => onChange(normalizeTagColor(event.target.value) ?? null)}
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer',
+              border: 0,
+              p: 0,
+              m: 0,
+            }}
+          />
         </Box>
       </Stack>
-
-      <Box
-        component="input"
-        ref={inputRef}
-        type="color"
-        value={pickerValue}
-        onChange={(event) => onChange(normalizeTagColor(event.target.value) ?? null)}
-        sx={{
-          position: 'absolute',
-          width: 0,
-          height: 0,
-          opacity: 0,
-          pointerEvents: 'none',
-        }}
-      />
     </Stack>
   )
 }
