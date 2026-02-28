@@ -260,7 +260,7 @@ export function WorkoutEditor({
           sx={{
             borderRadius: 'var(--wk-radius)',
             borderColor: 'var(--wk-border)',
-            bgcolor: 'var(--wk-card)',
+            bgcolor: 'background.paper',
           }}
         >
           <CardContent>
@@ -416,7 +416,7 @@ export function WorkoutEditor({
 
       <Dialog open={confirm.open} onClose={() => setConfirm({ open: false })}>
         <DialogTitle>Подтвердите удаление</DialogTitle>
-        <DialogContent sx={{ bgcolor: 'var(--wk-card)' }}>
+        <DialogContent sx={{ bgcolor: 'background.paper' }}>
           <Typography variant="body2" sx={{ color: 'var(--wk-muted)' }}>
             {confirm.open && confirm.kind === 'exercise'
               ? `Удалить упражнение «${confirm.exerciseName}» и все его подходы?`

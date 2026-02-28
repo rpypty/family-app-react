@@ -39,7 +39,7 @@ type ReportsScreenProps = {
 
 export function ReportsScreen({ readOnly = false }: ReportsScreenProps) {
   const theme = useTheme()
-  const [range, setRange] = useState<RangeOption>('all')
+  const [range, setRange] = useState<RangeOption>('6m')
   const [rows, setRows] = useState<Array<{ month: string; total: number; count: number }>>([])
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

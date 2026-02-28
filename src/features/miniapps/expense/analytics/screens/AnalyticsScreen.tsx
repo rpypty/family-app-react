@@ -9,10 +9,10 @@ import {
   Chip,
   CircularProgress,
   Dialog,
-  DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   Stack,
   TextField,
   ToggleButton,
@@ -22,6 +22,7 @@ import {
 } from '@mui/material'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTES, normalizePathname } from '../../../../../app/routing/routes'
@@ -154,13 +155,13 @@ export function AnalyticsScreen({
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const currentPath = normalizePathname(location.pathname)
   const isDrilldownRoute = currentPath === ROUTES.expenseAnalyticsDrilldown
+  const isCategoryRoute = currentPath === ROUTES.expenseAnalyticsTags
   const storedFilters = useMemo(() => loadStoredFilters(), [])
   const [fromDate, setFromDate] = useState<string | null>(storedFilters?.fromDate ?? null)
   const [toDate, setToDate] = useState<string | null>(storedFilters?.toDate ?? null)
   const [filterCategoryIds, setFilterCategoryIds] = useState<Set<string>>(
     () => new Set(storedFilters?.categoryIds ?? [])
   )
-  const [isCategoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [showAllCategoryBreakdown, setShowAllCategoryBreakdown] = useState(false)
   const [chartType, setChartType] = useState<ChartType>('donut')
   const [barGroupBy, setBarGroupBy] = useState<BarGroupBy>('week')
@@ -607,65 +608,54 @@ export function AnalyticsScreen({
               <QuickFilterChip label="От 5 до 19" onClick={() => applyDayRange(5, 19)} />
               <QuickFilterChip label="От 20 до 4" onClick={() => applyDayRange(20, 4)} />
             </Stack>
-            <Stack spacing={1}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Категории
-              </Typography>
-              {selectedCategoryList.length === 0 ? (
-                <ButtonBase
-                  onClick={() => setCategoryDialogOpen(true)}
-                  sx={{
-                    width: '100%',
-                    justifyContent: 'flex-start',
-                    borderRadius: 1.5,
-                    border: 1,
-                    borderStyle: 'dashed',
-                    borderColor: 'divider',
-                    px: 1.25,
-                    py: 1,
-                    textAlign: 'left',
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    Выбрать категории
-                  </Typography>
-                </ButtonBase>
-              ) : (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
-                    {selectedCategoryList.map((category) => {
-                      const categoryColor = normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR
-                      return (
-                        <Chip
-                          key={category.id}
-                          label={withCategoryEmoji(category)}
-                          size="small"
-                          variant="outlined"
-                          onDelete={() =>
-                            setFilterCategoryIds((prev) => {
-                              const next = new Set(prev)
-                              next.delete(category.id)
-                              return next
-                            })
-                          }
-                          sx={{
-                            borderColor: alpha(categoryColor, 0.55),
-                            bgcolor: alpha(categoryColor, 0.14),
-                          }}
-                        />
-                      )
-                    })}
+            <Stack spacing={0} sx={{ pt: 2 }}>
+              <TextField
+                fullWidth
+                value="Выбрать категории"
+                onClick={() => navigate(ROUTES.expenseAnalyticsTags)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    navigate(ROUTES.expenseAnalyticsTags)
+                  }
+                }}
+                InputProps={{ readOnly: true }}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    cursor: 'pointer',
+                  },
+                }}
+              />
+              {selectedCategoryList.length > 0 ? (
+                <Box sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+                      {selectedCategoryList.map((category) => {
+                        const categoryColor = normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR
+                        return (
+                          <Chip
+                            key={category.id}
+                            label={withCategoryEmoji(category)}
+                            size="small"
+                            variant="outlined"
+                            onDelete={() =>
+                              setFilterCategoryIds((prev) => {
+                                const next = new Set(prev)
+                                next.delete(category.id)
+                                return next
+                              })
+                            }
+                            sx={{
+                              borderColor: alpha(categoryColor, 0.55),
+                              bgcolor: alpha(categoryColor, 0.14),
+                            }}
+                          />
+                        )
+                      })}
+                    </Stack>
                   </Stack>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => setCategoryDialogOpen(true)}
-                    sx={{ minWidth: 64, minHeight: 28, px: 1, fontWeight: 600, lineHeight: 1 }}
-                  >
-                    Выбрать
-                  </Button>
-                </Stack>
-              )}
+                </Box>
+              ) : null}
             </Stack>
           </Stack>
         </CardContent>
@@ -915,13 +905,13 @@ export function AnalyticsScreen({
       </Card>
 
       <CategorySearchDialog
-        isOpen={isCategoryDialogOpen}
+        isOpen={isCategoryRoute}
         categories={categories}
         initialSelected={Array.from(filterCategoryIds)}
-        onClose={() => setCategoryDialogOpen(false)}
+        onClose={() => navigate(ROUTES.expenseAnalytics, { replace: true })}
         onConfirm={(selected) => {
           setFilterCategoryIds(new Set(selected))
-          setCategoryDialogOpen(false)
+          navigate(ROUTES.expenseAnalytics, { replace: true })
         }}
         onCreateCategory={readOnly ? undefined : onCreateCategory}
         onUpdateCategory={readOnly ? undefined : onUpdateCategory}
@@ -936,7 +926,41 @@ export function AnalyticsScreen({
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>{drilldownRouteState?.title || 'Траты'}</DialogTitle>
+        <DialogTitle
+          sx={{
+            bgcolor: 'background.paper',
+            color: 'text.secondary',
+            borderBottom: 1,
+            borderColor: 'divider',
+            py: 1.5,
+          }}
+        >
+          <Box sx={{ position: 'relative', textAlign: 'center' }}>
+            <IconButton
+              color="inherit"
+              onClick={closeDrilldown}
+              aria-label="Назад"
+              sx={{ position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <ArrowBackRounded />
+            </IconButton>
+            <Typography
+              component="span"
+              color="inherit"
+              sx={{
+                display: 'block',
+                px: 5,
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.1rem' },
+                lineHeight: 1.25,
+                whiteSpace: 'normal',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {drilldownRouteState?.title || 'Траты'}
+            </Typography>
+          </Box>
+        </DialogTitle>
         <DialogContent dividers>
           {drilldownLoading ? (
             <Stack alignItems="center" sx={{ py: 3 }}>
@@ -994,9 +1018,6 @@ export function AnalyticsScreen({
             </Stack>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeDrilldown}>Закрыть</Button>
-        </DialogActions>
       </Dialog>
     </Stack>
   )

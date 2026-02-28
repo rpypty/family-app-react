@@ -224,7 +224,7 @@ export function MicroCalendar({ selectedDate, workoutDates, onSelectDate }: Micr
             </IconButton>
           </Stack>
         </DialogTitle>
-        <DialogContent sx={{ bgcolor: 'var(--wk-card)' }}>
+        <DialogContent sx={{ bgcolor: 'background.paper' }}>
           <Box
             sx={{
               display: 'grid',

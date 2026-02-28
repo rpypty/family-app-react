@@ -25,6 +25,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import EditOutlined from '@mui/icons-material/EditOutlined'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import { isApiError } from '../api/client'
 import type { Category } from '../types'
 import { findCategoryByName } from '../lib/categoryUtils'
@@ -126,6 +127,8 @@ export function CategorySearchDialog({
   }, [query, categories])
 
   const allSelected = enableSelection && categories.length > 0 && selected.size === categories.length
+  const isPartiallySelected =
+    enableSelection && selected.size > 0 && selected.size < categories.length
   const handleToggleAll = () => {
     if (allSelected) {
       setSelected(new Set())
@@ -262,11 +265,45 @@ export function CategorySearchDialog({
       fullWidth
       maxWidth="sm"
     >
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle
+        sx={{
+          bgcolor: 'background.paper',
+          color: 'text.secondary',
+          borderBottom: 1,
+          borderColor: 'divider',
+          py: 1.5,
+        }}
+      >
+        <Box sx={{ position: 'relative', textAlign: 'center' }}>
+          <IconButton
+            color="inherit"
+            onClick={onClose}
+            aria-label="Назад"
+            sx={{ position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <ArrowBackRounded />
+          </IconButton>
+          <Typography
+            component="span"
+            color="inherit"
+            sx={{
+              display: 'block',
+              px: 5,
+              fontWeight: 600,
+              fontSize: { xs: '1rem', sm: '1.1rem' },
+              lineHeight: 1.25,
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {title}
+          </Typography>
+        </Box>
+      </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField
-            label="Найти категорию"
+            label="Найти или создать категорию"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
@@ -274,6 +311,21 @@ export function CategorySearchDialog({
             }}
             fullWidth
           />
+          {enableSelection && enableSelectAll ? (
+            <List dense disablePadding>
+              <ListItem disablePadding>
+                <ListItemButton onClick={handleToggleAll} disabled={categories.length === 0}>
+                  <Checkbox
+                    checked={allSelected}
+                    indeterminate={isPartiallySelected}
+                    onChange={handleToggleAll}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                  <ListItemText primary={allSelected ? 'Убрать все' : 'Выбрать все'} />
+                </ListItemButton>
+              </ListItem>
+            </List>
+          ) : null}
           {filtered.length === 0 ? (
             <Stack spacing={1.25}>
               <Typography color="text.secondary">Ничего не найдено</Typography>
@@ -356,28 +408,30 @@ export function CategorySearchDialog({
           )}
         </Stack>
       </DialogContent>
-      <DialogActions
-        sx={{
-          justifyContent:
-            enableSelection && enableSelectAll ? 'space-between' : 'flex-end',
-        }}
-      >
-        {enableSelection && enableSelectAll ? (
-          <Button onClick={handleToggleAll} disabled={categories.length === 0}>
-            {allSelected ? 'Убрать все' : 'Выбрать все'}
+      {enableSelection ? (
+        <DialogActions
+          sx={{
+            bgcolor: 'background.paper',
+            py: 2,
+            px: 3,
+          }}
+        >
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={() => onConfirm(Array.from(selected))}
+            sx={(theme) => ({
+              px: 3,
+              fontWeight: 700,
+              '&:hover': {
+                backgroundColor: theme.palette.primary.dark,
+              },
+            })}
+          >
+            Сохранить
           </Button>
-        ) : null}
-        {enableSelection ? (
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button onClick={onClose}>Отмена</Button>
-            <Button variant="contained" onClick={() => onConfirm(Array.from(selected))}>
-              Готово
-            </Button>
-          </Box>
-        ) : (
-          <Button onClick={onClose}>Закрыть</Button>
-        )}
-      </DialogActions>
+        </DialogActions>
+      ) : null}
 
       <Menu
         anchorEl={menuAnchorEl}

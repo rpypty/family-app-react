@@ -4,6 +4,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -280,19 +281,31 @@ export function ExpenseFormModal({
         </DialogTitle>
         <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
-            <TextField
-              type="date"
-              label="Дата"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
+            <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <TextField
+                label="Сумма"
+                value={amount}
+                onChange={(event) => handleAmountChange(event.target.value)}
+                inputMode="decimal"
+                slotProps={{ htmlInput: { pattern: '[0-9]*[.,]?[0-9]*' } }}
+                fullWidth
+              />
+              <TextField
+                label="Валюта"
+                select
+                value={currency}
+                onChange={(event) => setCurrency(event.target.value as Currency)}
+                sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
+              >
+                {CURRENCIES.map((value) => (
+                  <MenuItem key={value} value={value}>
+                    {value}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
             <Box>
               <Stack spacing={1}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Категории
-                </Typography>
                 <Autocomplete<CategoryOption, true, false, true>
                   multiple
                   freeSolo
@@ -356,6 +369,42 @@ export function ExpenseFormModal({
                       </li>
                     )
                   }}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => {
+                      const label =
+                        typeof option === 'string'
+                          ? option
+                          : 'isNew' in option
+                            ? option.name
+                            : withCategoryEmoji(option)
+                      const categoryColor =
+                        typeof option === 'object' && !('isNew' in option)
+                          ? normalizeCategoryColor(option.color)
+                          : null
+                      return (
+                        <Chip
+                          {...getTagProps({ index })}
+                          key={
+                            typeof option === 'string'
+                              ? `${option}-${index}`
+                              : 'isNew' in option
+                                ? `${option.name}-${index}`
+                                : option.id
+                          }
+                          size="small"
+                          label={label}
+                          sx={
+                            categoryColor
+                              ? {
+                                  borderColor: alpha(categoryColor, 0.55),
+                                  bgcolor: alpha(categoryColor, 0.14),
+                                }
+                              : undefined
+                          }
+                        />
+                      )
+                    })
+                  }
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -368,34 +417,19 @@ export function ExpenseFormModal({
                 />
               </Stack>
             </Box>
-            <Stack direction="row" spacing={1.5} alignItems="flex-start">
-              <TextField
-                label="Сумма"
-                value={amount}
-                onChange={(event) => handleAmountChange(event.target.value)}
-                inputMode="decimal"
-                slotProps={{ htmlInput: { pattern: '[0-9]*[.,]?[0-9]*' } }}
-                fullWidth
-              />
-              <TextField
-                label="Валюта"
-                select
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value as Currency)}
-                sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
-              >
-                {CURRENCIES.map((value) => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
             <TextField
-              label="Название"
+              type="date"
+              label="Дата"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Свое название"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например: продукты"
+              placeholder="Например: «Пицца» или «Такси»"
               fullWidth
             />
             {error ? <Alert severity="error">{error}</Alert> : null}
@@ -407,10 +441,8 @@ export function ExpenseFormModal({
             onClick={handleSave}
             disabled={isSaving || isDeleting}
             sx={(theme) => ({
-              minHeight: 50,
               px: 3,
               fontWeight: 700,
-              fontSize: '1rem',
               flex: 1,
               '&:hover': {
                 backgroundColor: theme.palette.primary.dark,
@@ -427,7 +459,6 @@ export function ExpenseFormModal({
               disabled={isSaving || isDeleting}
               aria-label="Удалить расход"
               sx={{
-                minHeight: 50,
                 minWidth: 50,
                 px: 0,
                 flexShrink: 0,

@@ -20,7 +20,9 @@ export type ExpensesRoute =
 export const ROUTES = {
   home: '/',
   expenses: '/miniapps/expenses',
+  expenseTags: '/miniapps/expenses/tags',
   expenseAnalytics: '/miniapps/expenses/analytics',
+  expenseAnalyticsTags: '/miniapps/expenses/analytics/tags',
   expenseAnalyticsDrilldown: '/miniapps/expenses/analytics/drilldown',
   expenseReports: '/miniapps/expenses/reports',
   todo: '/miniapps/todo',
@@ -201,8 +203,22 @@ export const resolveWorkoutsBackNavigationTarget = (pathname: string): string =>
   return WORKOUTS_ROUTES.home
 }
 
-export const resolveExpensesBackNavigationTarget = (pathname: string): string => {
+export const resolveExpensesBackNavigationTarget = (pathname: string, search = ''): string => {
   const normalized = normalizePathname(pathname)
+  if (normalized === ROUTES.expenseTags) {
+    const params = new URLSearchParams(search)
+    const from = params.get('from')
+    if (from) {
+      const target = normalizePathname(from)
+      if (target.startsWith('/miniapps/expenses')) {
+        return target
+      }
+    }
+    return ROUTES.expenses
+  }
+  if (normalized === ROUTES.expenseAnalyticsTags) {
+    return ROUTES.expenseAnalytics
+  }
   if (normalized === ROUTES.expenseAnalyticsDrilldown) {
     return ROUTES.expenseAnalytics
   }
@@ -244,6 +260,9 @@ export const resolveAppRoute = (pathname: string): ResolvedRoute => {
   if (app === 'expenses') {
     const section = segments[2]
     if (!section) {
+      return { activeApp: 'expenses', activeTab: 'expenses' }
+    }
+    if (section === 'tags') {
       return { activeApp: 'expenses', activeTab: 'expenses' }
     }
     if (section === 'analytics') {

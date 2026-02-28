@@ -137,7 +137,7 @@ export function WorkoutsExercises({
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth>
         <DialogTitle>{editingName ? 'Редактировать упражнение' : 'Новое упражнение'}</DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: 'var(--wk-card)' }}>
+        <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
             <TextField
               label="Название"

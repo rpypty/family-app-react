@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import DarkModeRounded from '@mui/icons-material/DarkModeRounded'
 import GroupRounded from '@mui/icons-material/GroupRounded'
 import LightModeRounded from '@mui/icons-material/LightModeRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import LocalOfferRounded from '@mui/icons-material/LocalOfferRounded'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Avatar,
   Box,
@@ -19,6 +19,7 @@ import {
   Typography,
 } from '@mui/material'
 import type { AppShellModel } from '../../hooks/useAppController'
+import { ROUTES, normalizePathname } from '../../routing/routes'
 import { CategorySearchDialog } from '../../../shared/ui/CategorySearchDialog'
 
 type AppShellMenuProps = {
@@ -26,10 +27,26 @@ type AppShellMenuProps = {
 }
 
 export function AppShellMenu({ model }: AppShellMenuProps) {
-  const [isCategoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const currentPath = normalizePathname(location.pathname)
+  const isCategoryRoute = currentPath === ROUTES.expenseTags
   const familySecondary = model.family
     ? `${model.family.name}${model.family.code ? ` · Код: ${model.family.code}` : ''}`
     : '—'
+
+  const closeCategoryDialog = () => {
+    const params = new URLSearchParams(location.search)
+    const from = params.get('from')
+    if (from) {
+      const target = normalizePathname(from)
+      if (target.startsWith('/miniapps/expenses')) {
+        navigate(target, { replace: true })
+        return
+      }
+    }
+    navigate(ROUTES.expenses, { replace: true })
+  }
 
   return (
     <>
@@ -97,14 +114,16 @@ export function AppShellMenu({ model }: AppShellMenuProps) {
         {model.activeApp === 'expenses' ? (
           <MenuItem
             onClick={() => {
-              setCategoryDialogOpen(true)
+              const params = new URLSearchParams()
+              params.set('from', currentPath)
+              navigate(`${ROUTES.expenseTags}?${params.toString()}`)
               model.onMenuClose()
             }}
           >
             <ListItemIcon>
               <LocalOfferRounded />
             </ListItemIcon>
-            <ListItemText primary="Тэги" />
+            <ListItemText primary="Категории" />
           </MenuItem>
         ) : null}
         {model.activeApp === 'expenses' ? <Divider /> : null}
@@ -134,15 +153,15 @@ export function AppShellMenu({ model }: AppShellMenuProps) {
       </Menu>
 
       <CategorySearchDialog
-        isOpen={isCategoryDialogOpen}
+        isOpen={isCategoryRoute}
         categories={model.state.categories}
         initialSelected={[]}
-        onClose={() => setCategoryDialogOpen(false)}
-        onConfirm={() => setCategoryDialogOpen(false)}
+        onClose={closeCategoryDialog}
+        onConfirm={closeCategoryDialog}
         onCreateCategory={model.isReadOnly ? undefined : model.onCreateCategory}
         onUpdateCategory={model.isReadOnly ? undefined : model.onUpdateCategory}
         onDeleteCategory={model.isReadOnly ? undefined : model.onDeleteCategory}
-        title="Тэги"
+        title="Категории"
         enableSelection={false}
       />
     </>
