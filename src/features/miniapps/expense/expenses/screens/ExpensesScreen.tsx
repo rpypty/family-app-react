@@ -117,7 +117,7 @@ export function ExpensesScreen({
 
   return (
     <>
-      <Card elevation={0}>
+      <Card elevation={0} sx={{ overflow: 'visible' }}>
         <CardContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
             {expenses.length === 0 ? (
@@ -139,6 +139,15 @@ export function ExpensesScreen({
                         justifyContent="space-between"
                         alignItems="center"
                         spacing={1}
+                        sx={(themeValue) => ({
+                          position: 'sticky',
+                          top: `calc(env(safe-area-inset-top) + ${themeValue.spacing(6.5)})`,
+                          zIndex: themeValue.zIndex.appBar - 1,
+                          py: 0.75,
+                          bgcolor: 'background.paper',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                        })}
                       >
                         <Typography variant="subtitle1" fontWeight={700}>
                           {formatDayHeader(parseDate(dateKey))}
@@ -324,8 +333,8 @@ export function ExpensesScreen({
           sx={{
             position: 'fixed',
             right: 16,
-            bottom: 'calc(72px + env(safe-area-inset-bottom))',
-            zIndex: 10,
+            bottom: 'calc(96px + env(safe-area-inset-bottom))',
+            zIndex: (themeValue) => themeValue.zIndex.appBar + 1,
           }}
         >
           <AddIcon />
