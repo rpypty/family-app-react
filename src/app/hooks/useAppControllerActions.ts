@@ -197,9 +197,9 @@ export function useAppControllerActions({
     handleUpdateExpense,
     handleDeleteExpense,
     handleLoadMoreExpenses,
-    handleCreateTag,
-    handleUpdateTag,
-    handleDeleteTag,
+    handleCreateCategory,
+    handleUpdateCategory,
+    handleDeleteCategory,
     handleRefreshExpenses,
   } = useExpenseActions({
     state: {
@@ -306,9 +306,9 @@ export function useAppControllerActions({
       handleCreateExpense,
       handleUpdateExpense,
       handleDeleteExpense,
-      handleCreateTag,
-      handleUpdateTag,
-      handleDeleteTag,
+      handleCreateCategory,
+      handleUpdateCategory,
+      handleDeleteCategory,
     },
   })
 

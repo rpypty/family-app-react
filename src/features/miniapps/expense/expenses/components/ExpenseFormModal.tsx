@@ -4,7 +4,6 @@ import {
   Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -16,32 +15,32 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
-import type { Currency, Expense, Tag } from '../../../../../shared/types'
+import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
-  DEFAULT_TAG_COLOR,
-  TAG_COLOR_OPTIONS,
-  normalizeTagColor,
-  normalizeTagEmoji,
-  withTagEmoji,
-  type TagAppearanceInput,
-} from '../../../../../shared/lib/tagAppearance'
+  DEFAULT_CATEGORY_COLOR,
+  CATEGORY_COLOR_OPTIONS,
+  normalizeCategoryColor,
+  normalizeCategoryEmoji,
+  withCategoryEmoji,
+  type CategoryAppearanceInput,
+} from '../../../../../shared/lib/categoryAppearance'
 import { EmojiPickerField } from '../../../../../shared/ui/EmojiPickerField'
-import { TagColorPickerField } from '../../../../../shared/ui/TagColorPickerField'
-import { findTagByName, selectedTags } from '../../../../../shared/lib/tagUtils'
+import { CategoryColorPickerField } from '../../../../../shared/ui/CategoryColorPickerField'
+import { findCategoryByName, selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import { createId } from '../../../../../shared/lib/uuid'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
 
-type TagCreateOption = {
+type CategoryCreateOption = {
   inputValue: string
   name: string
   isNew: true
 }
 
-type TagOption = Tag | TagCreateOption
+type CategoryOption = Category | CategoryCreateOption
 
-type PendingTagCreate = {
+type PendingCategoryCreate = {
   name: string
   nextIds: string[]
 }
@@ -49,33 +48,33 @@ type PendingTagCreate = {
 type ExpenseFormModalProps = {
   isOpen: boolean
   expense?: Expense | null
-  tags: Tag[]
+  categories: Category[]
   onClose: () => void
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
-  onCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+  onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
 }
 
 export function ExpenseFormModal({
   isOpen,
   expense,
-  tags,
+  categories,
   onClose,
   onSave,
   onDelete,
-  onCreateTag,
+  onCreateCategory,
 }: ExpenseFormModalProps) {
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState<Currency>('BYN')
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
-  const [isTagCreating, setTagCreating] = useState(false)
-  const [tagCreateError, setTagCreateError] = useState('')
-  const [pendingTagCreate, setPendingTagCreate] = useState<PendingTagCreate | null>(null)
-  const [newTagColor, setNewTagColor] = useState<string | null>(DEFAULT_TAG_COLOR)
-  const [newTagEmoji, setNewTagEmoji] = useState('')
+  const [isCategoryCreating, setCategoryCreating] = useState(false)
+  const [categoryCreateError, setCategoryCreateError] = useState('')
+  const [pendingCategoryCreate, setPendingCategoryCreate] = useState<PendingCategoryCreate | null>(null)
+  const [newCategoryColor, setNewCategoryColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
+  const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
   const [isConfirmOpen, setConfirmOpen] = useState(false)
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
@@ -88,25 +87,25 @@ export function ExpenseFormModal({
     setTitle(expense?.title ?? '')
     setAmount(expense?.amount?.toString() ?? '')
     setCurrency(expense?.currency ?? 'BYN')
-    setSelectedTagIds(new Set(expense?.tagIds ?? []))
+    setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
-    setTagCreateError('')
-    setTagCreating(false)
-    setPendingTagCreate(null)
-    setNewTagColor(DEFAULT_TAG_COLOR)
-    setNewTagEmoji('')
+    setCategoryCreateError('')
+    setCategoryCreating(false)
+    setPendingCategoryCreate(null)
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
     setConfirmOpen(false)
     setSaving(false)
     setDeleting(false)
   }, [expense, isOpen])
 
-  const selectedTagList = useMemo(
-    () => selectedTags(tags, selectedTagIds),
-    [tags, selectedTagIds],
+  const selectedCategoryList = useMemo(
+    () => selectedCategories(categories, selectedCategoryIds),
+    [categories, selectedCategoryIds],
   )
 
-  const handleTagsChange = async (value: Array<TagOption | string>) => {
-    setTagCreateError('')
+  const handleCategoriesChange = async (value: Array<CategoryOption | string>) => {
+    setCategoryCreateError('')
     const nextIds = new Set<string>()
     let createName = ''
 
@@ -123,51 +122,51 @@ export function ExpenseFormModal({
     })
 
     if (!createName) {
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
     const trimmed = createName.trim()
     if (!trimmed) {
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
-    const existing = findTagByName(tags, trimmed)
+    const existing = findCategoryByName(categories, trimmed)
     if (existing) {
       nextIds.add(existing.id)
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
-    setSelectedTagIds(nextIds)
-    setPendingTagCreate({
+    setSelectedCategoryIds(nextIds)
+    setPendingCategoryCreate({
       name: trimmed,
       nextIds: Array.from(nextIds),
     })
-    setNewTagColor(DEFAULT_TAG_COLOR)
-    setNewTagEmoji('')
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
   }
 
-  const handleConfirmTagCreate = async () => {
-    if (!pendingTagCreate) return
-    setTagCreating(true)
-    setTagCreateError('')
+  const handleConfirmCategoryCreate = async () => {
+    if (!pendingCategoryCreate) return
+    setCategoryCreating(true)
+    setCategoryCreateError('')
     try {
-      const created = await onCreateTag(pendingTagCreate.name, {
-        color: newTagColor === null ? null : normalizeTagColor(newTagColor) ?? null,
-        emoji: normalizeTagEmoji(newTagEmoji) ?? null,
+      const created = await onCreateCategory(pendingCategoryCreate.name, {
+        color: newCategoryColor === null ? null : normalizeCategoryColor(newCategoryColor) ?? null,
+        emoji: normalizeCategoryEmoji(newCategoryEmoji) ?? null,
       })
-      const nextIds = new Set(pendingTagCreate.nextIds)
+      const nextIds = new Set(pendingCategoryCreate.nextIds)
       nextIds.add(created.id)
-      setSelectedTagIds(nextIds)
-      setPendingTagCreate(null)
-      setNewTagColor(DEFAULT_TAG_COLOR)
-      setNewTagEmoji('')
+      setSelectedCategoryIds(nextIds)
+      setPendingCategoryCreate(null)
+      setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+      setNewCategoryEmoji('')
     } catch {
-      setTagCreateError('Не удалось создать тег. Попробуйте ещё раз.')
+      setCategoryCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
     } finally {
-      setTagCreating(false)
+      setCategoryCreating(false)
     }
   }
 
@@ -187,7 +186,7 @@ export function ExpenseFormModal({
       amount: parsedAmount,
       currency,
       title: trimmedTitle,
-      tagIds: Array.from(selectedTagIds),
+      categoryIds: Array.from(selectedCategoryIds),
     }
     setSaving(true)
     try {
@@ -262,23 +261,23 @@ export function ExpenseFormModal({
             <Box>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Теги
+                  Категории
                 </Typography>
-                <Autocomplete<TagOption, true, false, true>
+                <Autocomplete<CategoryOption, true, false, true>
                   multiple
                   freeSolo
                   disableCloseOnSelect
                   filterSelectedOptions
-                  options={tags}
-                  value={selectedTagList}
-                  loading={isTagCreating}
+                  options={categories}
+                  value={selectedCategoryList}
+                  loading={isCategoryCreating}
                   onInputChange={(_event, _value, reason) => {
-                    if (reason === 'input' && tagCreateError) {
-                      setTagCreateError('')
+                    if (reason === 'input' && categoryCreateError) {
+                      setCategoryCreateError('')
                     }
                   }}
                   onChange={(_, value) => {
-                    void handleTagsChange(value)
+                    void handleCategoriesChange(value)
                   }}
                   filterOptions={(options, params) => {
                     const inputValue = params.inputValue.trim()
@@ -286,7 +285,7 @@ export function ExpenseFormModal({
                     const filtered = options.filter((option) =>
                       option.name.toLowerCase().includes(normalized),
                     )
-                    if (inputValue && !findTagByName(tags, inputValue)) {
+                    if (inputValue && !findCategoryByName(categories, inputValue)) {
                       filtered.push({ inputValue, name: inputValue, isNew: true })
                     }
                     return filtered
@@ -294,7 +293,7 @@ export function ExpenseFormModal({
                   getOptionLabel={(option) => {
                     if (typeof option === 'string') return option
                     if ('isNew' in option) return option.name
-                    return withTagEmoji(option)
+                    return withCategoryEmoji(option)
                   }}
                   isOptionEqualToValue={(option, value) => {
                     if (typeof option === 'string' || typeof value === 'string') {
@@ -305,9 +304,9 @@ export function ExpenseFormModal({
                   }}
                   renderOption={(props, option) => {
                     if ('isNew' in option) {
-                      return <li {...props}>{`Добавить тег "${option.name}"`}</li>
+                      return <li {...props}>{`Добавить категорию "${option.name}"`}</li>
                     }
-                    const tagColor = normalizeTagColor(option.color)
+                    const categoryColor = normalizeCategoryColor(option.color)
                     return (
                       <li {...props}>
                         <Stack direction="row" alignItems="center" spacing={1}>
@@ -316,54 +315,24 @@ export function ExpenseFormModal({
                               width: 8,
                               height: 8,
                               borderRadius: 999,
-                              bgcolor: tagColor ?? 'divider',
+                              bgcolor: categoryColor ?? 'divider',
                               border: '1px solid',
-                              borderColor: tagColor ? alpha(tagColor, 0.5) : 'divider',
+                              borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
                               flexShrink: 0,
                             }}
                           />
-                          <Typography variant="body2">{withTagEmoji(option)}</Typography>
+                          <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
                         </Stack>
                       </li>
                     )
                   }}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => {
-                      if (typeof option === 'string' || 'isNew' in option) {
-                        return (
-                          <Chip
-                            {...getTagProps({ index })}
-                            key={`${option}-${index}`}
-                            label={typeof option === 'string' ? option : option.name}
-                            size="small"
-                          />
-                        )
-                      }
-                      const tagColor = normalizeTagColor(option.color)
-                      return (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={option.id}
-                          label={withTagEmoji(option)}
-                          size="small"
-                          sx={(theme) => ({
-                            color: tagColor ?? theme.palette.text.secondary,
-                            borderColor: tagColor ? alpha(tagColor, 0.45) : theme.palette.divider,
-                            bgcolor: tagColor
-                              ? alpha(tagColor, theme.palette.mode === 'dark' ? 0.28 : 0.12)
-                              : 'transparent',
-                          })}
-                        />
-                      )
-                    })
-                  }
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Выбрать теги"
+                      label="Выбрать категории"
                       placeholder="Поиск или создание"
-                      error={Boolean(tagCreateError)}
-                      helperText={tagCreateError || undefined}
+                      error={Boolean(categoryCreateError)}
+                      helperText={categoryCreateError || undefined}
                     />
                   )}
                 />
@@ -411,42 +380,42 @@ export function ExpenseFormModal({
       </Dialog>
 
       <Dialog
-        open={Boolean(pendingTagCreate)}
+        open={Boolean(pendingCategoryCreate)}
         onClose={() => {
-          if (isTagCreating) return
-          setPendingTagCreate(null)
-          setNewTagColor(DEFAULT_TAG_COLOR)
-          setNewTagEmoji('')
-          setTagCreateError('')
+          if (isCategoryCreating) return
+          setPendingCategoryCreate(null)
+          setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+          setNewCategoryEmoji('')
+          setCategoryCreateError('')
         }}
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Новый тег</DialogTitle>
+        <DialogTitle>Новая категория</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5}>
             <TextField
               label="Название"
-              value={pendingTagCreate?.name ?? ''}
+              value={pendingCategoryCreate?.name ?? ''}
               fullWidth
               disabled
               size="small"
             />
             <EmojiPickerField
-              value={newTagEmoji}
+              value={newCategoryEmoji}
               onChange={(emoji) => {
-                setNewTagEmoji(emoji)
-                if (tagCreateError) setTagCreateError('')
+                setNewCategoryEmoji(emoji)
+                if (categoryCreateError) setCategoryCreateError('')
               }}
             />
-            <TagColorPickerField
-              value={newTagColor}
-              onChange={setNewTagColor}
-              options={TAG_COLOR_OPTIONS}
+            <CategoryColorPickerField
+              value={newCategoryColor}
+              onChange={setNewCategoryColor}
+              options={CATEGORY_COLOR_OPTIONS}
             />
-            {tagCreateError ? (
+            {categoryCreateError ? (
               <Typography color="error" variant="body2">
-                {tagCreateError}
+                {categoryCreateError}
               </Typography>
             ) : null}
           </Stack>
@@ -454,23 +423,23 @@ export function ExpenseFormModal({
         <DialogActions>
           <Button
             onClick={() => {
-              setPendingTagCreate(null)
-              setNewTagColor(DEFAULT_TAG_COLOR)
-              setNewTagEmoji('')
-              setTagCreateError('')
+              setPendingCategoryCreate(null)
+              setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+              setNewCategoryEmoji('')
+              setCategoryCreateError('')
             }}
-            disabled={isTagCreating}
+            disabled={isCategoryCreating}
           >
             Отмена
           </Button>
           <Button
             variant="contained"
             onClick={() => {
-              void handleConfirmTagCreate()
+              void handleConfirmCategoryCreate()
             }}
-            disabled={isTagCreating}
+            disabled={isCategoryCreating}
           >
-            {isTagCreating ? 'Создаём…' : 'Создать'}
+            {isCategoryCreating ? 'Создаём…' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>

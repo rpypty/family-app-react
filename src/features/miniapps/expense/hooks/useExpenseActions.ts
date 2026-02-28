@@ -7,19 +7,19 @@ import {
   updateExpense,
 } from '../expenses/api/expenses'
 import {
-  createTag,
-  deleteTag,
-  updateTag,
-} from '../expenses/api/tags'
+  createCategory,
+  deleteCategory,
+  updateCategory,
+} from '../expenses/api/categories'
 import type { SyncOperation } from '../../../sync/api/sync'
 import {
   createOperationId,
   resolvePendingCreateIds,
   type OfflineOutboxOperation,
 } from '../../../sync/model/offlineOutbox'
-import { findTagByName } from '../../../../shared/lib/tagUtils'
-import type { Expense, StorageState, Tag } from '../../../../shared/types'
-import type { TagAppearanceInput } from '../../../../shared/lib/tagAppearance'
+import { findCategoryByName } from '../../../../shared/lib/categoryUtils'
+import type { Expense, StorageState, Category } from '../../../../shared/types'
+import type { CategoryAppearanceInput } from '../../../../shared/lib/categoryAppearance'
 import { EXPENSES_PAGE_SIZE } from '../../../../app/sync/constants'
 import { isNetworkLikeError } from '../../../../app/sync/network'
 import type { DataSyncStatus } from '../../../../app/sync/types'
@@ -110,7 +110,7 @@ export function useExpenseActions({
           amount: localExpense.amount,
           currency: localExpense.currency,
           title: localExpense.title,
-          tag_ids: localExpense.tagIds,
+          category_ids: localExpense.categoryIds,
         },
       })
       setDataStale(true)
@@ -190,54 +190,54 @@ export function useExpenseActions({
     }
   }
 
-  const handleCreateTag = async (name: string, payload?: TagAppearanceInput): Promise<Tag> => {
+  const handleCreateCategory = async (name: string, payload?: CategoryAppearanceInput): Promise<Category> => {
     if (guardReadOnly()) {
       const trimmed = name.trim()
-      const existing = findTagByName(state.tags, trimmed)
+      const existing = findCategoryByName(state.categories, trimmed)
       if (existing) return existing
       throw new Error('read_only')
     }
     const trimmed = name.trim()
-    const existing = findTagByName(state.tags, trimmed)
+    const existing = findCategoryByName(state.categories, trimmed)
     if (existing) return existing
-    const created = await createTag(trimmed, payload)
+    const created = await createCategory(trimmed, payload)
     updateState((prev) => ({
       ...prev,
-      tags: [...prev.tags, created],
+      categories: [...prev.categories, created],
     }))
     return created
   }
 
-  const handleUpdateTag = async (
-    tagId: string,
+  const handleUpdateCategory = async (
+    categoryId: string,
     name: string,
-    payload?: TagAppearanceInput,
-  ): Promise<Tag> => {
+    payload?: CategoryAppearanceInput,
+  ): Promise<Category> => {
     if (guardReadOnly()) {
       throw new Error('read_only')
     }
     const trimmed = name.trim()
-    const existing = findTagByName(state.tags, trimmed)
-    if (existing && existing.id !== tagId) {
+    const existing = findCategoryByName(state.categories, trimmed)
+    if (existing && existing.id !== categoryId) {
       return existing
     }
-    const updated = await updateTag(tagId, trimmed, payload)
+    const updated = await updateCategory(categoryId, trimmed, payload)
     updateState((prev) => ({
       ...prev,
-      tags: prev.tags.map((tag) => (tag.id === updated.id ? updated : tag)),
+      categories: prev.categories.map((category) => (category.id === updated.id ? updated : category)),
     }))
     return updated
   }
 
-  const handleDeleteTag = async (tagId: string): Promise<void> => {
+  const handleDeleteCategory = async (categoryId: string): Promise<void> => {
     if (guardReadOnly()) return
-    await deleteTag(tagId)
+    await deleteCategory(categoryId)
     updateState((prev) => ({
       ...prev,
-      tags: prev.tags.filter((tag) => tag.id !== tagId),
+      categories: prev.categories.filter((category) => category.id !== categoryId),
       expenses: prev.expenses.map((expense) => ({
         ...expense,
-        tagIds: expense.tagIds.filter((id) => id !== tagId),
+        categoryIds: expense.categoryIds.filter((id) => id !== categoryId),
       })),
     }))
   }
@@ -257,9 +257,9 @@ export function useExpenseActions({
     handleUpdateExpense,
     handleDeleteExpense,
     handleLoadMoreExpenses,
-    handleCreateTag,
-    handleUpdateTag,
-    handleDeleteTag,
+    handleCreateCategory,
+    handleUpdateCategory,
+    handleDeleteCategory,
     handleRefreshExpenses,
   }
 }

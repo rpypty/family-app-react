@@ -26,66 +26,66 @@ import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import EditOutlined from '@mui/icons-material/EditOutlined'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import { isApiError } from '../api/client'
-import type { Tag } from '../types'
-import { findTagByName } from '../lib/tagUtils'
+import type { Category } from '../types'
+import { findCategoryByName } from '../lib/categoryUtils'
 import { EmojiPickerField } from './EmojiPickerField'
-import { TagColorPickerField } from './TagColorPickerField'
+import { CategoryColorPickerField } from './CategoryColorPickerField'
 import {
-  DEFAULT_TAG_COLOR,
-  TAG_COLOR_OPTIONS,
-  normalizeTagColor,
-  normalizeTagEmoji,
-  withTagEmoji,
-  type TagAppearanceInput,
-} from '../lib/tagAppearance'
+  DEFAULT_CATEGORY_COLOR,
+  CATEGORY_COLOR_OPTIONS,
+  normalizeCategoryColor,
+  normalizeCategoryEmoji,
+  withCategoryEmoji,
+  type CategoryAppearanceInput,
+} from '../lib/categoryAppearance'
 
-type TagSearchDialogProps = {
+type CategorySearchDialogProps = {
   isOpen: boolean
-  tags: Tag[]
+  categories: Category[]
   initialSelected: string[]
   onClose: () => void
   onConfirm: (selected: string[]) => void
-  onCreateTag?: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
-  onUpdateTag?: (tagId: string, name: string, payload?: TagAppearanceInput) => Promise<Tag>
-  onDeleteTag?: (tagId: string) => Promise<void>
+  onCreateCategory?: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onUpdateCategory?: (categoryId: string, name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onDeleteCategory?: (categoryId: string) => Promise<void>
   title?: string
   enableSelectAll?: boolean
   enableSelection?: boolean
 }
 
-export function TagSearchDialog({
+export function CategorySearchDialog({
   isOpen,
-  tags,
+  categories,
   initialSelected,
   onClose,
   onConfirm,
-  onCreateTag,
-  onUpdateTag,
-  onDeleteTag,
-  title = 'Поиск тегов',
+  onCreateCategory,
+  onUpdateCategory,
+  onDeleteCategory,
+  title = 'Поиск категорий',
   enableSelectAll = false,
   enableSelection = true,
-}: TagSearchDialogProps) {
+}: CategorySearchDialogProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected))
   const [isCreating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [createColor, setCreateColor] = useState<string | null>(DEFAULT_TAG_COLOR)
+  const [createColor, setCreateColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
   const [createEmoji, setCreateEmoji] = useState('')
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null)
-  const [menuTag, setMenuTag] = useState<Tag | null>(null)
-  const [editingTag, setEditingTag] = useState<Tag | null>(null)
+  const [menuCategory, setMenuCategory] = useState<Category | null>(null)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [editName, setEditName] = useState('')
-  const [editColor, setEditColor] = useState<string | null>(DEFAULT_TAG_COLOR)
+  const [editColor, setEditColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
   const [editEmoji, setEditEmoji] = useState('')
   const [isUpdating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
   const [isDeleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const hasActions = Boolean(onUpdateTag || onDeleteTag)
+  const hasActions = Boolean(onUpdateCategory || onDeleteCategory)
 
   useEffect(() => {
     if (isOpen) {
@@ -93,13 +93,13 @@ export function TagSearchDialog({
       setSelected(new Set(initialSelected))
       setCreateError('')
       setCreating(false)
-      setCreateColor(DEFAULT_TAG_COLOR)
+      setCreateColor(DEFAULT_CATEGORY_COLOR)
       setCreateEmoji('')
       setMenuAnchorEl(null)
-      setMenuTag(null)
-      setEditingTag(null)
+      setMenuCategory(null)
+      setEditingCategory(null)
       setEditName('')
-      setEditColor(DEFAULT_TAG_COLOR)
+      setEditColor(DEFAULT_CATEGORY_COLOR)
       setEditEmoji('')
       setUpdating(false)
       setUpdateError('')
@@ -109,48 +109,48 @@ export function TagSearchDialog({
     }
   }, [isOpen, initialSelected])
 
-  const createAppearancePayload = (): TagAppearanceInput => ({
-    color: createColor === null ? null : normalizeTagColor(createColor) ?? null,
-    emoji: normalizeTagEmoji(createEmoji) ?? null,
+  const createAppearancePayload = (): CategoryAppearanceInput => ({
+    color: createColor === null ? null : normalizeCategoryColor(createColor) ?? null,
+    emoji: normalizeCategoryEmoji(createEmoji) ?? null,
   })
 
-  const editAppearancePayload = (): TagAppearanceInput => ({
-    color: editColor === null ? null : normalizeTagColor(editColor) ?? null,
-    emoji: normalizeTagEmoji(editEmoji) ?? null,
+  const editAppearancePayload = (): CategoryAppearanceInput => ({
+    color: editColor === null ? null : normalizeCategoryColor(editColor) ?? null,
+    emoji: normalizeCategoryEmoji(editEmoji) ?? null,
   })
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    if (!normalized) return tags
-    return tags.filter((tag) => tag.name.toLowerCase().includes(normalized))
-  }, [query, tags])
+    if (!normalized) return categories
+    return categories.filter((category) => category.name.toLowerCase().includes(normalized))
+  }, [query, categories])
 
-  const allSelected = enableSelection && tags.length > 0 && selected.size === tags.length
+  const allSelected = enableSelection && categories.length > 0 && selected.size === categories.length
   const handleToggleAll = () => {
     if (allSelected) {
       setSelected(new Set())
       return
     }
-    setSelected(new Set(tags.map((tag) => tag.id)))
+    setSelected(new Set(categories.map((category) => category.id)))
   }
 
-  const toggleTag = (tagId: string) => {
+  const toggleCategory = (categoryId: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(tagId)) {
-        next.delete(tagId)
+      if (next.has(categoryId)) {
+        next.delete(categoryId)
       } else {
-        next.add(tagId)
+        next.add(categoryId)
       }
       return next
     })
   }
 
   const handleCreate = async () => {
-    if (!onCreateTag) return
+    if (!onCreateCategory) return
     const name = query.trim()
     if (!name) return
-    const existing = findTagByName(tags, name)
+    const existing = findCategoryByName(categories, name)
     if (existing) {
       setSelected((prev) => new Set(prev).add(existing.id))
       return
@@ -158,61 +158,61 @@ export function TagSearchDialog({
     setCreating(true)
     setCreateError('')
     try {
-      const tag = await onCreateTag(name, createAppearancePayload())
-      setSelected((prev) => new Set(prev).add(tag.id))
+      const category = await onCreateCategory(name, createAppearancePayload())
+      setSelected((prev) => new Set(prev).add(category.id))
     } catch {
-      setCreateError('Не удалось создать тег. Попробуйте ещё раз.')
+      setCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
     } finally {
       setCreating(false)
     }
   }
 
-  const handleOpenMenu = (event: MouseEvent<HTMLElement>, tag: Tag) => {
+  const handleOpenMenu = (event: MouseEvent<HTMLElement>, category: Category) => {
     event.stopPropagation()
     setMenuAnchorEl(event.currentTarget)
-    setMenuTag(tag)
+    setMenuCategory(category)
   }
 
   const handleCloseMenu = () => {
     setMenuAnchorEl(null)
-    setMenuTag(null)
+    setMenuCategory(null)
   }
 
   const handleStartEdit = () => {
-    if (!menuTag || !onUpdateTag) return
-    setEditingTag(menuTag)
-    setEditName(menuTag.name)
-    setEditColor(normalizeTagColor(menuTag.color) ?? null)
-    setEditEmoji(normalizeTagEmoji(menuTag.emoji) ?? '')
+    if (!menuCategory || !onUpdateCategory) return
+    setEditingCategory(menuCategory)
+    setEditName(menuCategory.name)
+    setEditColor(normalizeCategoryColor(menuCategory.color) ?? null)
+    setEditEmoji(normalizeCategoryEmoji(menuCategory.emoji) ?? '')
     setUpdateError('')
     handleCloseMenu()
   }
 
   const handleUpdate = async () => {
-    if (!editingTag || !onUpdateTag) return
+    if (!editingCategory || !onUpdateCategory) return
     const name = editName.trim()
     if (!name) {
       setUpdateError('Название не может быть пустым.')
       return
     }
-    const existing = findTagByName(tags, name)
-    if (existing && existing.id !== editingTag.id) {
-      setUpdateError('Тег с таким названием уже существует.')
+    const existing = findCategoryByName(categories, name)
+    if (existing && existing.id !== editingCategory.id) {
+      setUpdateError('Категория с таким названием уже существует.')
       return
     }
     setUpdating(true)
     setUpdateError('')
     try {
-      await onUpdateTag(editingTag.id, name, editAppearancePayload())
-      setEditingTag(null)
+      await onUpdateCategory(editingCategory.id, name, editAppearancePayload())
+      setEditingCategory(null)
       setEditName('')
-      setEditColor(DEFAULT_TAG_COLOR)
+      setEditColor(DEFAULT_CATEGORY_COLOR)
       setEditEmoji('')
     } catch (error) {
-      if (isApiError(error) && error.code === 'tag_name_taken') {
-        setUpdateError('Тег с таким названием уже существует.')
+      if (isApiError(error) && error.code === 'category_name_taken') {
+        setUpdateError('Категория с таким названием уже существует.')
       } else {
-        setUpdateError('Не удалось обновить тег. Попробуйте ещё раз.')
+        setUpdateError('Не удалось обновить категорию. Попробуйте ещё раз.')
       }
     } finally {
       setUpdating(false)
@@ -220,18 +220,18 @@ export function TagSearchDialog({
   }
 
   const handleRequestDelete = () => {
-    if (!menuTag || !onDeleteTag) return
-    setDeleteTarget(menuTag)
+    if (!menuCategory || !onDeleteCategory) return
+    setDeleteTarget(menuCategory)
     setDeleteError('')
     handleCloseMenu()
   }
 
   const handleConfirmDelete = async () => {
-    if (!deleteTarget || !onDeleteTag) return
+    if (!deleteTarget || !onDeleteCategory) return
     setDeleting(true)
     setDeleteError('')
     try {
-      await onDeleteTag(deleteTarget.id)
+      await onDeleteCategory(deleteTarget.id)
       setSelected((prev) => {
         const next = new Set(prev)
         next.delete(deleteTarget.id)
@@ -242,12 +242,12 @@ export function TagSearchDialog({
       if (
         isApiError(error) &&
         (error.status === 409 ||
-          error.code === 'tag_in_use' ||
-          error.code === 'tag_has_expenses')
+          error.code === 'category_in_use' ||
+          error.code === 'category_has_expenses')
       ) {
-        setDeleteError('Для удаления этого тэга необходимо сначала убрать его с записей')
+        setDeleteError('Для удаления этой категории сначала уберите ее у записей')
       } else {
-        setDeleteError('Не удалось удалить тег. Попробуйте ещё раз.')
+        setDeleteError('Не удалось удалить категорию. Попробуйте ещё раз.')
       }
     } finally {
       setDeleting(false)
@@ -266,7 +266,7 @@ export function TagSearchDialog({
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField
-            label="Найти тег"
+            label="Найти категорию"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
@@ -277,7 +277,7 @@ export function TagSearchDialog({
           {filtered.length === 0 ? (
             <Stack spacing={1.25}>
               <Typography color="text.secondary">Ничего не найдено</Typography>
-              {onCreateTag && query.trim() ? (
+              {onCreateCategory && query.trim() ? (
                 <Stack spacing={1.25}>
                   <EmojiPickerField
                     value={createEmoji}
@@ -286,13 +286,13 @@ export function TagSearchDialog({
                       if (createError) setCreateError('')
                     }}
                   />
-                  <TagColorPickerField
+                  <CategoryColorPickerField
                     value={createColor}
                     onChange={setCreateColor}
-                    options={TAG_COLOR_OPTIONS}
+                    options={CATEGORY_COLOR_OPTIONS}
                   />
                   <Button variant="contained" onClick={handleCreate} disabled={isCreating}>
-                    {isCreating ? 'Создаём…' : `Добавить тег "${query.trim()}"`}
+                    {isCreating ? 'Создаём…' : `Добавить категорию "${query.trim()}"`}
                   </Button>
                 </Stack>
               ) : null}
@@ -304,18 +304,18 @@ export function TagSearchDialog({
             </Stack>
           ) : (
             <List dense>
-              {filtered.map((tag) => {
-                const tagColor = normalizeTagColor(tag.color)
+              {filtered.map((category) => {
+                const categoryColor = normalizeCategoryColor(category.color)
                 return (
                   <ListItem
-                    key={tag.id}
+                    key={category.id}
                     disablePadding
                     secondaryAction={
                       hasActions ? (
                         <IconButton
                           edge="end"
                           size="small"
-                          onClick={(event) => handleOpenMenu(event, tag)}
+                          onClick={(event) => handleOpenMenu(event, category)}
                           aria-label="Открыть меню"
                         >
                           <MoreHorizRounded fontSize="small" />
@@ -324,14 +324,14 @@ export function TagSearchDialog({
                     }
                   >
                     <ListItemButton
-                      onClick={enableSelection ? () => toggleTag(tag.id) : undefined}
+                      onClick={enableSelection ? () => toggleCategory(category.id) : undefined}
                       disableRipple={!enableSelection}
                       sx={{ cursor: enableSelection ? 'pointer' : 'default' }}
                     >
                       {enableSelection ? (
                         <Checkbox
-                          checked={selected.has(tag.id)}
-                          onChange={() => toggleTag(tag.id)}
+                          checked={selected.has(category.id)}
+                          onChange={() => toggleCategory(category.id)}
                           onClick={(event) => event.stopPropagation()}
                         />
                       ) : null}
@@ -340,14 +340,14 @@ export function TagSearchDialog({
                           width: 10,
                           height: 10,
                           borderRadius: 999,
-                          bgcolor: tagColor ?? 'divider',
+                          bgcolor: categoryColor ?? 'divider',
                           border: '1px solid',
-                          borderColor: tagColor ? alpha(tagColor, 0.65) : 'divider',
+                          borderColor: categoryColor ? alpha(categoryColor, 0.65) : 'divider',
                           mr: 1.25,
                           flexShrink: 0,
                         }}
                       />
-                      <ListItemText primary={withTagEmoji(tag)} />
+                      <ListItemText primary={withCategoryEmoji(category)} />
                     </ListItemButton>
                   </ListItem>
                 )
@@ -363,7 +363,7 @@ export function TagSearchDialog({
         }}
       >
         {enableSelection && enableSelectAll ? (
-          <Button onClick={handleToggleAll} disabled={tags.length === 0}>
+          <Button onClick={handleToggleAll} disabled={categories.length === 0}>
             {allSelected ? 'Убрать все' : 'Выбрать все'}
           </Button>
         ) : null}
@@ -386,7 +386,7 @@ export function TagSearchDialog({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        {onUpdateTag ? (
+        {onUpdateCategory ? (
           <MenuItem onClick={handleStartEdit}>
             <ListItemIcon>
               <EditOutlined fontSize="small" />
@@ -394,7 +394,7 @@ export function TagSearchDialog({
             <ListItemText primary="Редактировать" />
           </MenuItem>
         ) : null}
-        {onDeleteTag ? (
+        {onDeleteCategory ? (
           <MenuItem onClick={handleRequestDelete}>
             <ListItemIcon>
               <DeleteOutlineRounded fontSize="small" />
@@ -405,24 +405,24 @@ export function TagSearchDialog({
       </Menu>
 
       <Dialog
-        open={Boolean(editingTag)}
+        open={Boolean(editingCategory)}
         onClose={() => {
-          setEditingTag(null)
+          setEditingCategory(null)
           setEditName('')
-          setEditColor(DEFAULT_TAG_COLOR)
+          setEditColor(DEFAULT_CATEGORY_COLOR)
           setEditEmoji('')
           setUpdateError('')
         }}
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Редактировать тег</DialogTitle>
+        <DialogTitle>Редактировать категорию</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.25}>
             <TextField
               value={editName}
               onChange={(event) => setEditName(event.target.value)}
-              placeholder="Название тега"
+              placeholder="Название категории"
               fullWidth
               autoFocus
               size="small"
@@ -442,15 +442,15 @@ export function TagSearchDialog({
                 size="small"
                 color="inherit"
                 onClick={() => setEditEmoji('')}
-                disabled={!normalizeTagEmoji(editEmoji)}
+                disabled={!normalizeCategoryEmoji(editEmoji)}
               >
                 Убрать эмоджи
               </Button>
             </Stack>
-            <TagColorPickerField
+            <CategoryColorPickerField
               value={editColor}
               onChange={setEditColor}
-              options={TAG_COLOR_OPTIONS}
+              options={CATEGORY_COLOR_OPTIONS}
             />
             {updateError ? (
               <Typography color="error" variant="body2">
@@ -462,9 +462,9 @@ export function TagSearchDialog({
         <DialogActions>
           <Button
             onClick={() => {
-              setEditingTag(null)
+              setEditingCategory(null)
               setEditName('')
-              setEditColor(DEFAULT_TAG_COLOR)
+              setEditColor(DEFAULT_CATEGORY_COLOR)
               setEditEmoji('')
               setUpdateError('')
             }}
@@ -486,11 +486,11 @@ export function TagSearchDialog({
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Удалить тег?</DialogTitle>
+        <DialogTitle>Удалить категорию?</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1}>
             <Typography variant="body2" color="text.secondary">
-              Тег <strong>{deleteTarget?.name}</strong> будет удален.
+              Категория <strong>{deleteTarget?.name}</strong> будет удалена.
             </Typography>
             {deleteError ? (
               <Typography color="error" variant="body2">

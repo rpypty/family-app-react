@@ -13,7 +13,7 @@ const TABS: Array<{
     id: 'expenses',
     label: 'Список',
     title: 'Расходы',
-    subtitle: 'Ежедневные записи и теги.',
+    subtitle: 'Ежедневные записи и категории.',
   },
   {
     id: 'analytics',

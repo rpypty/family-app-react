@@ -109,10 +109,10 @@ export const applyPendingSyncState = (
 }
 
 export const mergeFetchedStateWithPendingCreates = (
-  fetchedState: Pick<StorageState, 'expenses' | 'tags' | 'todoLists'>,
+  fetchedState: Pick<StorageState, 'expenses' | 'categories' | 'todoLists'>,
   previousState: StorageState,
   operations: OfflineOutboxOperation[],
-): Pick<StorageState, 'expenses' | 'tags' | 'todoLists'> => {
+): Pick<StorageState, 'expenses' | 'categories' | 'todoLists'> => {
   const pendingCreateIds = resolvePendingCreateIds(operations)
   if (pendingCreateIds.expenseIds.size === 0 && pendingCreateIds.todoIds.size === 0) {
     return fetchedState
@@ -161,7 +161,7 @@ export const mergeFetchedStateWithPendingCreates = (
 
   return {
     expenses: mergedExpenses,
-    tags: fetchedState.tags,
+    categories: fetchedState.categories,
     todoLists: [...pendingOnlyLists, ...mergedTodoLists],
   }
 }

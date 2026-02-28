@@ -1,11 +1,11 @@
 import type { Expense } from '../types'
 import { parseDate } from './formatters'
 
-export const aggregateByTag = (expenses: Expense[]) => {
+export const aggregateByCategory = (expenses: Expense[]) => {
   const totals: Record<string, number> = {}
   expenses.forEach((expense) => {
-    expense.tagIds.forEach((tagId) => {
-      totals[tagId] = (totals[tagId] ?? 0) + expense.amount
+    expense.categoryIds.forEach((categoryId) => {
+      totals[categoryId] = (totals[categoryId] ?? 0) + expense.amount
     })
   })
   return totals

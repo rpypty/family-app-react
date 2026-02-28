@@ -7,7 +7,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { normalizeTagEmoji } from '../lib/tagAppearance'
+import { normalizeCategoryEmoji } from '../lib/categoryAppearance'
 
 type EmojiCategory = {
   id: string
@@ -128,7 +128,7 @@ export function EmojiPickerField({
 }: EmojiPickerFieldProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const [activeCategoryId, setActiveCategoryId] = useState<string>(DEFAULT_CATEGORY_ID)
-  const currentEmoji = normalizeTagEmoji(value) ?? ''
+  const currentEmoji = normalizeCategoryEmoji(value) ?? ''
   const isOpen = Boolean(anchorEl)
 
   const activeCategory = useMemo(

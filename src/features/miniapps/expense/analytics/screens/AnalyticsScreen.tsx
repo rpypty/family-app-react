@@ -23,7 +23,7 @@ import {
 import BarChartIcon from '@mui/icons-material/BarChart'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import { alpha, useTheme } from '@mui/material/styles'
-import type { Expense, Tag } from '../../../../../shared/types'
+import type { Expense, Category } from '../../../../../shared/types'
 import {
   dateOnly,
   formatAmount,
@@ -32,31 +32,31 @@ import {
   formatPercent,
   parseDate,
 } from '../../../../../shared/lib/formatters'
-import { selectedTags } from '../../../../../shared/lib/tagUtils'
+import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import {
-  DEFAULT_TAG_COLOR,
-  getFirstTagColor,
-  getFirstTagEmoji,
-  normalizeTagColor,
-  normalizeTagEmoji,
-  withTagEmoji,
-  type TagAppearanceInput,
-} from '../../../../../shared/lib/tagAppearance'
+  DEFAULT_CATEGORY_COLOR,
+  getFirstCategoryColor,
+  getFirstCategoryEmoji,
+  normalizeCategoryColor,
+  normalizeCategoryEmoji,
+  withCategoryEmoji,
+  type CategoryAppearanceInput,
+} from '../../../../../shared/lib/categoryAppearance'
 import { PieChart as BreakdownChart } from '../components/PieChart'
 import { TimeseriesBarChart, type AnalyticsBarClickPayload } from '../components/TimeseriesBarChart'
 import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
-import { TagRow } from '../../../../../shared/ui/TagRow'
-import { TagSearchDialog } from '../../../../../shared/ui/TagSearchDialog'
+import { CategoryRow } from '../../../../../shared/ui/CategoryRow'
+import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
-import { getAnalyticsByTag, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
+import { getAnalyticsByCategory, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
 
 type AnalyticsScreenProps = {
-  tags: Tag[]
+  categories: Category[]
   readOnly?: boolean
-  onCreateTag?: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
-  onUpdateTag?: (tagId: string, name: string, payload?: TagAppearanceInput) => Promise<Tag>
-  onDeleteTag?: (tagId: string) => Promise<void>
+  onCreateCategory?: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onUpdateCategory?: (categoryId: string, name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onDeleteCategory?: (categoryId: string) => Promise<void>
 }
 
 const FALLBACK_FROM = '2000-01-01'
@@ -70,7 +70,7 @@ type DayRange = {
 type StoredAnalyticsFilters = {
   fromDate: string | null
   toDate: string | null
-  tagIds: string[]
+  categoryIds: string[]
 }
 
 type ChartType = 'donut' | 'bar'
@@ -83,11 +83,11 @@ const isStoredFilters = (value: unknown): value is StoredAnalyticsFilters => {
   if (!isPlainObject(value)) return false
   const fromDate = value.fromDate
   const toDate = value.toDate
-  const tagIds = value.tagIds
+  const categoryIds = value.categoryIds
   if (fromDate !== null && typeof fromDate !== 'string') return false
   if (toDate !== null && typeof toDate !== 'string') return false
-  if (!Array.isArray(tagIds)) return false
-  return tagIds.every((id) => typeof id === 'string')
+  if (!Array.isArray(categoryIds)) return false
+  return categoryIds.every((id) => typeof id === 'string')
 }
 
 const loadStoredFilters = (): StoredAnalyticsFilters | null => {
@@ -133,10 +133,10 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
 }
 
 export function AnalyticsScreen({
-  tags,
-  onCreateTag,
-  onUpdateTag,
-  onDeleteTag,
+  categories,
+  onCreateCategory,
+  onUpdateCategory,
+  onDeleteCategory,
   readOnly = false,
 }: AnalyticsScreenProps) {
   const theme = useTheme()
@@ -144,11 +144,11 @@ export function AnalyticsScreen({
   const storedFilters = useMemo(() => loadStoredFilters(), [])
   const [fromDate, setFromDate] = useState<string | null>(storedFilters?.fromDate ?? null)
   const [toDate, setToDate] = useState<string | null>(storedFilters?.toDate ?? null)
-  const [filterTagIds, setFilterTagIds] = useState<Set<string>>(
-    () => new Set(storedFilters?.tagIds ?? [])
+  const [filterCategoryIds, setFilterCategoryIds] = useState<Set<string>>(
+    () => new Set(storedFilters?.categoryIds ?? [])
   )
-  const [isTagDialogOpen, setTagDialogOpen] = useState(false)
-  const [showAllTagBreakdown, setShowAllTagBreakdown] = useState(false)
+  const [isCategoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const [showAllCategoryBreakdown, setShowAllCategoryBreakdown] = useState(false)
   const [chartType, setChartType] = useState<ChartType>('donut')
   const [barGroupBy, setBarGroupBy] = useState<BarGroupBy>('week')
   const [summary, setSummary] = useState<{
@@ -159,8 +159,8 @@ export function AnalyticsScreen({
     from: string
     to: string
   } | null>(null)
-  const [byTagRows, setByTagRows] = useState<
-    Array<{ tagId: string; tagName: string; total: number; count: number }>
+  const [byCategoryRows, setByCategoryRows] = useState<
+    Array<{ categoryId: string; categoryName: string; total: number; count: number }>
   >([])
   const [isLoading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -177,13 +177,13 @@ export function AnalyticsScreen({
   const [drilldownQuery, setDrilldownQuery] = useState<{
     from: string
     to: string
-    tagIds?: string[]
+    categoryIds?: string[]
   } | null>(null)
   const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
   const [drilldownLoading, setDrilldownLoading] = useState(false)
   const [drilldownError, setDrilldownError] = useState<string | null>(null)
 
-  const hasFilters = fromDate !== null || toDate !== null || filterTagIds.size > 0
+  const hasFilters = fromDate !== null || toDate !== null || filterCategoryIds.size > 0
 
   const range = useMemo(() => {
     const today = dateOnly(new Date())
@@ -198,10 +198,10 @@ export function AnalyticsScreen({
     return { from: formatDate(from), to: formatDate(to) }
   }, [fromDate, toDate])
 
-  const tagIds = useMemo(() => Array.from(filterTagIds), [filterTagIds])
-  const tagIdsKey = tagIds.join(',')
-  const tagIdsForApi = tagIds.length > 0 ? tagIds : undefined
-  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags])
+  const categoryIds = useMemo(() => Array.from(filterCategoryIds), [filterCategoryIds])
+  const categoryIdsKey = categoryIds.join(',')
+  const categoryIdsForApi = categoryIds.length > 0 ? categoryIds : undefined
+  const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
 
   const applyQuickRange = (days: number) => {
     const today = dateOnly(new Date())
@@ -224,20 +224,20 @@ export function AnalyticsScreen({
   const resetFilters = () => {
     setFromDate(null)
     setToDate(null)
-    setFilterTagIds(new Set())
+    setFilterCategoryIds(new Set())
   }
 
   useEffect(() => {
     saveStoredFilters({
       fromDate,
       toDate,
-      tagIds: Array.from(filterTagIds),
+      categoryIds: Array.from(filterCategoryIds),
     })
-  }, [fromDate, toDate, filterTagIds])
+  }, [fromDate, toDate, filterCategoryIds])
 
   useEffect(() => {
-    setShowAllTagBreakdown(false)
-  }, [fromDate, toDate, filterTagIds])
+    setShowAllCategoryBreakdown(false)
+  }, [fromDate, toDate, filterCategoryIds])
 
   useEffect(() => {
     let isActive = true
@@ -245,7 +245,7 @@ export function AnalyticsScreen({
       setLoading(false)
       setLoadError('Оффлайн: аналитика недоступна.')
       setSummary(null)
-      setByTagRows([])
+      setByCategoryRows([])
       return () => {
         isActive = false
       }
@@ -254,27 +254,27 @@ export function AnalyticsScreen({
       setLoading(true)
       setLoadError(null)
       try {
-        const [summaryResponse, byTagResponse] = await Promise.all([
+        const [summaryResponse, byCategoryResponse] = await Promise.all([
           getAnalyticsSummary({
             from: range.from,
             to: range.to,
-            tagIds: tagIdsForApi,
+            categoryIds: categoryIdsForApi,
           }),
-          getAnalyticsByTag({
+          getAnalyticsByCategory({
             from: range.from,
             to: range.to,
-            tagIds: tagIdsForApi,
+            categoryIds: categoryIdsForApi,
             limit: 50,
           }),
         ])
         if (!isActive) return
         setSummary(summaryResponse)
-        setByTagRows(byTagResponse)
+        setByCategoryRows(byCategoryResponse)
       } catch {
         if (!isActive) return
         setLoadError('Не удалось загрузить аналитику. Попробуйте ещё раз.')
         setSummary(null)
-        setByTagRows([])
+        setByCategoryRows([])
       } finally {
         if (isActive) setLoading(false)
       }
@@ -284,7 +284,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, range.from, range.to, tagIdsForApi])
+  }, [readOnly, range.from, range.to, categoryIdsForApi])
 
   useEffect(() => {
     let isActive = true
@@ -318,7 +318,7 @@ export function AnalyticsScreen({
         const response = await getAnalyticsTimeseries({
           from: range.from,
           to: range.to,
-          tagIds: tagIdsForApi,
+          categoryIds: categoryIdsForApi,
           groupBy: barGroupBy,
         })
         if (!isActive) return
@@ -336,7 +336,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [chartType, barGroupBy, readOnly, range.from, range.to, tagIdsForApi])
+  }, [chartType, barGroupBy, readOnly, range.from, range.to, categoryIdsForApi])
 
   useEffect(() => {
     let isActive = true
@@ -363,7 +363,7 @@ export function AnalyticsScreen({
         const response = await listExpensePage({
           from: range.from,
           to: range.to,
-          tagIds: tagIds.length > 0 ? tagIds : undefined,
+          categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
           limit: 50,
           offset: 0,
         })
@@ -382,36 +382,36 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, hasFilters, range.from, range.to, tagIds, tagIdsKey])
+  }, [readOnly, hasFilters, range.from, range.to, categoryIds, categoryIdsKey])
 
   const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
 
   const rowsForBreakdown = useMemo(() => {
-    return byTagRows
-  }, [byTagRows])
+    return byCategoryRows
+  }, [byCategoryRows])
 
   const slices = useMemo(() => {
     const entries = [...rowsForBreakdown].sort((a, b) => b.total - a.total)
     return entries.map((row) => {
-      const linkedTag = tagMap.get(row.tagId)
-      const baseLabel = linkedTag?.name || row.tagName || 'Без тега'
-      const label = linkedTag ? withTagEmoji(linkedTag) : baseLabel
+      const linkedCategory = categoryMap.get(row.categoryId)
+      const baseLabel = linkedCategory?.name || row.categoryName || 'Без категории'
+      const label = linkedCategory ? withCategoryEmoji(linkedCategory) : baseLabel
       return {
-        id: row.tagId,
+        id: row.categoryId,
         label,
-        emoji: normalizeTagEmoji(linkedTag?.emoji),
+        emoji: normalizeCategoryEmoji(linkedCategory?.emoji),
         value: row.total,
-        color: normalizeTagColor(linkedTag?.color) ?? DEFAULT_TAG_COLOR,
+        color: normalizeCategoryColor(linkedCategory?.color) ?? DEFAULT_CATEGORY_COLOR,
       }
     })
-  }, [rowsForBreakdown, tagMap])
+  }, [rowsForBreakdown, categoryMap])
 
-  const totalByTags = slices.reduce((sum, slice) => sum + slice.value, 0)
+  const totalByCategories = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = summary?.currency ?? ''
-  const breakdownVisible = showAllTagBreakdown ? slices : slices.slice(0, 5)
+  const breakdownVisible = showAllCategoryBreakdown ? slices : slices.slice(0, 5)
   const breakdownRemaining = slices.length - breakdownVisible.length
 
-  const selectedTagList = selectedTags(tags, filterTagIds)
+  const selectedCategoryList = selectedCategories(categories, filterCategoryIds)
   const pieChartSize = fullScreen ? 220 : 260
 
   const closeDrilldown = () => {
@@ -425,13 +425,13 @@ export function AnalyticsScreen({
   const openDrilldown = (slice: { id?: string; label: string }) => {
     if (readOnly) return
     if (!slice.id) return
-    const linkedTag = tagMap.get(slice.id)
+    const linkedCategory = categoryMap.get(slice.id)
     setActiveSliceId(slice.id)
-    setDrilldownTitle(`Траты по тегу: ${linkedTag?.name ?? slice.label}`)
+    setDrilldownTitle(`Траты по категории: ${linkedCategory?.name ?? slice.label}`)
     setDrilldownQuery({
       from: range.from,
       to: range.to,
-      tagIds: [slice.id],
+      categoryIds: [slice.id],
     })
     setDrilldownExpenses([])
     setDrilldownError(null)
@@ -445,7 +445,7 @@ export function AnalyticsScreen({
       setDrilldownQuery({
         from: range.from,
         to: range.to,
-        tagIds: payload.id ? [payload.id] : tagIdsForApi,
+        categoryIds: payload.id ? [payload.id] : categoryIdsForApi,
       })
       setDrilldownExpenses([])
       setDrilldownError(null)
@@ -471,7 +471,7 @@ export function AnalyticsScreen({
     setDrilldownQuery({
       from,
       to,
-      tagIds: tagIdsForApi,
+      categoryIds: categoryIdsForApi,
     })
     setDrilldownExpenses([])
     setDrilldownError(null)
@@ -495,7 +495,7 @@ export function AnalyticsScreen({
         const response = await listExpensePage({
           from: drilldownQuery.from,
           to: drilldownQuery.to,
-          tagIds: drilldownQuery.tagIds,
+          categoryIds: drilldownQuery.categoryIds,
           limit: 50,
           offset: 0,
         })
@@ -503,7 +503,7 @@ export function AnalyticsScreen({
         setDrilldownExpenses(response.items)
       } catch {
         if (!isActive) return
-        setDrilldownError('Не удалось загрузить список по тегу.')
+        setDrilldownError('Не удалось загрузить список по категории.')
         setDrilldownExpenses([])
       } finally {
         if (isActive) setDrilldownLoading(false)
@@ -565,11 +565,11 @@ export function AnalyticsScreen({
             </Stack>
             <Stack spacing={1}>
               <Typography variant="subtitle2" color="text.secondary">
-                Теги
+                Категории
               </Typography>
-              {selectedTagList.length === 0 ? (
+              {selectedCategoryList.length === 0 ? (
                 <ButtonBase
-                  onClick={() => setTagDialogOpen(true)}
+                  onClick={() => setCategoryDialogOpen(true)}
                   sx={{
                     width: '100%',
                     justifyContent: 'flex-start',
@@ -583,30 +583,30 @@ export function AnalyticsScreen({
                   }}
                 >
                   <Typography variant="body2" color="text.secondary">
-                    Выбрать тэги
+                    Выбрать категории
                   </Typography>
                 </ButtonBase>
               ) : (
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
-                    {selectedTagList.map((tag) => {
-                      const tagColor = normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR
+                    {selectedCategoryList.map((category) => {
+                      const categoryColor = normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR
                       return (
                         <Chip
-                          key={tag.id}
-                          label={withTagEmoji(tag)}
+                          key={category.id}
+                          label={withCategoryEmoji(category)}
                           size="small"
                           variant="outlined"
                           onDelete={() =>
-                            setFilterTagIds((prev) => {
+                            setFilterCategoryIds((prev) => {
                               const next = new Set(prev)
-                              next.delete(tag.id)
+                              next.delete(category.id)
                               return next
                             })
                           }
                           sx={{
-                            borderColor: alpha(tagColor, 0.55),
-                            bgcolor: alpha(tagColor, 0.14),
+                            borderColor: alpha(categoryColor, 0.55),
+                            bgcolor: alpha(categoryColor, 0.14),
                           }}
                         />
                       )
@@ -615,7 +615,7 @@ export function AnalyticsScreen({
                   <Button
                     size="small"
                     variant="outlined"
-                    onClick={() => setTagDialogOpen(true)}
+                    onClick={() => setCategoryDialogOpen(true)}
                     sx={{ minWidth: 64, minHeight: 28, px: 1, fontWeight: 600, lineHeight: 1 }}
                   >
                     Выбрать
@@ -740,7 +740,7 @@ export function AnalyticsScreen({
                     slices={slices}
                     size={pieChartSize}
                     holeRatio={0.58}
-                    centerValue={formatAmount(totalByTags)}
+                    centerValue={formatAmount(totalByCategories)}
                     centerLabel={currencyLabel || undefined}
                     activeSliceId={activeSliceId}
                     onSliceClick={(slice) => {
@@ -783,7 +783,7 @@ export function AnalyticsScreen({
                       </Stack>
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Typography variant="caption" color="text.secondary">
-                          {formatPercent(slice.value, totalByTags)}%
+                          {formatPercent(slice.value, totalByCategories)}%
                         </Typography>
                         <Typography fontWeight={600}>
                           {currencyLabel
@@ -794,7 +794,7 @@ export function AnalyticsScreen({
                     </ButtonBase>
                   ))}
                   {breakdownRemaining > 0 ? (
-                    <Button size="small" onClick={() => setShowAllTagBreakdown(true)}>
+                    <Button size="small" onClick={() => setShowAllCategoryBreakdown(true)}>
                       Показать еще {breakdownRemaining} {pluralCategory(breakdownRemaining)}
                     </Button>
                   ) : null}
@@ -821,16 +821,16 @@ export function AnalyticsScreen({
               ) : (
                 <Stack spacing={1}>
                   {filteredSorted.map((expense, index) => {
-                    const expenseTags = expense.tagIds
-                      .map((id) => tagMap.get(id))
-                      .filter((tag): tag is Tag => Boolean(tag))
-                    const tagItems = expenseTags.map((tag) => ({
-                      id: tag.id,
-                      label: withTagEmoji(tag),
-                      color: normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR,
+                    const expenseCategories = expense.categoryIds
+                      .map((id) => categoryMap.get(id))
+                      .filter((category): category is Category => Boolean(category))
+                    const categoryItems = expenseCategories.map((category) => ({
+                      id: category.id,
+                      label: withCategoryEmoji(category),
+                      color: normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR,
                     }))
-                    const iconEmoji = getFirstTagEmoji(expenseTags)
-                    const iconColor = getFirstTagColor(expenseTags)
+                    const iconEmoji = getFirstCategoryEmoji(expenseCategories)
+                    const iconColor = getFirstCategoryColor(expenseCategories)
                     return (
                       <Box key={expense.id}>
                         <Stack direction="row" justifyContent="space-between" spacing={2}>
@@ -848,7 +848,7 @@ export function AnalyticsScreen({
                               <Typography variant="body2" color="text.secondary">
                                 {formatDateDots(parseDate(expense.date))}
                               </Typography>
-                              {tagItems.length > 0 ? <TagRow tags={tagItems} maxVisible={3} /> : null}
+                              {categoryItems.length > 0 ? <CategoryRow categories={categoryItems} maxVisible={3} /> : null}
                             </Stack>
                           </Stack>
                           <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
@@ -870,18 +870,18 @@ export function AnalyticsScreen({
         </CardContent>
       </Card>
 
-      <TagSearchDialog
-        isOpen={isTagDialogOpen}
-        tags={tags}
-        initialSelected={Array.from(filterTagIds)}
-        onClose={() => setTagDialogOpen(false)}
+      <CategorySearchDialog
+        isOpen={isCategoryDialogOpen}
+        categories={categories}
+        initialSelected={Array.from(filterCategoryIds)}
+        onClose={() => setCategoryDialogOpen(false)}
         onConfirm={(selected) => {
-          setFilterTagIds(new Set(selected))
-          setTagDialogOpen(false)
+          setFilterCategoryIds(new Set(selected))
+          setCategoryDialogOpen(false)
         }}
-        onCreateTag={readOnly ? undefined : onCreateTag}
-        onUpdateTag={readOnly ? undefined : onUpdateTag}
-        onDeleteTag={readOnly ? undefined : onDeleteTag}
+        onCreateCategory={readOnly ? undefined : onCreateCategory}
+        onUpdateCategory={readOnly ? undefined : onUpdateCategory}
+        onDeleteCategory={readOnly ? undefined : onDeleteCategory}
         enableSelectAll
       />
 
@@ -907,16 +907,16 @@ export function AnalyticsScreen({
           ) : (
             <Stack spacing={1.5}>
               {drilldownExpenses.map((expense) => {
-                const expenseTags = expense.tagIds
-                  .map((id) => tagMap.get(id))
-                  .filter((tag): tag is Tag => Boolean(tag))
-                const tagItems = expenseTags.map((tag) => ({
-                  id: tag.id,
-                  label: withTagEmoji(tag),
-                  color: normalizeTagColor(tag.color) ?? DEFAULT_TAG_COLOR,
+                const expenseCategories = expense.categoryIds
+                  .map((id) => categoryMap.get(id))
+                  .filter((category): category is Category => Boolean(category))
+                const categoryItems = expenseCategories.map((category) => ({
+                  id: category.id,
+                  label: withCategoryEmoji(category),
+                  color: normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR,
                 }))
-                const iconEmoji = getFirstTagEmoji(expenseTags)
-                const iconColor = getFirstTagColor(expenseTags)
+                const iconEmoji = getFirstCategoryEmoji(expenseCategories)
+                const iconColor = getFirstCategoryColor(expenseCategories)
                 return (
                   <Box
                     key={expense.id}
@@ -941,7 +941,7 @@ export function AnalyticsScreen({
                         <Typography variant="caption" color="text.secondary">
                           {formatDateDots(parseDate(expense.date))}
                         </Typography>
-                        {tagItems.length > 0 ? <TagRow tags={tagItems} maxVisible={3} /> : null}
+                        {categoryItems.length > 0 ? <CategoryRow categories={categoryItems} maxVisible={3} /> : null}
                       </Stack>
                     </Stack>
                   </Box>

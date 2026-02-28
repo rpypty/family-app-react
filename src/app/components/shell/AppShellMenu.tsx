@@ -19,14 +19,14 @@ import {
   Typography,
 } from '@mui/material'
 import type { AppShellModel } from '../../hooks/useAppController'
-import { TagSearchDialog } from '../../../shared/ui/TagSearchDialog'
+import { CategorySearchDialog } from '../../../shared/ui/CategorySearchDialog'
 
 type AppShellMenuProps = {
   model: AppShellModel
 }
 
 export function AppShellMenu({ model }: AppShellMenuProps) {
-  const [isTagDialogOpen, setTagDialogOpen] = useState(false)
+  const [isCategoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const familySecondary = model.family
     ? `${model.family.name}${model.family.code ? ` · Код: ${model.family.code}` : ''}`
     : '—'
@@ -97,7 +97,7 @@ export function AppShellMenu({ model }: AppShellMenuProps) {
         {model.activeApp === 'expenses' ? (
           <MenuItem
             onClick={() => {
-              setTagDialogOpen(true)
+              setCategoryDialogOpen(true)
               model.onMenuClose()
             }}
           >
@@ -133,15 +133,15 @@ export function AppShellMenu({ model }: AppShellMenuProps) {
         </MenuItem>
       </Menu>
 
-      <TagSearchDialog
-        isOpen={isTagDialogOpen}
-        tags={model.state.tags}
+      <CategorySearchDialog
+        isOpen={isCategoryDialogOpen}
+        categories={model.state.categories}
         initialSelected={[]}
-        onClose={() => setTagDialogOpen(false)}
-        onConfirm={() => setTagDialogOpen(false)}
-        onCreateTag={model.isReadOnly ? undefined : model.onCreateTag}
-        onUpdateTag={model.isReadOnly ? undefined : model.onUpdateTag}
-        onDeleteTag={model.isReadOnly ? undefined : model.onDeleteTag}
+        onClose={() => setCategoryDialogOpen(false)}
+        onConfirm={() => setCategoryDialogOpen(false)}
+        onCreateCategory={model.isReadOnly ? undefined : model.onCreateCategory}
+        onUpdateCategory={model.isReadOnly ? undefined : model.onUpdateCategory}
+        onDeleteCategory={model.isReadOnly ? undefined : model.onDeleteCategory}
         title="Тэги"
         enableSelection={false}
       />

@@ -54,7 +54,7 @@ export function useSyncRetryEffects({
     if (!authSession && !isOfflineRef.current) return
     const hasLocalData =
       stateRef.current.expenses.length > 0 ||
-      stateRef.current.tags.length > 0 ||
+      stateRef.current.categories.length > 0 ||
       stateRef.current.todoLists.length > 0
     const cacheMeta = loadCacheMeta(familyId)
     setLastSyncAt(cacheMeta?.lastSyncAt ?? offlineSnapshotRef.current?.lastSyncAt ?? null)

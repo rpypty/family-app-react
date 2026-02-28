@@ -7,9 +7,9 @@ import {
   Typography,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import { normalizeTagColor } from '../lib/tagAppearance'
+import { normalizeCategoryColor } from '../lib/categoryAppearance'
 
-type TagColorPickerFieldProps = {
+type CategoryColorPickerFieldProps = {
   value: string | null
   onChange: (value: string | null) => void
   options: readonly string[]
@@ -17,19 +17,19 @@ type TagColorPickerFieldProps = {
   clearLabel?: string
 }
 
-export function TagColorPickerField({
+export function CategoryColorPickerField({
   value,
   onChange,
   options,
-  label = 'Цвет тэга',
+  label = 'Цвет категории',
   clearLabel = 'Убрать цвет',
-}: TagColorPickerFieldProps) {
-  const normalizedValue = normalizeTagColor(value)
+}: CategoryColorPickerFieldProps) {
+  const normalizedValue = normalizeCategoryColor(value)
 
   const palette = useMemo(
     () =>
       options
-        .map((color) => normalizeTagColor(color))
+        .map((color) => normalizeCategoryColor(color))
         .filter((color): color is string => Boolean(color)),
     [options],
   )
@@ -114,7 +114,7 @@ export function TagColorPickerField({
             component="input"
             type="color"
             value={pickerValue}
-            onChange={(event) => onChange(normalizeTagColor(event.target.value) ?? null)}
+            onChange={(event) => onChange(normalizeCategoryColor(event.target.value) ?? null)}
             sx={{
               position: 'absolute',
               inset: 0,

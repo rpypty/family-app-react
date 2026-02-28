@@ -1,11 +1,11 @@
 import { Button } from '@mui/material'
 
-type TagPickerInputProps = {
+type CategoryPickerInputProps = {
   label: string
   onClick: () => void
 }
 
-export function TagPickerInput({ label, onClick }: TagPickerInputProps) {
+export function CategoryPickerInput({ label, onClick }: CategoryPickerInputProps) {
   return (
     <Button
       variant="outlined"

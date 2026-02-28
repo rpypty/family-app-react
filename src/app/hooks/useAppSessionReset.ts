@@ -66,7 +66,7 @@ export function useAppSessionReset({
     setExpensesOffset(0)
     setExpensesLoadingMore(false)
     setOfflineSyncNoticeOpen(false)
-    updateState((prev) => ({ ...prev, expenses: [], tags: [], todoLists: [] }))
+    updateState((prev) => ({ ...prev, expenses: [], categories: [], todoLists: [] }))
     clearCacheMeta()
     clearOfflineSnapshot()
   }, [

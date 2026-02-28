@@ -13,10 +13,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 const isValidState = (value: unknown): value is StoredState => {
   if (!isPlainObject(value)) return false
   const expenses = value.expenses
-  const tags = value.tags
+  const categories = value.categories
   const settings = value.settings
   const todoLists = value.todoLists
-  if (!Array.isArray(expenses) || !Array.isArray(tags)) return false
+  if (!Array.isArray(expenses) || !Array.isArray(categories)) return false
   if (todoLists !== undefined && !Array.isArray(todoLists)) return false
   if (!isPlainObject(settings)) return false
   if (settings.themeMode !== 'light' && settings.themeMode !== 'dark') {

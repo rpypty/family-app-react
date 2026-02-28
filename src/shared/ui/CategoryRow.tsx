@@ -1,24 +1,24 @@
 import { useState } from 'react'
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import { pluralTag } from '../lib/tagUtils'
+import { pluralCategory } from '../lib/categoryUtils'
 
-export type TagRowItem = {
+export type CategoryRowItem = {
   id: string
   label: string
   color?: string
 }
 
-type TagRowProps = {
-  tagNames?: string[]
-  tags?: TagRowItem[]
+type CategoryRowProps = {
+  categoryNames?: string[]
+  categories?: CategoryRowItem[]
   maxVisible?: number
   onShowAll?: () => void
 }
 
-export function TagRow({ tagNames = [], tags, maxVisible = 3, onShowAll }: TagRowProps) {
+export function CategoryRow({ categoryNames = [], categories, maxVisible = 3, onShowAll }: CategoryRowProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const source: TagRowItem[] = tags ?? tagNames.map((name) => ({ id: name, label: name }))
+  const source: CategoryRowItem[] = categories ?? categoryNames.map((name) => ({ id: name, label: name }))
   const visible = source.slice(0, maxVisible)
   const remaining = source.length - visible.length
 
@@ -27,16 +27,16 @@ export function TagRow({ tagNames = [], tags, maxVisible = 3, onShowAll }: TagRo
   return (
     <>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        {visible.map((tag) => (
+        {visible.map((category) => (
           <Chip
-            key={tag.id}
-            label={tag.label}
+            key={category.id}
+            label={category.label}
             size="small"
             sx={
-              tag.color
+              category.color
                 ? {
-                    borderColor: alpha(tag.color, 0.55),
-                    bgcolor: alpha(tag.color, 0.14),
+                    borderColor: alpha(category.color, 0.55),
+                    bgcolor: alpha(category.color, 0.14),
                   }
                 : undefined
             }
@@ -44,7 +44,7 @@ export function TagRow({ tagNames = [], tags, maxVisible = 3, onShowAll }: TagRo
         ))}
         {remaining > 0 ? (
           <Chip
-            label={`еще ${remaining} ${pluralTag(remaining)}`}
+            label={`еще ${remaining} ${pluralCategory(remaining)}`}
             size="small"
             variant="outlined"
             onClick={(event) => {
@@ -57,18 +57,18 @@ export function TagRow({ tagNames = [], tags, maxVisible = 3, onShowAll }: TagRo
 
       {!onShowAll && (
         <Dialog open={isOpen} onClose={() => setIsOpen(false)} fullWidth maxWidth="sm">
-          <DialogTitle>Теги</DialogTitle>
+          <DialogTitle>Категории</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {source.map((tag) => (
+              {source.map((category) => (
                 <Chip
-                  key={tag.id}
-                  label={tag.label}
+                  key={category.id}
+                  label={category.label}
                   sx={
-                    tag.color
+                    category.color
                       ? {
-                          borderColor: alpha(tag.color, 0.55),
-                          bgcolor: alpha(tag.color, 0.14),
+                          borderColor: alpha(category.color, 0.55),
+                          bgcolor: alpha(category.color, 0.14),
                         }
                       : undefined
                   }
