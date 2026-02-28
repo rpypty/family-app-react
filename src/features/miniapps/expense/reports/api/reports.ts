@@ -52,7 +52,7 @@ type ReportsMonthlyQuery = {
   fromMonth: string
   toMonth: string
   currency?: string
-  tagIds?: string[]
+  categoryIds?: string[]
 }
 
 type ReportsCompareQuery = {
@@ -61,7 +61,7 @@ type ReportsCompareQuery = {
   fromB: string
   toB: string
   currency?: string
-  tagIds?: string[]
+  categoryIds?: string[]
 }
 
 const buildQuery = (params: Record<string, string | number | undefined>) => {
@@ -74,7 +74,7 @@ const buildQuery = (params: Record<string, string | number | undefined>) => {
   return query ? `?${query}` : ''
 }
 
-const toTagIdsParam = (tagIds?: string[]) => (tagIds && tagIds.length > 0 ? tagIds.join(',') : undefined)
+const toCategoryIdsParam = (categoryIds?: string[]) => (categoryIds && categoryIds.length > 0 ? categoryIds.join(',') : undefined)
 
 export const getReportsMonthly = async (
   params: ReportsMonthlyQuery,
@@ -83,7 +83,7 @@ export const getReportsMonthly = async (
     from_month: params.fromMonth,
     to_month: params.toMonth,
     currency: params.currency,
-    tag_ids: toTagIdsParam(params.tagIds),
+    category_ids: toCategoryIdsParam(params.categoryIds),
   })
   const response = await apiFetch<ReportsMonthlyResponse[]>(`/reports/monthly${query}`)
   return response.map((row) => ({
@@ -102,7 +102,7 @@ export const getReportsCompare = async (
     from_b: params.fromB,
     to_b: params.toB,
     currency: params.currency,
-    tag_ids: toTagIdsParam(params.tagIds),
+    category_ids: toCategoryIdsParam(params.categoryIds),
   })
   const response = await apiFetch<ReportsCompareResponseApi>(`/reports/compare${query}`)
   return {

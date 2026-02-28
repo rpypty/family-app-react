@@ -50,7 +50,11 @@ export function useAppNavigation() {
   }
 
   const handleBackNavigation = () => {
-    const target = resolveBackNavigationTarget({ activeApp, currentPath })
+    const target = resolveBackNavigationTarget({
+      activeApp,
+      currentPath,
+      search: location.search,
+    })
     if (target === ROUTES.home) {
       navigateHome()
       return

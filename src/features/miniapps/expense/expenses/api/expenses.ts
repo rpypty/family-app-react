@@ -9,7 +9,7 @@ type ApiExpense = {
   amount: number
   currency: string
   title: string
-  tag_ids: string[]
+  category_ids: string[]
   created_at: string
   updated_at: string
 }
@@ -22,8 +22,8 @@ type ExpenseListResponse = {
 export type ExpenseListParams = {
   from?: string
   to?: string
-  tagId?: string
-  tagIds?: string[]
+  categoryId?: string
+  categoryIds?: string[]
   limit?: number
   offset?: number
 }
@@ -34,17 +34,17 @@ const mapExpense = (expense: ApiExpense): Expense => ({
   amount: expense.amount,
   currency: expense.currency as Currency,
   title: expense.title,
-  tagIds: expense.tag_ids ?? [],
+  categoryIds: expense.category_ids ?? [],
 })
 
 const buildQuery = (params: ExpenseListParams): string => {
   const search = new URLSearchParams()
   if (params.from) search.set('from', params.from)
   if (params.to) search.set('to', params.to)
-  if (params.tagIds && params.tagIds.length > 0) {
-    search.set('tag_ids', params.tagIds.join(','))
-  } else if (params.tagId) {
-    search.set('tag_id', params.tagId)
+  if (params.categoryIds && params.categoryIds.length > 0) {
+    search.set('category_ids', params.categoryIds.join(','))
+  } else if (params.categoryId) {
+    search.set('category_id', params.categoryId)
   }
   if (params.limit !== undefined) search.set('limit', String(params.limit))
   if (params.offset !== undefined) search.set('offset', String(params.offset))
@@ -79,7 +79,7 @@ export const createExpense = async (expense: Expense): Promise<Expense> => {
       amount: expense.amount,
       currency: expense.currency,
       title: expense.title,
-      tag_ids: expense.tagIds,
+      category_ids: expense.categoryIds,
     }),
   })
   return mapExpense(response)
@@ -93,7 +93,7 @@ export const updateExpense = async (expense: Expense): Promise<Expense> => {
       amount: expense.amount,
       currency: expense.currency,
       title: expense.title,
-      tag_ids: expense.tagIds,
+      category_ids: expense.categoryIds,
     }),
   })
   return mapExpense(response)

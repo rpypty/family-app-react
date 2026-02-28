@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import ColorLensRounded from '@mui/icons-material/ColorLensRounded'
 import {
   Box,
@@ -7,9 +7,9 @@ import {
   Typography,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import { normalizeTagColor } from '../lib/tagAppearance'
+import { normalizeCategoryColor } from '../lib/categoryAppearance'
 
-type TagColorPickerFieldProps = {
+type CategoryColorPickerFieldProps = {
   value: string | null
   onChange: (value: string | null) => void
   options: readonly string[]
@@ -17,20 +17,19 @@ type TagColorPickerFieldProps = {
   clearLabel?: string
 }
 
-export function TagColorPickerField({
+export function CategoryColorPickerField({
   value,
   onChange,
   options,
-  label = 'Цвет тэга',
+  label = 'Цвет категории',
   clearLabel = 'Убрать цвет',
-}: TagColorPickerFieldProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const normalizedValue = normalizeTagColor(value)
+}: CategoryColorPickerFieldProps) {
+  const normalizedValue = normalizeCategoryColor(value)
 
   const palette = useMemo(
     () =>
       options
-        .map((color) => normalizeTagColor(color))
+        .map((color) => normalizeCategoryColor(color))
         .filter((color): color is string => Boolean(color)),
     [options],
   )
@@ -83,11 +82,10 @@ export function TagColorPickerField({
         })}
 
         <Box
-          component="button"
-          type="button"
+          component="label"
           aria-label="Выбрать кастомный цвет"
-          onClick={() => inputRef.current?.click()}
           sx={{
+            position: 'relative',
             width: 26,
             height: 26,
             borderRadius: 999,
@@ -104,6 +102,7 @@ export function TagColorPickerField({
             display: 'grid',
             placeItems: 'center',
             cursor: 'pointer',
+            overflow: 'hidden',
             transition: 'border-color 0.2s, transform 0.15s',
             '&:hover': {
               borderColor: 'text.primary',
@@ -111,23 +110,25 @@ export function TagColorPickerField({
           }}
         >
           <ColorLensRounded sx={{ fontSize: 15 }} />
+          <Box
+            component="input"
+            type="color"
+            value={pickerValue}
+            onChange={(event) => onChange(normalizeCategoryColor(event.target.value) ?? null)}
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer',
+              border: 0,
+              p: 0,
+              m: 0,
+            }}
+          />
         </Box>
       </Stack>
-
-      <Box
-        component="input"
-        ref={inputRef}
-        type="color"
-        value={pickerValue}
-        onChange={(event) => onChange(normalizeTagColor(event.target.value) ?? null)}
-        sx={{
-          position: 'absolute',
-          width: 0,
-          height: 0,
-          opacity: 0,
-          pointerEvents: 'none',
-        }}
-      />
     </Stack>
   )
 }

@@ -1,7 +1,7 @@
-import type { Expense, StorageState, Tag } from '../types'
+import type { Expense, StorageState, Category } from '../types'
 import { createId } from '../lib/uuid'
 
-const TAG_NAMES = [
+const CATEGORY_NAMES = [
   'Еда',
   'Транспорт',
   'Дом',
@@ -80,12 +80,12 @@ const pickUnique = <T,>(items: T[], count: number) => {
 const createExpense = ({
   date,
   title,
-  tagIds,
+  categoryIds,
   multiplier = 1,
 }: {
   date: string
   title: string
-  tagIds: string[]
+  categoryIds: string[]
   multiplier?: number
 }): Expense => {
   const base = 5 + Math.floor(Math.random() * 150) + Math.random()
@@ -96,14 +96,14 @@ const createExpense = ({
     amount: Number(scaled.toFixed(2)),
     currency: 'BYN',
     title,
-    tagIds,
+    categoryIds,
   }
 }
 
 export const createSeedState = (
   targetCount: number = DEFAULT_TARGET_COUNT,
 ): StorageState => {
-  const tags: Tag[] = TAG_NAMES.map((name) => ({
+  const categories: Category[] = CATEGORY_NAMES.map((name) => ({
     id: createId(),
     name,
   }))
@@ -146,8 +146,8 @@ export const createSeedState = (
 
     for (let j = 0; j < count; j += 1) {
       const day = 1 + Math.floor(Math.random() * maxDay)
-      const tagCount = 1 + Math.floor(Math.random() * 2)
-      const picked = pickUnique(tags, tagCount).map((tag) => tag.id)
+      const categoryCount = 1 + Math.floor(Math.random() * 2)
+      const picked = pickUnique(categories, categoryCount).map((category) => category.id)
       const localMultiplier = Math.min(
         2,
         Math.max(0.1, monthMultiplier * (0.85 + Math.random() * 0.3)),
@@ -156,7 +156,7 @@ export const createSeedState = (
         createExpense({
           date: createDateKey(new Date(year, monthIndex, day)),
           title: pickRandom(TITLES),
-          tagIds: picked,
+          categoryIds: picked,
           multiplier: localMultiplier,
         }),
       )
@@ -170,7 +170,7 @@ export const createSeedState = (
       amount: 12.4,
       currency: 'BYN',
       title: 'Сегодня: кофе',
-      tagIds: tags[0] ? [tags[0].id] : [],
+      categoryIds: categories[0] ? [categories[0].id] : [],
     })
     const yesterday = new Date(baseDay)
     yesterday.setDate(baseDay.getDate() - 1)
@@ -180,13 +180,13 @@ export const createSeedState = (
       amount: 28.3,
       currency: 'BYN',
       title: 'Вчера: такси',
-      tagIds: tags[1] ? [tags[1].id] : [],
+      categoryIds: categories[1] ? [categories[1].id] : [],
     })
   }
 
   return {
     expenses,
-    tags,
+    categories,
     todoLists: [],
     settings: { themeMode: 'light' },
   }

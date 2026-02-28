@@ -6,7 +6,7 @@ export type SyncCreateExpensePayload = {
   amount: number
   currency: Currency
   title: string
-  tag_ids?: string[]
+  category_ids?: string[]
 }
 
 export type SyncCreateTodoPayload = {

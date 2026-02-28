@@ -1,7 +1,7 @@
 import type { Dispatch, MouseEvent, SetStateAction } from 'react'
 import type { FamilyMember } from '../../../features/family/api/families'
-import type { TagAppearanceInput } from '../../../shared/lib/tagAppearance'
-import type { Expense, Tag } from '../../../shared/types'
+import type { CategoryAppearanceInput } from '../../../shared/lib/categoryAppearance'
+import type { Expense, Category } from '../../../shared/types'
 import type { TabId } from '../../routing/routes'
 
 type UseAppShellActionsParams = {
@@ -57,13 +57,13 @@ type UseAppShellActionsParams = {
     handleCreateExpense: (expense: Expense) => Promise<void>
     handleUpdateExpense: (expense: Expense) => Promise<void>
     handleDeleteExpense: (expenseId: string) => Promise<void>
-    handleCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
-    handleUpdateTag: (
-      tagId: string,
+    handleCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+    handleUpdateCategory: (
+      categoryId: string,
       name: string,
-      payload?: TagAppearanceInput,
-    ) => Promise<Tag>
-    handleDeleteTag: (tagId: string) => Promise<void>
+      payload?: CategoryAppearanceInput,
+    ) => Promise<Category>
+    handleDeleteCategory: (categoryId: string) => Promise<void>
   }
 }
 
@@ -109,9 +109,9 @@ export function useAppShellActions({
     handleCreateExpense,
     handleUpdateExpense,
     handleDeleteExpense,
-    handleCreateTag,
-    handleUpdateTag,
-    handleDeleteTag,
+    handleCreateCategory,
+    handleUpdateCategory,
+    handleDeleteCategory,
   },
 }: UseAppShellActionsParams) {
   const handleManualRetry = async () => {
@@ -157,9 +157,9 @@ export function useAppShellActions({
     onCreateExpense: handleCreateExpense,
     onUpdateExpense: handleUpdateExpense,
     onDeleteExpense: handleDeleteExpense,
-    onCreateTag: handleCreateTag,
-    onUpdateTag: handleUpdateTag,
-    onDeleteTag: handleDeleteTag,
+    onCreateCategory: handleCreateCategory,
+    onUpdateCategory: handleUpdateCategory,
+    onDeleteCategory: handleDeleteCategory,
     onNavigateExpenseTab: navigateExpenseTab,
     onCloseOfflineSyncNotice: () => setOfflineSyncNoticeOpen(false),
   }

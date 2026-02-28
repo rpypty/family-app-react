@@ -10,11 +10,11 @@ export type Expense = {
   amount: number
   currency: Currency
   title: string
-  tagIds: string[]
+  categoryIds: string[]
   syncState?: SyncState
 }
 
-export type Tag = {
+export type Category = {
   id: string
   name: string
   color?: string
@@ -59,7 +59,7 @@ export type Settings = {
 
 export type StorageState = {
   expenses: Expense[]
-  tags: Tag[]
+  categories: Category[]
   todoLists: TodoList[]
   settings: Settings
 }

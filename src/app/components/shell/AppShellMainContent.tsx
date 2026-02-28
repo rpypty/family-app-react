@@ -42,7 +42,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
       {model.activeApp === 'expenses' && model.activeTab === 'expenses' ? (
         <ExpensesScreen
           expenses={model.state.expenses}
-          tags={model.state.tags}
+          categories={model.state.categories}
           total={model.expensesTotal}
           hasMore={!model.isReadOnly && model.state.expenses.length < model.expensesTotal}
           isLoadingMore={model.isExpensesLoadingMore}
@@ -50,7 +50,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
           onCreateExpense={model.onCreateExpense}
           onUpdateExpense={model.onUpdateExpense}
           onDeleteExpense={model.onDeleteExpense}
-          onCreateTag={model.onCreateTag}
+          onCreateCategory={model.onCreateCategory}
           readOnly={model.isReadOnly}
           allowOfflineCreate={model.isOfflineLike}
         />
@@ -58,11 +58,11 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
 
       {model.activeApp === 'expenses' && model.activeTab === 'analytics' ? (
         <AnalyticsScreen
-          tags={model.state.tags}
+          categories={model.state.categories}
           readOnly={model.isReadOnly}
-          onCreateTag={model.onCreateTag}
-          onUpdateTag={model.onUpdateTag}
-          onDeleteTag={model.onDeleteTag}
+          onCreateCategory={model.onCreateCategory}
+          onUpdateCategory={model.onUpdateCategory}
+          onDeleteCategory={model.onDeleteCategory}
         />
       ) : null}
 

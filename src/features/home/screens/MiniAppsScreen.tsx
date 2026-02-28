@@ -46,7 +46,7 @@ export function MiniAppsScreen({ onOpenExpenses, onOpenTodo, onOpenWorkouts }: M
               Расходы
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Быстрые записи, теги и аналитика.
+              Быстрые записи, категории и аналитика.
             </Typography>
           </Stack>
           <Button

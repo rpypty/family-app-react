@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 import type { AuthSession } from '../../features/auth/api/auth'
 import { listExpensePage } from '../../features/miniapps/expense/expenses/api/expenses'
-import { listTags } from '../../features/miniapps/expense/expenses/api/tags'
+import { listCategories } from '../../features/miniapps/expense/expenses/api/categories'
 import { listTodoLists } from '../../features/miniapps/todo/api/todos'
 import type { OfflineOutboxOperation } from '../../features/sync/model/offlineOutbox'
 import { resolvePendingCreateIds } from '../../features/sync/model/offlineOutbox'
@@ -77,7 +77,7 @@ export function useSyncRunner({
       if (syncInFlightRef.current) return false
       const hasLocalData =
         stateRef.current.expenses.length > 0 ||
-        stateRef.current.tags.length > 0 ||
+        stateRef.current.categories.length > 0 ||
         stateRef.current.todoLists.length > 0
 
       syncInFlightRef.current = true
@@ -121,12 +121,12 @@ export function useSyncRunner({
           })
         }
 
-        const [expensePage, tags, todoListPage] = await Promise.all([
+        const [expensePage, categories, todoListPage] = await Promise.all([
           listExpensePage(
             { limit: EXPENSES_PAGE_SIZE, offset: 0 },
             { timeoutMs },
           ),
-          listTags({ timeoutMs }),
+          listCategories({ timeoutMs }),
           listTodoLists(
             { includeItems: true, itemsArchived: 'all' },
             { timeoutMs },
@@ -138,7 +138,7 @@ export function useSyncRunner({
         const nextSlices = mergeFetchedStateWithPendingCreates(
           {
             expenses: expensePage.items,
-            tags,
+            categories,
             todoLists: todoListPage.items,
           },
           stateRef.current,
@@ -150,7 +150,7 @@ export function useSyncRunner({
             {
               ...prev,
               expenses: nextSlices.expenses,
-              tags: nextSlices.tags,
+              categories: nextSlices.categories,
               todoLists: nextSlices.todoLists,
             },
             pendingOperations,

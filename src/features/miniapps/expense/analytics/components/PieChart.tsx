@@ -4,6 +4,7 @@ import { Box } from '@mui/material'
 export type PieSlice = {
   id?: string
   label: string
+  emoji?: string
   value: number
   color: string
 }
@@ -14,6 +15,9 @@ type PieChartProps = {
   className?: string
   activeSliceId?: string | null
   onSliceClick?: (slice: PieSlice, index: number) => void
+  centerValue?: string
+  centerLabel?: string
+  holeRatio?: number
 }
 
 const polarToCartesian = (center: number, radius: number, angleDegrees: number) => {
@@ -24,11 +28,32 @@ const polarToCartesian = (center: number, radius: number, angleDegrees: number) 
   }
 }
 
-const describeArc = (center: number, radius: number, startAngle: number, endAngle: number) => {
-  const start = polarToCartesian(center, radius, endAngle)
-  const end = polarToCartesian(center, radius, startAngle)
+const describeDonutArc = (
+  center: number,
+  outerRadius: number,
+  innerRadius: number,
+  startAngle: number,
+  endAngle: number,
+) => {
+  const startOuter = polarToCartesian(center, outerRadius, startAngle)
+  const endOuter = polarToCartesian(center, outerRadius, endAngle)
+  const startInner = polarToCartesian(center, innerRadius, startAngle)
+  const endInner = polarToCartesian(center, innerRadius, endAngle)
   const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
-  return `M ${center} ${center} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y} Z`
+  return [
+    `M ${startOuter.x} ${startOuter.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${endOuter.x} ${endOuter.y}`,
+    `L ${endInner.x} ${endInner.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${startInner.x} ${startInner.y}`,
+    'Z',
+  ].join(' ')
+}
+
+const describePieArc = (center: number, radius: number, startAngle: number, endAngle: number) => {
+  const start = polarToCartesian(center, radius, startAngle)
+  const end = polarToCartesian(center, radius, endAngle)
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
+  return `M ${center} ${center} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`
 }
 
 export function PieChart({
@@ -37,6 +62,9 @@ export function PieChart({
   className,
   activeSliceId,
   onSliceClick,
+  centerValue,
+  centerLabel,
+  holeRatio = 0.58,
 }: PieChartProps) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0)
 
@@ -64,7 +92,11 @@ export function PieChart({
   }
 
   const center = size / 2
-  const radius = size / 2
+  const outerRadius = size / 2
+  const normalizedHoleRatio = Math.min(0.8, Math.max(0, holeRatio))
+  const isDonut = normalizedHoleRatio > 0.05
+  const innerRadius = isDonut ? outerRadius * normalizedHoleRatio : 0
+  const ringWidth = isDonut ? outerRadius - innerRadius : outerRadius
 
   const paths = slices.reduce<{
     nextStartAngle: number
@@ -74,17 +106,29 @@ export function PieChart({
       percent: number
       labelPos: { x: number; y: number }
       label: string
+      emoji?: string
       id?: string
       offsetPoint: { x: number; y: number }
     }>
   }>((acc, slice) => {
     const sweep = (slice.value / total) * 360
-    const endAngle = acc.nextStartAngle + sweep
-    const path = describeArc(center, radius, acc.nextStartAngle, endAngle)
+    const adjustedSweep = sweep >= 360 ? 359.999 : sweep
+    const endAngle = acc.nextStartAngle + adjustedSweep
+    const path = isDonut
+      ? describeDonutArc(
+          center,
+          outerRadius,
+          innerRadius,
+          acc.nextStartAngle,
+          endAngle,
+        )
+      : describePieArc(center, outerRadius, acc.nextStartAngle, endAngle)
     const midAngle = acc.nextStartAngle + sweep / 2
     const percent = (slice.value / total) * 100
-    const labelPos = polarToCartesian(center, radius * 0.62, midAngle)
-    const offset = 8
+    const labelPos = isDonut
+      ? polarToCartesian(center, innerRadius + ringWidth * 0.5, midAngle)
+      : polarToCartesian(center, outerRadius * 0.62, midAngle)
+    const offset = 6
     const angleRad = (midAngle * Math.PI) / 180
     const offsetPoint = {
       x: Math.cos(angleRad) * offset,
@@ -101,6 +145,7 @@ export function PieChart({
           percent,
           labelPos,
           label: slice.label,
+          emoji: slice.emoji,
           id: slice.id,
           offsetPoint,
         },
@@ -111,11 +156,15 @@ export function PieChart({
   const style: CSSProperties = { width: size, height: size }
 
   const isInteractive = Boolean(onSliceClick)
+  const resolvedCenterValue = centerValue ?? String(Math.round(total))
+  const valueFontSize = resolvedCenterValue.length > 10 ? 12 : 16
+  const shouldShowCenterValue = isDonut
+  const shouldShowCenterLabel = isDonut && Boolean(centerLabel)
 
   return (
     <Box
       className={className}
-      sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+      sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'text.primary' }}
     >
       <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={style}>
         {paths.map((slice, index) => {
@@ -141,27 +190,80 @@ export function PieChart({
             />
           )
         })}
-        {paths.map((slice, index) =>
-          slice.percent >= 6 ? (
-            <text
-              key={`${slice.label}-label-${index}`}
-              x={slice.labelPos.x}
-              y={slice.labelPos.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              onClick={() => onSliceClick?.(slices[index], index)}
-              style={{
-                fill: 'white',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: isInteractive ? 'pointer' : 'default',
-                userSelect: 'none',
-              }}
-            >
-              {slice.percent.toFixed(0)}%
-            </text>
-          ) : null,
-        )}
+        {paths.map((slice, index) => {
+          if (slice.percent < 6) return null
+          const showEmoji = Boolean(slice.emoji) && slice.percent >= 13
+          const percentY = showEmoji ? slice.labelPos.y + 6 : slice.labelPos.y
+          return (
+            <g key={`${slice.label}-label-${index}`} onClick={() => onSliceClick?.(slices[index], index)}>
+              {showEmoji ? (
+                <text
+                  x={slice.labelPos.x}
+                  y={slice.labelPos.y - 7}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{
+                    fontSize: 12,
+                    opacity: 0.9,
+                    cursor: isInteractive ? 'pointer' : 'default',
+                    userSelect: 'none',
+                  }}
+                >
+                  {slice.emoji}
+                </text>
+              ) : null}
+              <text
+                x={slice.labelPos.x}
+                y={percentY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                style={{
+                  fill: 'rgba(255,255,255,0.82)',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: isInteractive ? 'pointer' : 'default',
+                  userSelect: 'none',
+                }}
+              >
+                {slice.percent.toFixed(0)}%
+              </text>
+            </g>
+          )
+        })}
+        {shouldShowCenterValue ? (
+          <text
+            x={center}
+            y={shouldShowCenterLabel ? center - 6 : center}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{
+              fill: 'currentColor',
+              fontSize: valueFontSize,
+              fontWeight: 700,
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          >
+            {resolvedCenterValue}
+          </text>
+        ) : null}
+        {shouldShowCenterLabel ? (
+          <text
+            x={center}
+            y={center + 12}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{
+              fill: 'currentColor',
+              fontSize: 11,
+              opacity: 0.65,
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          >
+            {centerLabel}
+          </text>
+        ) : null}
       </svg>
     </Box>
   )

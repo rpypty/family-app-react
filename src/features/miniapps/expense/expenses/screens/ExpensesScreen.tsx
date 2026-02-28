@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   Card,
   CardContent,
@@ -13,7 +13,13 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
-import type { Expense, Tag } from '../../../../../shared/types'
+import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  EXPENSES_ROUTES,
+  ROUTES,
+  resolveExpensesRoute,
+} from '../../../../../app/routing/routes'
+import type { Expense, Category } from '../../../../../shared/types'
 import {
   aggregateByCurrency,
   formatDayHeader,
@@ -22,19 +28,19 @@ import {
   formatAmount,
 } from '../../../../../shared/lib/formatters'
 import {
-  getFirstTagColor,
-  getFirstTagEmoji,
-  normalizeTagColor,
-  withTagEmoji,
-  type TagAppearanceInput,
-} from '../../../../../shared/lib/tagAppearance'
+  getFirstCategoryColor,
+  getFirstCategoryEmoji,
+  normalizeCategoryColor,
+  withCategoryEmoji,
+  type CategoryAppearanceInput,
+} from '../../../../../shared/lib/categoryAppearance'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
 
 type ExpensesScreenProps = {
   expenses: Expense[]
-  tags: Tag[]
+  categories: Category[]
   total: number
   hasMore: boolean
   isLoadingMore: boolean
@@ -42,14 +48,14 @@ type ExpensesScreenProps = {
   onCreateExpense: (expense: Expense) => Promise<void>
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
-  onCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+  onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   readOnly?: boolean
   allowOfflineCreate?: boolean
 }
 
 export function ExpensesScreen({
   expenses,
-  tags,
+  categories,
   total,
   hasMore,
   isLoadingMore,
@@ -57,17 +63,26 @@ export function ExpensesScreen({
   onCreateExpense,
   onUpdateExpense,
   onDeleteExpense,
-  onCreateTag,
+  onCreateCategory,
   readOnly = false,
   allowOfflineCreate = false,
 }: ExpensesScreenProps) {
-  const [isFormOpen, setFormOpen] = useState(false)
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
-  const maxTagVisible = isSmall ? 2 : 3
+  const maxCategoryVisible = isSmall ? 2 : 3
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
+  const expenseRoute = useMemo(() => resolveExpensesRoute(location.pathname), [location.pathname])
+  const isNewRoute = expenseRoute.view === 'new' || expenseRoute.view === 'new-category'
+  const isEditRoute =
+    expenseRoute.view === 'edit' ||
+    expenseRoute.view === 'edit-category' ||
+    expenseRoute.view === 'edit-delete'
+  const isCategoryCreateOpen =
+    expenseRoute.view === 'new-category' || expenseRoute.view === 'edit-category'
+  const isDeleteConfirmOpen = expenseRoute.view === 'edit-delete'
   const sentinelRef = useInfiniteScroll({
     enabled: hasMore && !readOnly,
     loading: isLoadingMore,
@@ -88,18 +103,73 @@ export function ExpensesScreen({
     return { groupedByDay: grouped, dayKeys: keys }
   }, [expenses])
 
-  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags])
+  const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
+  const editingExpense = useMemo(() => {
+    if (expenseRoute.view === 'edit' || expenseRoute.view === 'edit-category' || expenseRoute.view === 'edit-delete') {
+      return expenses.find((expense) => expense.id === expenseRoute.expenseId) ?? null
+    }
+    return null
+  }, [expenseRoute, expenses])
+  const isFormOpen = isNewRoute || Boolean(editingExpense)
+
+  useEffect(() => {
+    if (!canCreate && isNewRoute) {
+      navigate(ROUTES.expenses, { replace: true })
+    }
+  }, [canCreate, isNewRoute, navigate])
+
+  useEffect(() => {
+    if (!canEdit && isEditRoute) {
+      navigate(ROUTES.expenses, { replace: true })
+    }
+  }, [canEdit, isEditRoute, navigate])
+
+  useEffect(() => {
+    if (!isEditRoute || editingExpense) return
+    navigate(ROUTES.expenses, { replace: true })
+  }, [isEditRoute, editingExpense, navigate])
 
   const openCreate = () => {
     if (!canCreate) return
-    setEditingExpense(null)
-    setFormOpen(true)
+    navigate(EXPENSES_ROUTES.new)
   }
 
   const openEdit = (expense: Expense) => {
     if (readOnly) return
-    setEditingExpense(expense)
-    setFormOpen(true)
+    navigate(EXPENSES_ROUTES.edit(expense.id))
+  }
+
+  const closeForm = () => {
+    navigate(ROUTES.expenses, { replace: true })
+  }
+
+  const openCategoryCreate = () => {
+    if (expenseRoute.view === 'new' || expenseRoute.view === 'new-category') {
+      navigate(EXPENSES_ROUTES.newCategory)
+      return
+    }
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.editCategory(editingExpense.id))
+  }
+
+  const closeCategoryCreate = () => {
+    if (expenseRoute.view === 'new-category') {
+      navigate(EXPENSES_ROUTES.new, { replace: true })
+      return
+    }
+    if (expenseRoute.view === 'edit-category' && editingExpense) {
+      navigate(EXPENSES_ROUTES.edit(editingExpense.id), { replace: true })
+    }
+  }
+
+  const openDeleteConfirm = () => {
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.editDelete(editingExpense.id))
+  }
+
+  const closeDeleteConfirm = () => {
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.edit(editingExpense.id), { replace: true })
   }
 
   const handleSave = async (expense: Expense) => {
@@ -112,12 +182,11 @@ export function ExpensesScreen({
 
   const handleDelete = async (expenseId: string) => {
     await onDeleteExpense(expenseId)
-    setFormOpen(false)
   }
 
   return (
     <>
-      <Card elevation={0}>
+      <Card elevation={0} sx={{ overflow: 'visible' }}>
         <CardContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
             {expenses.length === 0 ? (
@@ -139,6 +208,15 @@ export function ExpensesScreen({
                         justifyContent="space-between"
                         alignItems="center"
                         spacing={1}
+                        sx={(themeValue) => ({
+                          position: 'sticky',
+                          top: `calc(env(safe-area-inset-top) + ${themeValue.spacing(6.5)})`,
+                          zIndex: themeValue.zIndex.appBar - 1,
+                          py: 0.75,
+                          bgcolor: 'background.paper',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                        })}
                       >
                         <Typography variant="subtitle1" fontWeight={700}>
                           {formatDayHeader(parseDate(dateKey))}
@@ -149,13 +227,14 @@ export function ExpensesScreen({
                       </Stack>
                       <Stack spacing={1}>
                         {dayExpenses.map((expense) => {
-                          const expenseTags = expense.tagIds
-                            .map((id) => tagMap.get(id))
-                            .filter((tag): tag is Tag => Boolean(tag))
-                          const visibleTags = expenseTags.slice(0, maxTagVisible)
-                          const remainingTags = expenseTags.length - visibleTags.length
-                          const iconEmoji = getFirstTagEmoji(expenseTags)
-                          const iconColor = getFirstTagColor(expenseTags)
+                          const expenseCategories = expense.categoryIds
+                            .map((id) => categoryMap.get(id))
+                            .filter((category): category is Category => Boolean(category))
+                          const expenseTitle = expense.title.trim() || expenseCategories[0]?.name || ''
+                          const visibleCategories = expenseCategories.slice(0, maxCategoryVisible)
+                          const remainingCategories = expenseCategories.length - visibleCategories.length
+                          const iconEmoji = getFirstCategoryEmoji(expenseCategories)
+                          const iconColor = getFirstCategoryColor(expenseCategories)
                           return (
                             <Paper
                               key={expense.id}
@@ -206,7 +285,7 @@ export function ExpensesScreen({
                                       noWrap
                                       sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
                                     >
-                                      {expense.title}
+                                      {expenseTitle}
                                     </Typography>
                                     {expense.syncState && expense.syncState !== 'synced' ? (
                                       <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
@@ -222,7 +301,7 @@ export function ExpensesScreen({
                                       {formatAmount(expense.amount)} {expense.currency}
                                     </Typography>
                                   </Stack>
-                                  {expenseTags.length > 0 ? (
+                                  {expenseCategories.length > 0 ? (
                                     <Stack
                                       direction="row"
                                       spacing={1}
@@ -231,24 +310,24 @@ export function ExpensesScreen({
                                         overflow: 'hidden',
                                       }}
                                     >
-                                      {visibleTags.map((tag) => {
-                                        const tagColor = normalizeTagColor(tag.color)
+                                      {visibleCategories.map((category) => {
+                                        const categoryColor = normalizeCategoryColor(category.color)
                                         return (
                                           <Chip
-                                            key={tag.id}
-                                            label={withTagEmoji(tag)}
+                                            key={category.id}
+                                            label={withCategoryEmoji(category)}
                                             size="small"
                                             variant="outlined"
                                             sx={(theme) => ({
                                               flexShrink: 0,
                                               maxWidth: 150,
-                                              color: tagColor ?? theme.palette.text.secondary,
-                                              borderColor: tagColor
-                                                ? alpha(tagColor, 0.5)
+                                              color: categoryColor ?? theme.palette.text.secondary,
+                                              borderColor: categoryColor
+                                                ? alpha(categoryColor, 0.5)
                                                 : theme.palette.divider,
-                                              bgcolor: tagColor
+                                              bgcolor: categoryColor
                                                 ? alpha(
-                                                    tagColor,
+                                                    categoryColor,
                                                     theme.palette.mode === 'dark' ? 0.28 : 0.12,
                                                   )
                                                 : 'transparent',
@@ -261,9 +340,9 @@ export function ExpensesScreen({
                                           />
                                         )
                                       })}
-                                      {remainingTags > 0 ? (
+                                      {remainingCategories > 0 ? (
                                         <Chip
-                                          label={`${remainingTags}+ тегов`}
+                                          label={`${remainingCategories}+ категорий`}
                                           size="small"
                                           variant="outlined"
                                           sx={{
@@ -309,11 +388,17 @@ export function ExpensesScreen({
       <ExpenseFormModal
         isOpen={isFormOpen}
         expense={editingExpense}
-        tags={tags}
-        onClose={() => setFormOpen(false)}
+        isCategoryCreateOpen={isCategoryCreateOpen}
+        isDeleteConfirmOpen={isDeleteConfirmOpen}
+        categories={categories}
+        onClose={closeForm}
+        onOpenCategoryCreate={openCategoryCreate}
+        onCloseCategoryCreate={closeCategoryCreate}
+        onOpenDeleteConfirm={openDeleteConfirm}
+        onCloseDeleteConfirm={closeDeleteConfirm}
         onSave={handleSave}
         onDelete={handleDelete}
-        onCreateTag={onCreateTag}
+        onCreateCategory={onCreateCategory}
       />
 
       {canCreate ? (
@@ -324,8 +409,8 @@ export function ExpensesScreen({
           sx={{
             position: 'fixed',
             right: 16,
-            bottom: 'calc(72px + env(safe-area-inset-bottom))',
-            zIndex: 10,
+            bottom: 'calc(96px + env(safe-area-inset-bottom))',
+            zIndex: (themeValue) => themeValue.zIndex.appBar + 1,
           }}
         >
           <AddIcon />

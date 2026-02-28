@@ -333,7 +333,7 @@ export function TemplateEditor({
           autoFocus
           sx={{
             '& .MuiOutlinedInput-root': {
-              bgcolor: 'var(--wk-card)',
+              bgcolor: 'background.paper',
               borderRadius: 'var(--wk-radius-sm)',
             },
           }}
@@ -344,7 +344,7 @@ export function TemplateEditor({
           <Card
             variant="outlined"
             sx={{
-              bgcolor: 'var(--wk-card)',
+              bgcolor: 'background.paper',
               borderColor: 'var(--wk-border)',
               borderRadius: 'var(--wk-radius-sm)',
             }}
@@ -403,7 +403,7 @@ export function TemplateEditor({
 
       <Dialog open={confirm.open} onClose={() => setConfirm({ open: false })}>
         <DialogTitle>Подтвердите удаление</DialogTitle>
-        <DialogContent sx={{ bgcolor: 'var(--wk-card)' }}>
+        <DialogContent sx={{ bgcolor: 'background.paper' }}>
           <Typography variant="body2" sx={{ color: 'var(--wk-muted)' }}>
             {confirm.open && confirm.kind === 'exercise'
               ? `Удалить упражнение «${confirm.exerciseName}» и все его подходы?`

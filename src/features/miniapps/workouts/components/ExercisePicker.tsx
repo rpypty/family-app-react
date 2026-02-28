@@ -42,7 +42,7 @@ export function ExercisePicker({ open, exercises, onClose, onSelect, onCreate }:
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ bgcolor: 'var(--wk-card)' }}>
+      <DialogContent sx={{ bgcolor: 'background.paper' }}>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
             value={query}

@@ -29,6 +29,7 @@ export function AppShellHeader({ model }: AppShellHeaderProps) {
         borderBottom: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
+        overflow: 'hidden',
       }}
     >
       <Box sx={{ position: 'relative', py: 1.5, px: 2, textAlign: 'center' }}>
@@ -96,7 +97,13 @@ export function AppShellHeader({ model }: AppShellHeaderProps) {
       {model.isBackgroundSyncVisible ? (
         <LinearProgress
           color={model.dataSyncStatus === 'error' ? 'error' : 'primary'}
-          sx={{ height: 3 }}
+          sx={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 3,
+          }}
         />
       ) : null}
     </Paper>

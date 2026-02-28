@@ -5,10 +5,9 @@ import {
   Chip,
   Popover,
   Stack,
-  Tooltip,
   Typography,
 } from '@mui/material'
-import { normalizeTagEmoji } from '../lib/tagAppearance'
+import { normalizeCategoryEmoji } from '../lib/categoryAppearance'
 
 type EmojiCategory = {
   id: string
@@ -18,6 +17,15 @@ type EmojiCategory = {
 }
 
 const EMOJI_CATEGORIES: EmojiCategory[] = [
+  {
+    id: 'popular',
+    label: 'Популярные',
+    icon: '⭐',
+    emojis: [
+      '🛒', '🏠', '🚰', '🚗', '📱', '💊', '👟', '🧹', '🍽️', '🎮', '💳', '📚',
+      '🧸', '🎁', '✈️',
+    ],
+  },
   {
     id: 'smileys',
     label: 'Смайлы',
@@ -120,7 +128,7 @@ export function EmojiPickerField({
 }: EmojiPickerFieldProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const [activeCategoryId, setActiveCategoryId] = useState<string>(DEFAULT_CATEGORY_ID)
-  const currentEmoji = normalizeTagEmoji(value) ?? ''
+  const currentEmoji = normalizeCategoryEmoji(value) ?? ''
   const isOpen = Boolean(anchorEl)
 
   const activeCategory = useMemo(
@@ -213,34 +221,33 @@ export function EmojiPickerField({
                 {activeCategory.emojis.map((emoji) => {
                   const isActive = emoji === currentEmoji
                   return (
-                    <Tooltip key={`${activeCategory.id}-${emoji}`} title={emoji}>
-                      <Box
-                        component="button"
-                        type="button"
-                        onClick={() => {
-                          onChange(emoji)
-                          setAnchorEl(null)
-                        }}
-                        sx={(theme) => ({
-                          width: 36,
-                          height: 36,
-                          border: 'none',
-                          borderRadius: 1,
-                          backgroundColor: isActive
-                            ? theme.palette.action.selected
-                            : 'transparent',
-                          fontSize: '1.2rem',
-                          lineHeight: 1,
-                          cursor: 'pointer',
-                          transition: 'background-color 0.2s',
-                          '&:hover': {
-                            backgroundColor: theme.palette.action.hover,
-                          },
-                        })}
-                      >
-                        {emoji}
-                      </Box>
-                    </Tooltip>
+                    <Box
+                      key={`${activeCategory.id}-${emoji}`}
+                      component="button"
+                      type="button"
+                      onClick={() => {
+                        onChange(emoji)
+                        setAnchorEl(null)
+                      }}
+                      sx={(theme) => ({
+                        width: 36,
+                        height: 36,
+                        border: 'none',
+                        borderRadius: 1,
+                        backgroundColor: isActive
+                          ? theme.palette.action.selected
+                          : 'transparent',
+                        fontSize: '1.2rem',
+                        lineHeight: 1,
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s',
+                        '&:hover': {
+                          backgroundColor: theme.palette.action.hover,
+                        },
+                      })}
+                    >
+                      {emoji}
+                    </Box>
                   )
                 })}
               </Box>

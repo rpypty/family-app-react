@@ -1,7 +1,7 @@
 import { Avatar } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined'
-import { normalizeTagColor, normalizeTagEmoji } from '../lib/tagAppearance'
+import { normalizeCategoryColor, normalizeCategoryEmoji } from '../lib/categoryAppearance'
 
 type ExpenseIconProps = {
   size?: number
@@ -10,8 +10,8 @@ type ExpenseIconProps = {
 }
 
 export function ExpenseIcon({ size = 36, color, emoji }: ExpenseIconProps) {
-  const normalizedColor = normalizeTagColor(color)
-  const normalizedEmoji = normalizeTagEmoji(emoji)
+  const normalizedColor = normalizeCategoryColor(color)
+  const normalizedEmoji = normalizeCategoryEmoji(emoji)
   return (
     <Avatar
       aria-hidden

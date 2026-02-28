@@ -47,6 +47,39 @@ export const createAppTheme = (themeMode: 'light' | 'dark') => {
           },
         },
       },
+      MuiDialog: {
+        styleOverrides: {
+          paper: ({ theme }) => ({
+            backgroundColor: theme.palette.background.paper,
+            backgroundImage: 'none',
+          }),
+        },
+      },
+      MuiDialogTitle: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            backgroundColor: theme.palette.background.paper,
+            color: theme.palette.text.secondary,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            paddingTop: theme.spacing(1.5),
+            paddingBottom: theme.spacing(1.5),
+          }),
+        },
+      },
+      MuiDialogContent: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            backgroundColor: theme.palette.background.paper,
+          }),
+        },
+      },
+      MuiDialogActions: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            backgroundColor: theme.palette.background.paper,
+          }),
+        },
+      },
     },
   })
 }

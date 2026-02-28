@@ -27,6 +27,7 @@ export function AppShellExpensesTabs({ model }: AppShellExpensesTabsProps) {
         bottom: 0,
         left: 0,
         right: 0,
+        zIndex: (themeValue) => themeValue.zIndex.appBar,
         borderTop: 1,
         borderColor: 'divider',
         pb: 'env(safe-area-inset-bottom)',

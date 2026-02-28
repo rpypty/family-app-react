@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -9,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
@@ -16,32 +17,34 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
-import type { Currency, Expense, Tag } from '../../../../../shared/types'
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
-  DEFAULT_TAG_COLOR,
-  TAG_COLOR_OPTIONS,
-  normalizeTagColor,
-  normalizeTagEmoji,
-  withTagEmoji,
-  type TagAppearanceInput,
-} from '../../../../../shared/lib/tagAppearance'
+  DEFAULT_CATEGORY_COLOR,
+  CATEGORY_COLOR_OPTIONS,
+  normalizeCategoryColor,
+  normalizeCategoryEmoji,
+  withCategoryEmoji,
+  type CategoryAppearanceInput,
+} from '../../../../../shared/lib/categoryAppearance'
 import { EmojiPickerField } from '../../../../../shared/ui/EmojiPickerField'
-import { TagColorPickerField } from '../../../../../shared/ui/TagColorPickerField'
-import { findTagByName, selectedTags } from '../../../../../shared/lib/tagUtils'
+import { CategoryColorPickerField } from '../../../../../shared/ui/CategoryColorPickerField'
+import { findCategoryByName, selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import { createId } from '../../../../../shared/lib/uuid'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
 
-type TagCreateOption = {
+type CategoryCreateOption = {
   inputValue: string
   name: string
   isNew: true
 }
 
-type TagOption = Tag | TagCreateOption
+type CategoryOption = Category | CategoryCreateOption
 
-type PendingTagCreate = {
+type PendingCategoryCreate = {
   name: string
   nextIds: string[]
 }
@@ -49,38 +52,63 @@ type PendingTagCreate = {
 type ExpenseFormModalProps = {
   isOpen: boolean
   expense?: Expense | null
-  tags: Tag[]
+  isCategoryCreateOpen: boolean
+  isDeleteConfirmOpen: boolean
+  categories: Category[]
   onClose: () => void
+  onOpenCategoryCreate: () => void
+  onCloseCategoryCreate: () => void
+  onOpenDeleteConfirm: () => void
+  onCloseDeleteConfirm: () => void
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
-  onCreateTag: (name: string, payload?: TagAppearanceInput) => Promise<Tag>
+  onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
 }
 
 export function ExpenseFormModal({
   isOpen,
   expense,
-  tags,
+  isCategoryCreateOpen,
+  isDeleteConfirmOpen,
+  categories,
   onClose,
+  onOpenCategoryCreate,
+  onCloseCategoryCreate,
+  onOpenDeleteConfirm,
+  onCloseDeleteConfirm,
   onSave,
   onDelete,
-  onCreateTag,
+  onCreateCategory,
 }: ExpenseFormModalProps) {
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState<Currency>('BYN')
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
-  const [isTagCreating, setTagCreating] = useState(false)
-  const [tagCreateError, setTagCreateError] = useState('')
-  const [pendingTagCreate, setPendingTagCreate] = useState<PendingTagCreate | null>(null)
-  const [newTagColor, setNewTagColor] = useState<string | null>(DEFAULT_TAG_COLOR)
-  const [newTagEmoji, setNewTagEmoji] = useState('')
-  const [isConfirmOpen, setConfirmOpen] = useState(false)
+  const [isCategoryCreating, setCategoryCreating] = useState(false)
+  const [categoryCreateError, setCategoryCreateError] = useState('')
+  const [pendingCategoryCreate, setPendingCategoryCreate] = useState<PendingCategoryCreate | null>(null)
+  const [newCategoryColor, setNewCategoryColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
+  const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  const wasCategoryCreateOpen = useRef(isCategoryCreateOpen)
+
+  const resetPendingCategoryCreate = () => {
+    setPendingCategoryCreate(null)
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
+    setCategoryCreateError('')
+  }
+
+  const closeCategoryCreateDialog = () => {
+    if (isCategoryCreating) return
+    resetPendingCategoryCreate()
+    onCloseCategoryCreate()
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -88,25 +116,31 @@ export function ExpenseFormModal({
     setTitle(expense?.title ?? '')
     setAmount(expense?.amount?.toString() ?? '')
     setCurrency(expense?.currency ?? 'BYN')
-    setSelectedTagIds(new Set(expense?.tagIds ?? []))
+    setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
-    setTagCreateError('')
-    setTagCreating(false)
-    setPendingTagCreate(null)
-    setNewTagColor(DEFAULT_TAG_COLOR)
-    setNewTagEmoji('')
-    setConfirmOpen(false)
+    setCategoryCreateError('')
+    setCategoryCreating(false)
+    setPendingCategoryCreate(null)
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
     setSaving(false)
     setDeleting(false)
   }, [expense, isOpen])
 
-  const selectedTagList = useMemo(
-    () => selectedTags(tags, selectedTagIds),
-    [tags, selectedTagIds],
+  useEffect(() => {
+    if (wasCategoryCreateOpen.current && !isCategoryCreateOpen) {
+      resetPendingCategoryCreate()
+    }
+    wasCategoryCreateOpen.current = isCategoryCreateOpen
+  }, [isCategoryCreateOpen])
+
+  const selectedCategoryList = useMemo(
+    () => selectedCategories(categories, selectedCategoryIds),
+    [categories, selectedCategoryIds],
   )
 
-  const handleTagsChange = async (value: Array<TagOption | string>) => {
-    setTagCreateError('')
+  const handleCategoriesChange = async (value: Array<CategoryOption | string>) => {
+    setCategoryCreateError('')
     const nextIds = new Set<string>()
     let createName = ''
 
@@ -123,51 +157,51 @@ export function ExpenseFormModal({
     })
 
     if (!createName) {
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
     const trimmed = createName.trim()
     if (!trimmed) {
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
-    const existing = findTagByName(tags, trimmed)
+    const existing = findCategoryByName(categories, trimmed)
     if (existing) {
       nextIds.add(existing.id)
-      setSelectedTagIds(nextIds)
+      setSelectedCategoryIds(nextIds)
       return
     }
 
-    setSelectedTagIds(nextIds)
-    setPendingTagCreate({
+    setSelectedCategoryIds(nextIds)
+    setPendingCategoryCreate({
       name: trimmed,
       nextIds: Array.from(nextIds),
     })
-    setNewTagColor(DEFAULT_TAG_COLOR)
-    setNewTagEmoji('')
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
+    onOpenCategoryCreate()
   }
 
-  const handleConfirmTagCreate = async () => {
-    if (!pendingTagCreate) return
-    setTagCreating(true)
-    setTagCreateError('')
+  const handleConfirmCategoryCreate = async () => {
+    if (!pendingCategoryCreate) return
+    setCategoryCreating(true)
+    setCategoryCreateError('')
     try {
-      const created = await onCreateTag(pendingTagCreate.name, {
-        color: newTagColor === null ? null : normalizeTagColor(newTagColor) ?? null,
-        emoji: normalizeTagEmoji(newTagEmoji) ?? null,
+      const created = await onCreateCategory(pendingCategoryCreate.name, {
+        color: newCategoryColor === null ? null : normalizeCategoryColor(newCategoryColor) ?? null,
+        emoji: normalizeCategoryEmoji(newCategoryEmoji) ?? null,
       })
-      const nextIds = new Set(pendingTagCreate.nextIds)
+      const nextIds = new Set(pendingCategoryCreate.nextIds)
       nextIds.add(created.id)
-      setSelectedTagIds(nextIds)
-      setPendingTagCreate(null)
-      setNewTagColor(DEFAULT_TAG_COLOR)
-      setNewTagEmoji('')
+      setSelectedCategoryIds(nextIds)
+      resetPendingCategoryCreate()
+      onCloseCategoryCreate()
     } catch {
-      setTagCreateError('Не удалось создать тег. Попробуйте ещё раз.')
+      setCategoryCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
     } finally {
-      setTagCreating(false)
+      setCategoryCreating(false)
     }
   }
 
@@ -175,8 +209,9 @@ export function ExpenseFormModal({
     const normalizedAmount = amount.replace(/\s/g, '').replace(',', '.')
     const parsedAmount = Number.parseFloat(normalizedAmount)
     const trimmedTitle = title.trim()
+    const fallbackTitle = selectedCategoryList[0]?.name?.trim() ?? ''
 
-    if (!trimmedTitle || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError('Введите корректные данные')
       return
     }
@@ -186,8 +221,8 @@ export function ExpenseFormModal({
       date,
       amount: parsedAmount,
       currency,
-      title: trimmedTitle,
-      tagIds: Array.from(selectedTagIds),
+      title: trimmedTitle || fallbackTitle,
+      categoryIds: Array.from(selectedCategoryIds),
     }
     setSaving(true)
     try {
@@ -198,6 +233,17 @@ export function ExpenseFormModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleAmountChange = (rawValue: string) => {
+    let sanitizedValue = rawValue.replace(/[^\d.,]/g, '')
+    const separatorIndex = sanitizedValue.search(/[.,]/)
+    if (separatorIndex !== -1) {
+      const integerPart = sanitizedValue.slice(0, separatorIndex + 1)
+      const fractionalPart = sanitizedValue.slice(separatorIndex + 1).replace(/[.,]/g, '')
+      sanitizedValue = `${integerPart}${fractionalPart}`
+    }
+    setAmount(sanitizedValue)
   }
 
   return (
@@ -218,31 +264,30 @@ export function ExpenseFormModal({
             py: 1.5,
           }}
         >
-          {expense ? 'Редактирование' : 'Новый расход'}
+          <Box sx={{ position: 'relative', textAlign: 'center' }}>
+            <IconButton
+              color="inherit"
+              onClick={onClose}
+              disabled={isSaving || isDeleting}
+              aria-label="Назад"
+              sx={{ position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <ArrowBackRounded />
+            </IconButton>
+            <Typography component="span" variant="h6" color="text.primary" sx={{ fontWeight: 600 }}>
+              {expense ? 'Редактирование' : 'Новый расход'}
+            </Typography>
+          </Box>
         </DialogTitle>
         <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
-            <TextField
-              type="date"
-              label="Дата"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
-            <TextField
-              label="Название"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например: продукты"
-              fullWidth
-            />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <Stack direction="row" spacing={1.5} alignItems="flex-start">
               <TextField
                 label="Сумма"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => handleAmountChange(event.target.value)}
                 inputMode="decimal"
+                slotProps={{ htmlInput: { pattern: '[0-9]*[.,]?[0-9]*' } }}
                 fullWidth
               />
               <TextField
@@ -250,7 +295,7 @@ export function ExpenseFormModal({
                 select
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value as Currency)}
-                fullWidth
+                sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
               >
                 {CURRENCIES.map((value) => (
                   <MenuItem key={value} value={value}>
@@ -261,24 +306,21 @@ export function ExpenseFormModal({
             </Stack>
             <Box>
               <Stack spacing={1}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Теги
-                </Typography>
-                <Autocomplete<TagOption, true, false, true>
+                <Autocomplete<CategoryOption, true, false, true>
                   multiple
                   freeSolo
                   disableCloseOnSelect
                   filterSelectedOptions
-                  options={tags}
-                  value={selectedTagList}
-                  loading={isTagCreating}
+                  options={categories}
+                  value={selectedCategoryList}
+                  loading={isCategoryCreating}
                   onInputChange={(_event, _value, reason) => {
-                    if (reason === 'input' && tagCreateError) {
-                      setTagCreateError('')
+                    if (reason === 'input' && categoryCreateError) {
+                      setCategoryCreateError('')
                     }
                   }}
                   onChange={(_, value) => {
-                    void handleTagsChange(value)
+                    void handleCategoriesChange(value)
                   }}
                   filterOptions={(options, params) => {
                     const inputValue = params.inputValue.trim()
@@ -286,7 +328,7 @@ export function ExpenseFormModal({
                     const filtered = options.filter((option) =>
                       option.name.toLowerCase().includes(normalized),
                     )
-                    if (inputValue && !findTagByName(tags, inputValue)) {
+                    if (inputValue && !findCategoryByName(categories, inputValue)) {
                       filtered.push({ inputValue, name: inputValue, isNew: true })
                     }
                     return filtered
@@ -294,7 +336,7 @@ export function ExpenseFormModal({
                   getOptionLabel={(option) => {
                     if (typeof option === 'string') return option
                     if ('isNew' in option) return option.name
-                    return withTagEmoji(option)
+                    return withCategoryEmoji(option)
                   }}
                   isOptionEqualToValue={(option, value) => {
                     if (typeof option === 'string' || typeof value === 'string') {
@@ -305,9 +347,9 @@ export function ExpenseFormModal({
                   }}
                   renderOption={(props, option) => {
                     if ('isNew' in option) {
-                      return <li {...props}>{`Добавить тег "${option.name}"`}</li>
+                      return <li {...props}>{`Добавить категорию "${option.name}"`}</li>
                     }
-                    const tagColor = normalizeTagColor(option.color)
+                    const categoryColor = normalizeCategoryColor(option.color)
                     return (
                       <li {...props}>
                         <Stack direction="row" alignItems="center" spacing={1}>
@@ -316,43 +358,49 @@ export function ExpenseFormModal({
                               width: 8,
                               height: 8,
                               borderRadius: 999,
-                              bgcolor: tagColor ?? 'divider',
+                              bgcolor: categoryColor ?? 'divider',
                               border: '1px solid',
-                              borderColor: tagColor ? alpha(tagColor, 0.5) : 'divider',
+                              borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
                               flexShrink: 0,
                             }}
                           />
-                          <Typography variant="body2">{withTagEmoji(option)}</Typography>
+                          <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
                         </Stack>
                       </li>
                     )
                   }}
                   renderTags={(value, getTagProps) =>
                     value.map((option, index) => {
-                      if (typeof option === 'string' || 'isNew' in option) {
-                        return (
-                          <Chip
-                            {...getTagProps({ index })}
-                            key={`${option}-${index}`}
-                            label={typeof option === 'string' ? option : option.name}
-                            size="small"
-                          />
-                        )
-                      }
-                      const tagColor = normalizeTagColor(option.color)
+                      const label =
+                        typeof option === 'string'
+                          ? option
+                          : 'isNew' in option
+                            ? option.name
+                            : withCategoryEmoji(option)
+                      const categoryColor =
+                        typeof option === 'object' && !('isNew' in option)
+                          ? normalizeCategoryColor(option.color)
+                          : null
                       return (
                         <Chip
                           {...getTagProps({ index })}
-                          key={option.id}
-                          label={withTagEmoji(option)}
+                          key={
+                            typeof option === 'string'
+                              ? `${option}-${index}`
+                              : 'isNew' in option
+                                ? `${option.name}-${index}`
+                                : option.id
+                          }
                           size="small"
-                          sx={(theme) => ({
-                            color: tagColor ?? theme.palette.text.secondary,
-                            borderColor: tagColor ? alpha(tagColor, 0.45) : theme.palette.divider,
-                            bgcolor: tagColor
-                              ? alpha(tagColor, theme.palette.mode === 'dark' ? 0.28 : 0.12)
-                              : 'transparent',
-                          })}
+                          label={label}
+                          sx={
+                            categoryColor
+                              ? {
+                                  borderColor: alpha(categoryColor, 0.55),
+                                  bgcolor: alpha(categoryColor, 0.14),
+                                }
+                              : undefined
+                          }
                         />
                       )
                     })
@@ -360,122 +408,126 @@ export function ExpenseFormModal({
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Выбрать теги"
+                      label="Выбрать категории"
                       placeholder="Поиск или создание"
-                      error={Boolean(tagCreateError)}
-                      helperText={tagCreateError || undefined}
+                      error={Boolean(categoryCreateError)}
+                      helperText={categoryCreateError || undefined}
                     />
                   )}
                 />
               </Stack>
             </Box>
+            <TextField
+              type="date"
+              label="Дата"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Свое название"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Например: «Пицца» или «Такси»"
+              fullWidth
+            />
             {error ? <Alert severity="error">{error}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ bgcolor: 'background.paper', py: 2 }}>
-          <Button color="inherit" onClick={onClose} disabled={isSaving || isDeleting}>
-            Отмена
-          </Button>
-          {expense ? (
-            <Button
-              color="error"
-              onClick={() => setConfirmOpen(true)}
-              disabled={isSaving || isDeleting}
-            >
-              Удалить
-            </Button>
-          ) : null}
+        <DialogActions sx={{ bgcolor: 'background.paper', py: 2, px: 3, gap: 1, justifyContent: 'space-between' }}>
           <Button
-            variant="outlined"
+            variant="contained"
             onClick={handleSave}
             disabled={isSaving || isDeleting}
             sx={(theme) => ({
-              color: theme.palette.primary.main,
-              borderColor: alpha(theme.palette.primary.main, 0.4),
-              backgroundColor: alpha(
-                theme.palette.background.paper,
-                theme.palette.mode === 'dark' ? 0.2 : 0.7,
-              ),
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              fontWeight: 600,
+              px: 3,
+              fontWeight: 700,
+              flex: 1,
               '&:hover': {
-                borderColor: theme.palette.primary.main,
-                backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                backgroundColor: theme.palette.primary.dark,
               },
             })}
           >
             {isSaving ? 'Сохраняем…' : 'Сохранить'}
           </Button>
+          {expense ? (
+            <Button
+              color="error"
+              variant="outlined"
+              onClick={onOpenDeleteConfirm}
+              disabled={isSaving || isDeleting}
+              aria-label="Удалить расход"
+              sx={{
+                minWidth: 50,
+                px: 0,
+                flexShrink: 0,
+              }}
+            >
+              <DeleteOutlineRoundedIcon />
+            </Button>
+          ) : null}
         </DialogActions>
       </Dialog>
 
       <Dialog
-        open={Boolean(pendingTagCreate)}
-        onClose={() => {
-          if (isTagCreating) return
-          setPendingTagCreate(null)
-          setNewTagColor(DEFAULT_TAG_COLOR)
-          setNewTagEmoji('')
-          setTagCreateError('')
-        }}
+        open={isCategoryCreateOpen && Boolean(pendingCategoryCreate)}
+        onClose={closeCategoryCreateDialog}
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Новый тег</DialogTitle>
+        <DialogTitle>Новая категория</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5}>
             <TextField
               label="Название"
-              value={pendingTagCreate?.name ?? ''}
+              value={pendingCategoryCreate?.name ?? ''}
               fullWidth
               disabled
               size="small"
             />
             <EmojiPickerField
-              value={newTagEmoji}
+              value={newCategoryEmoji}
               onChange={(emoji) => {
-                setNewTagEmoji(emoji)
-                if (tagCreateError) setTagCreateError('')
+                setNewCategoryEmoji(emoji)
+                if (categoryCreateError) setCategoryCreateError('')
               }}
             />
-            <TagColorPickerField
-              value={newTagColor}
-              onChange={setNewTagColor}
-              options={TAG_COLOR_OPTIONS}
+            <CategoryColorPickerField
+              value={newCategoryColor}
+              onChange={setNewCategoryColor}
+              options={CATEGORY_COLOR_OPTIONS}
             />
-            {tagCreateError ? (
+            {categoryCreateError ? (
               <Typography color="error" variant="body2">
-                {tagCreateError}
+                {categoryCreateError}
               </Typography>
             ) : null}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => {
-              setPendingTagCreate(null)
-              setNewTagColor(DEFAULT_TAG_COLOR)
-              setNewTagEmoji('')
-              setTagCreateError('')
-            }}
-            disabled={isTagCreating}
-          >
+          <Button onClick={closeCategoryCreateDialog} disabled={isCategoryCreating}>
             Отмена
           </Button>
           <Button
             variant="contained"
             onClick={() => {
-              void handleConfirmTagCreate()
+              void handleConfirmCategoryCreate()
             }}
-            disabled={isTagCreating}
+            disabled={isCategoryCreating}
           >
-            {isTagCreating ? 'Создаём…' : 'Создать'}
+            {isCategoryCreating ? 'Создаём…' : 'Создать'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={isConfirmOpen} onClose={() => setConfirmOpen(false)}>
+      <Dialog
+        open={isDeleteConfirmOpen && Boolean(expense)}
+        onClose={() => {
+          if (isDeleting) return
+          onCloseDeleteConfirm()
+        }}
+      >
         <DialogTitle>Удалить расход?</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary">
@@ -483,7 +535,7 @@ export function ExpenseFormModal({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)} disabled={isDeleting}>
+          <Button onClick={onCloseDeleteConfirm} disabled={isDeleting}>
             Отмена
           </Button>
           <Button
@@ -495,11 +547,11 @@ export function ExpenseFormModal({
               setDeleting(true)
               try {
                 await onDelete(expense.id)
-                setConfirmOpen(false)
+                onCloseDeleteConfirm()
                 onClose()
               } catch {
                 setError('Не удалось удалить расход. Попробуйте ещё раз.')
-                setConfirmOpen(false)
+                onCloseDeleteConfirm()
               } finally {
                 setDeleting(false)
               }
