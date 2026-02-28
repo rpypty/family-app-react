@@ -72,7 +72,7 @@ const buildQuery = (params: Record<string, string | number | undefined>) => {
 
 const toTagIdsParam = (tagIds?: string[]) => (tagIds && tagIds.length > 0 ? tagIds.join(',') : undefined)
 
-export const getAnalyticsSummary = async (params: AnalyticsQuery): Promise<AnalyticsSummary> => {
+export const getAnalyticsSummary = async (params: AnalyticsQuery): Promise<AnalyticsSummary | null> => {
   const query = buildQuery({
     from: params.from,
     to: params.to,
@@ -80,7 +80,8 @@ export const getAnalyticsSummary = async (params: AnalyticsQuery): Promise<Analy
     tag_ids: toTagIdsParam(params.tagIds),
     timezone: params.timezone,
   })
-  const response = await apiFetch<AnalyticsSummaryResponse>(`/analytics/summary${query}`)
+  const response = await apiFetch<AnalyticsSummaryResponse | null>(`/analytics/summary${query}`)
+  if (!response) return null
   return {
     totalAmount: response.total_amount,
     currency: response.currency,
@@ -102,7 +103,8 @@ export const getAnalyticsTimeseries = async (
     tag_ids: toTagIdsParam(params.tagIds),
     timezone: params.timezone,
   })
-  const response = await apiFetch<AnalyticsTimeseriesResponse[]>(`/analytics/timeseries${query}`)
+  const response = await apiFetch<AnalyticsTimeseriesResponse[] | null>(`/analytics/timeseries${query}`)
+  if (!response) return []
   return response.map((item) => ({
     period: item.period,
     total: item.total,
@@ -120,7 +122,8 @@ export const getAnalyticsByTag = async (
     tag_ids: toTagIdsParam(params.tagIds),
     limit: params.limit,
   })
-  const response = await apiFetch<AnalyticsByTagResponse[]>(`/analytics/by-tag${query}`)
+  const response = await apiFetch<AnalyticsByTagResponse[] | null>(`/analytics/by-tag${query}`)
+  if (!response) return []
   return response.map((item) => ({
     tagId: item.tag_id,
     tagName: item.tag_name,
