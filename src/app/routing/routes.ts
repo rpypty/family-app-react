@@ -9,11 +9,19 @@ export type WorkoutsRoute =
   | { view: 'analytics' }
   | { view: 'workout'; workoutId: string }
   | { view: 'workout-exercises'; workoutId: string }
+export type ExpensesRoute =
+  | { view: 'list' }
+  | { view: 'new' }
+  | { view: 'new-category' }
+  | { view: 'edit'; expenseId: string }
+  | { view: 'edit-category'; expenseId: string }
+  | { view: 'edit-delete'; expenseId: string }
 
 export const ROUTES = {
   home: '/',
   expenses: '/miniapps/expenses',
   expenseAnalytics: '/miniapps/expenses/analytics',
+  expenseAnalyticsDrilldown: '/miniapps/expenses/analytics/drilldown',
   expenseReports: '/miniapps/expenses/reports',
   todo: '/miniapps/todo',
   workouts: '/miniapps/workouts',
@@ -37,6 +45,17 @@ export const WORKOUTS_ROUTES = {
     `${ROUTES.workouts}/workout/${workoutId}/exercises`,
 } as const
 
+export const EXPENSES_ROUTES = {
+  home: ROUTES.expenses,
+  new: `${ROUTES.expenses}/new`,
+  newCategory: `${ROUTES.expenses}/new/category`,
+  edit: (expenseId: string) => `${ROUTES.expenses}/${encodeURIComponent(expenseId)}/edit`,
+  editCategory: (expenseId: string) =>
+    `${ROUTES.expenses}/${encodeURIComponent(expenseId)}/edit/category`,
+  editDelete: (expenseId: string) =>
+    `${ROUTES.expenses}/${encodeURIComponent(expenseId)}/edit/delete`,
+} as const
+
 export const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
   expenses: ROUTES.expenses,
   analytics: ROUTES.expenseAnalytics,
@@ -56,6 +75,69 @@ export const normalizePathname = (pathname: string) => {
 
 const getPathSegments = (pathname: string) =>
   normalizePathname(pathname).split('/').filter(Boolean)
+
+const decodePathSegment = (value: string) => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+const isValidExpensesDetailPath = (segments: string[]) => {
+  if (segments[0] !== 'miniapps' || segments[1] !== 'expenses') {
+    return false
+  }
+
+  if (segments[2] === 'new') {
+    return segments.length === 3 || (segments.length === 4 && segments[3] === 'category')
+  }
+
+  if (segments[3] === 'edit') {
+    return (
+      segments.length === 4 ||
+      (segments.length === 5 && (segments[4] === 'category' || segments[4] === 'delete'))
+    )
+  }
+
+  return false
+}
+
+export const resolveExpensesRoute = (pathname: string): ExpensesRoute => {
+  const segments = getPathSegments(pathname)
+  if (segments[0] !== 'miniapps' || segments[1] !== 'expenses') {
+    return { view: 'list' }
+  }
+
+  if (segments[2] === 'new') {
+    if (segments.length === 4 && segments[3] === 'category') {
+      return { view: 'new-category' }
+    }
+    if (segments.length === 3) {
+      return { view: 'new' }
+    }
+    return { view: 'list' }
+  }
+
+  if (segments[3] === 'edit') {
+    if (segments.length < 4 || segments.length > 5) {
+      return { view: 'list' }
+    }
+    const expenseId = decodePathSegment(segments[2])
+    if (segments.length === 5 && segments[4] === 'category') {
+      return { view: 'edit-category', expenseId }
+    }
+    if (segments.length === 5 && segments[4] === 'delete') {
+      return { view: 'edit-delete', expenseId }
+    }
+    if (segments.length === 4) {
+      return { view: 'edit', expenseId }
+    }
+    return { view: 'list' }
+  }
+
+  return { view: 'list' }
+}
 
 export const resolveWorkoutsRoute = (
   pathname: string,
@@ -119,6 +201,29 @@ export const resolveWorkoutsBackNavigationTarget = (pathname: string): string =>
   return WORKOUTS_ROUTES.home
 }
 
+export const resolveExpensesBackNavigationTarget = (pathname: string): string => {
+  const normalized = normalizePathname(pathname)
+  if (normalized === ROUTES.expenseAnalyticsDrilldown) {
+    return ROUTES.expenseAnalytics
+  }
+
+  const route = resolveExpensesRoute(pathname)
+  if (route.view === 'new') {
+    return EXPENSES_ROUTES.home
+  }
+  if (route.view === 'new-category') {
+    return EXPENSES_ROUTES.new
+  }
+  if (route.view === 'edit') {
+    return EXPENSES_ROUTES.home
+  }
+  if (route.view === 'edit-category' || route.view === 'edit-delete') {
+    return EXPENSES_ROUTES.edit(route.expenseId)
+  }
+
+  return ROUTES.home
+}
+
 export const resolveAppRoute = (pathname: string): ResolvedRoute => {
   const segments = getPathSegments(pathname)
 
@@ -146,6 +251,9 @@ export const resolveAppRoute = (pathname: string): ResolvedRoute => {
     }
     if (section === 'reports') {
       return { activeApp: 'expenses', activeTab: 'reports' }
+    }
+    if (isValidExpensesDetailPath(segments)) {
+      return { activeApp: 'expenses', activeTab: 'expenses' }
     }
     return {
       activeApp: 'expenses',

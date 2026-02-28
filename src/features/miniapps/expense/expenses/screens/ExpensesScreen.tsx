@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   Card,
   CardContent,
@@ -13,6 +13,12 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import CloudOffRounded from '@mui/icons-material/CloudOffRounded'
+import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  EXPENSES_ROUTES,
+  ROUTES,
+  resolveExpensesRoute,
+} from '../../../../../app/routing/routes'
 import type { Expense, Category } from '../../../../../shared/types'
 import {
   aggregateByCurrency,
@@ -61,13 +67,22 @@ export function ExpensesScreen({
   readOnly = false,
   allowOfflineCreate = false,
 }: ExpensesScreenProps) {
-  const [isFormOpen, setFormOpen] = useState(false)
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const maxCategoryVisible = isSmall ? 2 : 3
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
+  const expenseRoute = useMemo(() => resolveExpensesRoute(location.pathname), [location.pathname])
+  const isNewRoute = expenseRoute.view === 'new' || expenseRoute.view === 'new-category'
+  const isEditRoute =
+    expenseRoute.view === 'edit' ||
+    expenseRoute.view === 'edit-category' ||
+    expenseRoute.view === 'edit-delete'
+  const isCategoryCreateOpen =
+    expenseRoute.view === 'new-category' || expenseRoute.view === 'edit-category'
+  const isDeleteConfirmOpen = expenseRoute.view === 'edit-delete'
   const sentinelRef = useInfiniteScroll({
     enabled: hasMore && !readOnly,
     loading: isLoadingMore,
@@ -89,17 +104,72 @@ export function ExpensesScreen({
   }, [expenses])
 
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
+  const editingExpense = useMemo(() => {
+    if (expenseRoute.view === 'edit' || expenseRoute.view === 'edit-category' || expenseRoute.view === 'edit-delete') {
+      return expenses.find((expense) => expense.id === expenseRoute.expenseId) ?? null
+    }
+    return null
+  }, [expenseRoute, expenses])
+  const isFormOpen = isNewRoute || Boolean(editingExpense)
+
+  useEffect(() => {
+    if (!canCreate && isNewRoute) {
+      navigate(ROUTES.expenses, { replace: true })
+    }
+  }, [canCreate, isNewRoute, navigate])
+
+  useEffect(() => {
+    if (!canEdit && isEditRoute) {
+      navigate(ROUTES.expenses, { replace: true })
+    }
+  }, [canEdit, isEditRoute, navigate])
+
+  useEffect(() => {
+    if (!isEditRoute || editingExpense) return
+    navigate(ROUTES.expenses, { replace: true })
+  }, [isEditRoute, editingExpense, navigate])
 
   const openCreate = () => {
     if (!canCreate) return
-    setEditingExpense(null)
-    setFormOpen(true)
+    navigate(EXPENSES_ROUTES.new)
   }
 
   const openEdit = (expense: Expense) => {
     if (readOnly) return
-    setEditingExpense(expense)
-    setFormOpen(true)
+    navigate(EXPENSES_ROUTES.edit(expense.id))
+  }
+
+  const closeForm = () => {
+    navigate(ROUTES.expenses, { replace: true })
+  }
+
+  const openCategoryCreate = () => {
+    if (expenseRoute.view === 'new' || expenseRoute.view === 'new-category') {
+      navigate(EXPENSES_ROUTES.newCategory)
+      return
+    }
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.editCategory(editingExpense.id))
+  }
+
+  const closeCategoryCreate = () => {
+    if (expenseRoute.view === 'new-category') {
+      navigate(EXPENSES_ROUTES.new, { replace: true })
+      return
+    }
+    if (expenseRoute.view === 'edit-category' && editingExpense) {
+      navigate(EXPENSES_ROUTES.edit(editingExpense.id), { replace: true })
+    }
+  }
+
+  const openDeleteConfirm = () => {
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.editDelete(editingExpense.id))
+  }
+
+  const closeDeleteConfirm = () => {
+    if (!editingExpense) return
+    navigate(EXPENSES_ROUTES.edit(editingExpense.id), { replace: true })
   }
 
   const handleSave = async (expense: Expense) => {
@@ -112,7 +182,6 @@ export function ExpensesScreen({
 
   const handleDelete = async (expenseId: string) => {
     await onDeleteExpense(expenseId)
-    setFormOpen(false)
   }
 
   return (
@@ -161,6 +230,7 @@ export function ExpensesScreen({
                           const expenseCategories = expense.categoryIds
                             .map((id) => categoryMap.get(id))
                             .filter((category): category is Category => Boolean(category))
+                          const expenseTitle = expense.title.trim() || expenseCategories[0]?.name || ''
                           const visibleCategories = expenseCategories.slice(0, maxCategoryVisible)
                           const remainingCategories = expenseCategories.length - visibleCategories.length
                           const iconEmoji = getFirstCategoryEmoji(expenseCategories)
@@ -215,7 +285,7 @@ export function ExpensesScreen({
                                       noWrap
                                       sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
                                     >
-                                      {expense.title}
+                                      {expenseTitle}
                                     </Typography>
                                     {expense.syncState && expense.syncState !== 'synced' ? (
                                       <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
@@ -318,8 +388,14 @@ export function ExpensesScreen({
       <ExpenseFormModal
         isOpen={isFormOpen}
         expense={editingExpense}
+        isCategoryCreateOpen={isCategoryCreateOpen}
+        isDeleteConfirmOpen={isDeleteConfirmOpen}
         categories={categories}
-        onClose={() => setFormOpen(false)}
+        onClose={closeForm}
+        onOpenCategoryCreate={openCategoryCreate}
+        onCloseCategoryCreate={closeCategoryCreate}
+        onOpenDeleteConfirm={openDeleteConfirm}
+        onCloseDeleteConfirm={closeDeleteConfirm}
         onSave={handleSave}
         onDelete={handleDelete}
         onCreateCategory={onCreateCategory}

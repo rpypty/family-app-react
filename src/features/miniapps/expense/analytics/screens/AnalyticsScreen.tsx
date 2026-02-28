@@ -23,6 +23,8 @@ import {
 import BarChartIcon from '@mui/icons-material/BarChart'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import { alpha, useTheme } from '@mui/material/styles'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ROUTES, normalizePathname } from '../../../../../app/routing/routes'
 import type { Expense, Category } from '../../../../../shared/types'
 import {
   dateOnly,
@@ -75,6 +77,13 @@ type StoredAnalyticsFilters = {
 
 type ChartType = 'donut' | 'bar'
 type BarGroupBy = 'week' | 'day' | 'category'
+type DrilldownRouteState = {
+  from: string
+  to: string
+  title: string
+  categoryIds?: string[]
+  activeSliceId?: string
+}
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -139,8 +148,12 @@ export function AnalyticsScreen({
   onDeleteCategory,
   readOnly = false,
 }: AnalyticsScreenProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  const currentPath = normalizePathname(location.pathname)
+  const isDrilldownRoute = currentPath === ROUTES.expenseAnalyticsDrilldown
   const storedFilters = useMemo(() => loadStoredFilters(), [])
   const [fromDate, setFromDate] = useState<string | null>(storedFilters?.fromDate ?? null)
   const [toDate, setToDate] = useState<string | null>(storedFilters?.toDate ?? null)
@@ -173,12 +186,6 @@ export function AnalyticsScreen({
   const [isListLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [activeSliceId, setActiveSliceId] = useState<string | null>(null)
-  const [drilldownTitle, setDrilldownTitle] = useState<string | null>(null)
-  const [drilldownQuery, setDrilldownQuery] = useState<{
-    from: string
-    to: string
-    categoryIds?: string[]
-  } | null>(null)
   const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
   const [drilldownLoading, setDrilldownLoading] = useState(false)
   const [drilldownError, setDrilldownError] = useState<string | null>(null)
@@ -202,6 +209,24 @@ export function AnalyticsScreen({
   const categoryIdsKey = categoryIds.join(',')
   const categoryIdsForApi = categoryIds.length > 0 ? categoryIds : undefined
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
+  const drilldownRouteState = useMemo<DrilldownRouteState | null>(() => {
+    if (!isDrilldownRoute) return null
+    const params = new URLSearchParams(location.search)
+    const from = params.get('from')
+    const to = params.get('to')
+    const title = params.get('title')
+    if (!from || !to || !title) return null
+    const ids = params.getAll('categoryId')
+    const categoryIds = ids.length > 0 ? ids : undefined
+    const activeSliceId = params.get('activeSliceId') || undefined
+    return {
+      from,
+      to,
+      title,
+      categoryIds,
+      activeSliceId,
+    }
+  }, [isDrilldownRoute, location.search])
 
   const applyQuickRange = (days: number) => {
     const today = dateOnly(new Date())
@@ -226,6 +251,28 @@ export function AnalyticsScreen({
     setToDate(null)
     setFilterCategoryIds(new Set())
   }
+
+  const openDrilldownRoute = (payload: DrilldownRouteState) => {
+    const params = new URLSearchParams()
+    params.set('from', payload.from)
+    params.set('to', payload.to)
+    params.set('title', payload.title)
+    if (payload.activeSliceId) {
+      params.set('activeSliceId', payload.activeSliceId)
+    }
+    payload.categoryIds?.forEach((id) => params.append('categoryId', id))
+    navigate(`${ROUTES.expenseAnalyticsDrilldown}?${params.toString()}`)
+  }
+
+  useEffect(() => {
+    if (!isDrilldownRoute) return
+    if (drilldownRouteState) return
+    navigate(ROUTES.expenseAnalytics, { replace: true })
+  }, [isDrilldownRoute, drilldownRouteState, navigate])
+
+  useEffect(() => {
+    setActiveSliceId(drilldownRouteState?.activeSliceId ?? null)
+  }, [drilldownRouteState])
 
   useEffect(() => {
     saveStoredFilters({
@@ -415,9 +462,7 @@ export function AnalyticsScreen({
   const pieChartSize = fullScreen ? 220 : 260
 
   const closeDrilldown = () => {
-    setActiveSliceId(null)
-    setDrilldownTitle(null)
-    setDrilldownQuery(null)
+    navigate(ROUTES.expenseAnalytics, { replace: true })
     setDrilldownExpenses([])
     setDrilldownError(null)
   }
@@ -426,12 +471,12 @@ export function AnalyticsScreen({
     if (readOnly) return
     if (!slice.id) return
     const linkedCategory = categoryMap.get(slice.id)
-    setActiveSliceId(slice.id)
-    setDrilldownTitle(`Траты по категории: ${linkedCategory?.name ?? slice.label}`)
-    setDrilldownQuery({
+    openDrilldownRoute({
       from: range.from,
       to: range.to,
+      title: `Траты по категории: ${linkedCategory?.name ?? slice.label}`,
       categoryIds: [slice.id],
+      activeSliceId: slice.id,
     })
     setDrilldownExpenses([])
     setDrilldownError(null)
@@ -439,12 +484,11 @@ export function AnalyticsScreen({
 
   const openBarDrilldown = (payload: AnalyticsBarClickPayload) => {
     if (readOnly) return
-    setActiveSliceId(null)
     if (payload.mode === 'category') {
-      setDrilldownTitle(`Траты по категории: ${payload.label}`)
-      setDrilldownQuery({
+      openDrilldownRoute({
         from: range.from,
         to: range.to,
+        title: `Траты по категории: ${payload.label}`,
         categoryIds: payload.id ? [payload.id] : categoryIdsForApi,
       })
       setDrilldownExpenses([])
@@ -465,12 +509,12 @@ export function AnalyticsScreen({
     const to = formatDate(toDate)
     const fromLabel = formatDateDots(fromDate)
     const toLabel = formatDateDots(toDate)
-    setDrilldownTitle(
+    const title =
       payload.groupBy === 'week' ? `Траты за период ${fromLabel} — ${toLabel}` : `Траты за ${fromLabel}`
-    )
-    setDrilldownQuery({
+    openDrilldownRoute({
       from,
       to,
+      title,
       categoryIds: categoryIdsForApi,
     })
     setDrilldownExpenses([])
@@ -478,7 +522,7 @@ export function AnalyticsScreen({
   }
 
   useEffect(() => {
-    if (!drilldownQuery) return
+    if (!drilldownRouteState) return
     let isActive = true
     if (readOnly) {
       setDrilldownLoading(false)
@@ -493,9 +537,9 @@ export function AnalyticsScreen({
       setDrilldownError(null)
       try {
         const response = await listExpensePage({
-          from: drilldownQuery.from,
-          to: drilldownQuery.to,
-          categoryIds: drilldownQuery.categoryIds,
+          from: drilldownRouteState.from,
+          to: drilldownRouteState.to,
+          categoryIds: drilldownRouteState.categoryIds,
           limit: 50,
           offset: 0,
         })
@@ -514,7 +558,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, drilldownQuery])
+  }, [readOnly, drilldownRouteState])
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -886,13 +930,13 @@ export function AnalyticsScreen({
       />
 
       <Dialog
-        open={Boolean(drilldownQuery)}
+        open={Boolean(drilldownRouteState)}
         onClose={closeDrilldown}
         fullScreen={fullScreen}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>{drilldownTitle || 'Траты'}</DialogTitle>
+        <DialogTitle>{drilldownRouteState?.title || 'Траты'}</DialogTitle>
         <DialogContent dividers>
           {drilldownLoading ? (
             <Stack alignItems="center" sx={{ py: 3 }}>

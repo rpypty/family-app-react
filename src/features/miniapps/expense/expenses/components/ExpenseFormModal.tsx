@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -8,6 +8,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
@@ -15,6 +16,8 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
+import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
@@ -48,8 +51,14 @@ type PendingCategoryCreate = {
 type ExpenseFormModalProps = {
   isOpen: boolean
   expense?: Expense | null
+  isCategoryCreateOpen: boolean
+  isDeleteConfirmOpen: boolean
   categories: Category[]
   onClose: () => void
+  onOpenCategoryCreate: () => void
+  onCloseCategoryCreate: () => void
+  onOpenDeleteConfirm: () => void
+  onCloseDeleteConfirm: () => void
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
   onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
@@ -58,8 +67,14 @@ type ExpenseFormModalProps = {
 export function ExpenseFormModal({
   isOpen,
   expense,
+  isCategoryCreateOpen,
+  isDeleteConfirmOpen,
   categories,
   onClose,
+  onOpenCategoryCreate,
+  onCloseCategoryCreate,
+  onOpenDeleteConfirm,
+  onCloseDeleteConfirm,
   onSave,
   onDelete,
   onCreateCategory,
@@ -75,11 +90,24 @@ export function ExpenseFormModal({
   const [pendingCategoryCreate, setPendingCategoryCreate] = useState<PendingCategoryCreate | null>(null)
   const [newCategoryColor, setNewCategoryColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
-  const [isConfirmOpen, setConfirmOpen] = useState(false)
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  const wasCategoryCreateOpen = useRef(isCategoryCreateOpen)
+
+  const resetPendingCategoryCreate = () => {
+    setPendingCategoryCreate(null)
+    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
+    setNewCategoryEmoji('')
+    setCategoryCreateError('')
+  }
+
+  const closeCategoryCreateDialog = () => {
+    if (isCategoryCreating) return
+    resetPendingCategoryCreate()
+    onCloseCategoryCreate()
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -94,10 +122,16 @@ export function ExpenseFormModal({
     setPendingCategoryCreate(null)
     setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
     setNewCategoryEmoji('')
-    setConfirmOpen(false)
     setSaving(false)
     setDeleting(false)
   }, [expense, isOpen])
+
+  useEffect(() => {
+    if (wasCategoryCreateOpen.current && !isCategoryCreateOpen) {
+      resetPendingCategoryCreate()
+    }
+    wasCategoryCreateOpen.current = isCategoryCreateOpen
+  }, [isCategoryCreateOpen])
 
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
@@ -146,6 +180,7 @@ export function ExpenseFormModal({
     })
     setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
     setNewCategoryEmoji('')
+    onOpenCategoryCreate()
   }
 
   const handleConfirmCategoryCreate = async () => {
@@ -160,9 +195,8 @@ export function ExpenseFormModal({
       const nextIds = new Set(pendingCategoryCreate.nextIds)
       nextIds.add(created.id)
       setSelectedCategoryIds(nextIds)
-      setPendingCategoryCreate(null)
-      setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-      setNewCategoryEmoji('')
+      resetPendingCategoryCreate()
+      onCloseCategoryCreate()
     } catch {
       setCategoryCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
     } finally {
@@ -174,8 +208,9 @@ export function ExpenseFormModal({
     const normalizedAmount = amount.replace(/\s/g, '').replace(',', '.')
     const parsedAmount = Number.parseFloat(normalizedAmount)
     const trimmedTitle = title.trim()
+    const fallbackTitle = selectedCategoryList[0]?.name?.trim() ?? ''
 
-    if (!trimmedTitle || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError('Введите корректные данные')
       return
     }
@@ -185,7 +220,7 @@ export function ExpenseFormModal({
       date,
       amount: parsedAmount,
       currency,
-      title: trimmedTitle,
+      title: trimmedTitle || fallbackTitle,
       categoryIds: Array.from(selectedCategoryIds),
     }
     setSaving(true)
@@ -197,6 +232,17 @@ export function ExpenseFormModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleAmountChange = (rawValue: string) => {
+    let sanitizedValue = rawValue.replace(/[^\d.,]/g, '')
+    const separatorIndex = sanitizedValue.search(/[.,]/)
+    if (separatorIndex !== -1) {
+      const integerPart = sanitizedValue.slice(0, separatorIndex + 1)
+      const fractionalPart = sanitizedValue.slice(separatorIndex + 1).replace(/[.,]/g, '')
+      sanitizedValue = `${integerPart}${fractionalPart}`
+    }
+    setAmount(sanitizedValue)
   }
 
   return (
@@ -217,7 +263,20 @@ export function ExpenseFormModal({
             py: 1.5,
           }}
         >
-          {expense ? 'Редактирование' : 'Новый расход'}
+          <Box sx={{ position: 'relative', textAlign: 'center' }}>
+            <IconButton
+              color="inherit"
+              onClick={onClose}
+              disabled={isSaving || isDeleting}
+              aria-label="Назад"
+              sx={{ position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <ArrowBackRounded />
+            </IconButton>
+            <Typography component="span" variant="h6" color="text.primary" sx={{ fontWeight: 600 }}>
+              {expense ? 'Редактирование' : 'Новый расход'}
+            </Typography>
+          </Box>
         </DialogTitle>
         <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
@@ -229,35 +288,6 @@ export function ExpenseFormModal({
               InputLabelProps={{ shrink: true }}
               fullWidth
             />
-            <TextField
-              label="Название"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например: продукты"
-              fullWidth
-            />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Сумма"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                inputMode="decimal"
-                fullWidth
-              />
-              <TextField
-                label="Валюта"
-                select
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value as Currency)}
-                fullWidth
-              >
-                {CURRENCIES.map((value) => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
             <Box>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
@@ -338,56 +368,80 @@ export function ExpenseFormModal({
                 />
               </Stack>
             </Box>
+            <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <TextField
+                label="Сумма"
+                value={amount}
+                onChange={(event) => handleAmountChange(event.target.value)}
+                inputMode="decimal"
+                slotProps={{ htmlInput: { pattern: '[0-9]*[.,]?[0-9]*' } }}
+                fullWidth
+              />
+              <TextField
+                label="Валюта"
+                select
+                value={currency}
+                onChange={(event) => setCurrency(event.target.value as Currency)}
+                sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
+              >
+                {CURRENCIES.map((value) => (
+                  <MenuItem key={value} value={value}>
+                    {value}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <TextField
+              label="Название"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Например: продукты"
+              fullWidth
+            />
             {error ? <Alert severity="error">{error}</Alert> : null}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ bgcolor: 'background.paper', py: 2 }}>
-          <Button color="inherit" onClick={onClose} disabled={isSaving || isDeleting}>
-            Отмена
-          </Button>
-          {expense ? (
-            <Button
-              color="error"
-              onClick={() => setConfirmOpen(true)}
-              disabled={isSaving || isDeleting}
-            >
-              Удалить
-            </Button>
-          ) : null}
+        <DialogActions sx={{ bgcolor: 'background.paper', py: 2, px: 3, gap: 1, justifyContent: 'space-between' }}>
           <Button
-            variant="outlined"
+            variant="contained"
             onClick={handleSave}
             disabled={isSaving || isDeleting}
             sx={(theme) => ({
-              color: theme.palette.primary.main,
-              borderColor: alpha(theme.palette.primary.main, 0.4),
-              backgroundColor: alpha(
-                theme.palette.background.paper,
-                theme.palette.mode === 'dark' ? 0.2 : 0.7,
-              ),
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              fontWeight: 600,
+              minHeight: 50,
+              px: 3,
+              fontWeight: 700,
+              fontSize: '1rem',
+              flex: 1,
               '&:hover': {
-                borderColor: theme.palette.primary.main,
-                backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                backgroundColor: theme.palette.primary.dark,
               },
             })}
           >
             {isSaving ? 'Сохраняем…' : 'Сохранить'}
           </Button>
+          {expense ? (
+            <Button
+              color="error"
+              variant="outlined"
+              onClick={onOpenDeleteConfirm}
+              disabled={isSaving || isDeleting}
+              aria-label="Удалить расход"
+              sx={{
+                minHeight: 50,
+                minWidth: 50,
+                px: 0,
+                flexShrink: 0,
+              }}
+            >
+              <DeleteOutlineRoundedIcon />
+            </Button>
+          ) : null}
         </DialogActions>
       </Dialog>
 
       <Dialog
-        open={Boolean(pendingCategoryCreate)}
-        onClose={() => {
-          if (isCategoryCreating) return
-          setPendingCategoryCreate(null)
-          setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-          setNewCategoryEmoji('')
-          setCategoryCreateError('')
-        }}
+        open={isCategoryCreateOpen && Boolean(pendingCategoryCreate)}
+        onClose={closeCategoryCreateDialog}
         maxWidth="xs"
         fullWidth
       >
@@ -421,15 +475,7 @@ export function ExpenseFormModal({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => {
-              setPendingCategoryCreate(null)
-              setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-              setNewCategoryEmoji('')
-              setCategoryCreateError('')
-            }}
-            disabled={isCategoryCreating}
-          >
+          <Button onClick={closeCategoryCreateDialog} disabled={isCategoryCreating}>
             Отмена
           </Button>
           <Button
@@ -444,7 +490,13 @@ export function ExpenseFormModal({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={isConfirmOpen} onClose={() => setConfirmOpen(false)}>
+      <Dialog
+        open={isDeleteConfirmOpen && Boolean(expense)}
+        onClose={() => {
+          if (isDeleting) return
+          onCloseDeleteConfirm()
+        }}
+      >
         <DialogTitle>Удалить расход?</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary">
@@ -452,7 +504,7 @@ export function ExpenseFormModal({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)} disabled={isDeleting}>
+          <Button onClick={onCloseDeleteConfirm} disabled={isDeleting}>
             Отмена
           </Button>
           <Button
@@ -464,11 +516,11 @@ export function ExpenseFormModal({
               setDeleting(true)
               try {
                 await onDelete(expense.id)
-                setConfirmOpen(false)
+                onCloseDeleteConfirm()
                 onClose()
               } catch {
                 setError('Не удалось удалить расход. Попробуйте ещё раз.')
-                setConfirmOpen(false)
+                onCloseDeleteConfirm()
               } finally {
                 setDeleting(false)
               }
