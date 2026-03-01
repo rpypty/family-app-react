@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -22,32 +22,15 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
-  DEFAULT_CATEGORY_COLOR,
-  CATEGORY_COLOR_OPTIONS,
   normalizeCategoryColor,
-  normalizeCategoryEmoji,
   withCategoryEmoji,
   type CategoryAppearanceInput,
 } from '../../../../../shared/lib/categoryAppearance'
-import { EmojiPickerField } from '../../../../../shared/ui/EmojiPickerField'
-import { CategoryColorPickerField } from '../../../../../shared/ui/CategoryColorPickerField'
-import { findCategoryByName, selectedCategories } from '../../../../../shared/lib/categoryUtils'
+import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
+import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
 import { createId } from '../../../../../shared/lib/uuid'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
-
-type CategoryCreateOption = {
-  inputValue: string
-  name: string
-  isNew: true
-}
-
-type CategoryOption = Category | CategoryCreateOption
-
-type PendingCategoryCreate = {
-  name: string
-  nextIds: string[]
-}
 
 type ExpenseFormModalProps = {
   isOpen: boolean
@@ -86,30 +69,11 @@ export function ExpenseFormModal({
   const [currency, setCurrency] = useState<Currency>('BYN')
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
-  const [isCategoryCreating, setCategoryCreating] = useState(false)
-  const [categoryCreateError, setCategoryCreateError] = useState('')
-  const [pendingCategoryCreate, setPendingCategoryCreate] = useState<PendingCategoryCreate | null>(null)
-  const [newCategoryColor, setNewCategoryColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
-  const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
   const [categoryInputValue, setCategoryInputValue] = useState('')
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const wasCategoryCreateOpen = useRef(isCategoryCreateOpen)
-
-  const resetPendingCategoryCreate = () => {
-    setPendingCategoryCreate(null)
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
-    setCategoryCreateError('')
-  }
-
-  const closeCategoryCreateDialog = () => {
-    if (isCategoryCreating) return
-    resetPendingCategoryCreate()
-    onCloseCategoryCreate()
-  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -119,92 +83,28 @@ export function ExpenseFormModal({
     setCurrency(expense?.currency ?? 'BYN')
     setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
-    setCategoryCreateError('')
-    setCategoryCreating(false)
-    setPendingCategoryCreate(null)
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
     setSaving(false)
     setDeleting(false)
     setCategoryInputValue('')
   }, [expense, isOpen])
 
   useEffect(() => {
-    if (wasCategoryCreateOpen.current && !isCategoryCreateOpen) {
-      resetPendingCategoryCreate()
+    if (!fullScreen && isCategoryCreateOpen) {
+      onCloseCategoryCreate()
     }
-    wasCategoryCreateOpen.current = isCategoryCreateOpen
-  }, [isCategoryCreateOpen])
+  }, [fullScreen, isCategoryCreateOpen, onCloseCategoryCreate])
 
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
     [categories, selectedCategoryIds],
   )
 
-  const handleCategoriesChange = async (value: Array<CategoryOption | string>) => {
-    setCategoryCreateError('')
-    const nextIds = new Set<string>()
-    let createName = ''
-
-    value.forEach((option) => {
-      if (typeof option === 'string') {
-        createName = option
-        return
-      }
-      if ('isNew' in option) {
-        createName = option.name
-        return
-      }
-      nextIds.add(option.id)
+  const handleCategoryRemove = (categoryId: string) => {
+    setSelectedCategoryIds((prev) => {
+      const next = new Set(prev)
+      next.delete(categoryId)
+      return next
     })
-
-    if (!createName) {
-      setSelectedCategoryIds(nextIds)
-      return
-    }
-
-    const trimmed = createName.trim()
-    if (!trimmed) {
-      setSelectedCategoryIds(nextIds)
-      return
-    }
-
-    const existing = findCategoryByName(categories, trimmed)
-    if (existing) {
-      nextIds.add(existing.id)
-      setSelectedCategoryIds(nextIds)
-      return
-    }
-
-    setSelectedCategoryIds(nextIds)
-    setPendingCategoryCreate({
-      name: trimmed,
-      nextIds: Array.from(nextIds),
-    })
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
-    onOpenCategoryCreate()
-  }
-
-  const handleConfirmCategoryCreate = async () => {
-    if (!pendingCategoryCreate) return
-    setCategoryCreating(true)
-    setCategoryCreateError('')
-    try {
-      const created = await onCreateCategory(pendingCategoryCreate.name, {
-        color: newCategoryColor === null ? null : normalizeCategoryColor(newCategoryColor) ?? null,
-        emoji: normalizeCategoryEmoji(newCategoryEmoji) ?? null,
-      })
-      const nextIds = new Set(pendingCategoryCreate.nextIds)
-      nextIds.add(created.id)
-      setSelectedCategoryIds(nextIds)
-      resetPendingCategoryCreate()
-      onCloseCategoryCreate()
-    } catch {
-      setCategoryCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
-    } finally {
-      setCategoryCreating(false)
-    }
   }
 
   const handleSave = async () => {
@@ -308,121 +208,127 @@ export function ExpenseFormModal({
             </Stack>
             <Box>
               <Stack spacing={1}>
-                <Autocomplete<CategoryOption, true, false, true>
-                  multiple
-                  freeSolo
-                  disableCloseOnSelect
-                  filterSelectedOptions
-                  options={categories}
-                  value={selectedCategoryList}
-                  inputValue={categoryInputValue}
-                  loading={isCategoryCreating}
-                  onInputChange={(_event, value, reason) => {
-                    setCategoryInputValue(value)
-                    if (reason === 'input' && categoryCreateError) {
-                      setCategoryCreateError('')
-                    }
-                  }}
-                  onChange={(_, value, reason) => {
-                    if (reason === 'clear') {
-                      setCategoryInputValue('')
-                      return
-                    }
-                    void handleCategoriesChange(value)
-                  }}
-                  filterOptions={(options, params) => {
-                    const inputValue = params.inputValue.trim()
-                    const normalized = inputValue.toLowerCase()
-                    const filtered = options.filter((option) =>
-                      option.name.toLowerCase().includes(normalized),
-                    )
-                    if (inputValue && !findCategoryByName(categories, inputValue)) {
-                      filtered.push({ inputValue, name: inputValue, isNew: true })
-                    }
-                    return filtered
-                  }}
-                  getOptionLabel={(option) => {
-                    if (typeof option === 'string') return option
-                    if ('isNew' in option) return option.name
-                    return withCategoryEmoji(option)
-                  }}
-                  isOptionEqualToValue={(option, value) => {
-                    if (typeof option === 'string' || typeof value === 'string') {
-                      return option === value
-                    }
-                    if ('isNew' in option || 'isNew' in value) return false
-                    return option.id === value.id
-                  }}
-                  renderOption={(props, option) => {
-                    if ('isNew' in option) {
-                      return <li {...props}>{`Добавить категорию "${option.name}"`}</li>
-                    }
-                    const categoryColor = normalizeCategoryColor(option.color)
-                    return (
-                      <li {...props}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Box
-                            sx={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 999,
-                              bgcolor: categoryColor ?? 'divider',
-                              border: '1px solid',
-                              borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
-                              flexShrink: 0,
-                            }}
-                          />
-                          <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
-                        </Stack>
-                      </li>
-                    )
-                  }}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => {
-                      const label =
-                        typeof option === 'string'
-                          ? option
-                          : 'isNew' in option
-                            ? option.name
-                            : withCategoryEmoji(option)
-                      const categoryColor =
-                        typeof option === 'object' && !('isNew' in option)
-                          ? normalizeCategoryColor(option.color)
-                          : null
-                      return (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={
-                            typeof option === 'string'
-                              ? `${option}-${index}`
-                              : 'isNew' in option
-                                ? `${option.name}-${index}`
-                                : option.id
-                          }
-                          size="small"
-                          label={label}
-                          sx={
-                            categoryColor
-                              ? {
-                                  borderColor: alpha(categoryColor, 0.55),
-                                  bgcolor: alpha(categoryColor, 0.14),
-                                }
-                              : undefined
-                          }
-                        />
-                      )
-                    })
-                  }
-                  renderInput={(params) => (
+                {fullScreen ? (
+                  <>
                     <TextField
-                      {...params}
-                      label="Выбрать категории"
-                      placeholder="Поиск или создание"
-                      error={Boolean(categoryCreateError)}
-                      helperText={categoryCreateError || undefined}
+                      fullWidth
+                      value="Выбрать категории"
+                      onClick={isSaving || isDeleting ? undefined : onOpenCategoryCreate}
+                      onKeyDown={(event) => {
+                        if (isSaving || isDeleting) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onOpenCategoryCreate()
+                        }
+                      }}
+                      InputProps={{ readOnly: true }}
+                      disabled={isSaving || isDeleting}
+                      sx={{
+                        '& .MuiInputBase-input': {
+                          cursor: isSaving || isDeleting ? 'default' : 'pointer',
+                        },
+                      }}
                     />
-                  )}
-                />
+                    {selectedCategoryList.length > 0 ? (
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        {selectedCategoryList.map((category) => {
+                          const categoryColor = normalizeCategoryColor(category.color)
+                          return (
+                            <Chip
+                              key={category.id}
+                              label={withCategoryEmoji(category)}
+                              size="small"
+                              variant="outlined"
+                              onDelete={
+                                isSaving || isDeleting
+                                  ? undefined
+                                  : () => handleCategoryRemove(category.id)
+                              }
+                              sx={
+                                categoryColor
+                                  ? {
+                                      borderColor: alpha(categoryColor, 0.55),
+                                      bgcolor: alpha(categoryColor, 0.14),
+                                    }
+                                  : undefined
+                              }
+                            />
+                          )
+                        })}
+                      </Stack>
+                    ) : null}
+                  </>
+                ) : (
+                  <Autocomplete<Category, true, false, false>
+                    multiple
+                    filterSelectedOptions
+                    options={categories}
+                    value={selectedCategoryList}
+                    inputValue={categoryInputValue}
+                    onInputChange={(_event, value) => {
+                      setCategoryInputValue(value)
+                    }}
+                    onChange={(_event, value, reason) => {
+                      if (reason === 'clear') {
+                        setCategoryInputValue('')
+                        return
+                      }
+                      setSelectedCategoryIds(new Set(value.map((category) => category.id)))
+                    }}
+                    disabled={isSaving || isDeleting}
+                    getOptionLabel={(option) => withCategoryEmoji(option)}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderOption={(props, option) => {
+                      const categoryColor = normalizeCategoryColor(option.color)
+                      return (
+                        <li {...props}>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 999,
+                                bgcolor: categoryColor ?? 'divider',
+                                border: '1px solid',
+                                borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
+                          </Stack>
+                        </li>
+                      )
+                    }}
+                    renderTags={(value, getTagProps) =>
+                      value.map((category, index) => {
+                        const categoryColor = normalizeCategoryColor(category.color)
+                        return (
+                          <Chip
+                            {...getTagProps({ index })}
+                            key={category.id}
+                            size="small"
+                            label={withCategoryEmoji(category)}
+                            sx={
+                              categoryColor
+                                ? {
+                                    borderColor: alpha(categoryColor, 0.55),
+                                    bgcolor: alpha(categoryColor, 0.14),
+                                  }
+                                : undefined
+                            }
+                          />
+                        )
+                      })
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Выбрать категории"
+                        placeholder="Поиск категории"
+                      />
+                    )}
+                  />
+                )}
               </Stack>
             </Box>
             <TextField
@@ -478,56 +384,18 @@ export function ExpenseFormModal({
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={isCategoryCreateOpen && Boolean(pendingCategoryCreate)}
-        onClose={closeCategoryCreateDialog}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Новая категория</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={1.5}>
-            <TextField
-              label="Название"
-              value={pendingCategoryCreate?.name ?? ''}
-              fullWidth
-              disabled
-              size="small"
-            />
-            <EmojiPickerField
-              value={newCategoryEmoji}
-              onChange={(emoji) => {
-                setNewCategoryEmoji(emoji)
-                if (categoryCreateError) setCategoryCreateError('')
-              }}
-            />
-            <CategoryColorPickerField
-              value={newCategoryColor}
-              onChange={setNewCategoryColor}
-              options={CATEGORY_COLOR_OPTIONS}
-            />
-            {categoryCreateError ? (
-              <Typography color="error" variant="body2">
-                {categoryCreateError}
-              </Typography>
-            ) : null}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeCategoryCreateDialog} disabled={isCategoryCreating}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              void handleConfirmCategoryCreate()
-            }}
-            disabled={isCategoryCreating}
-          >
-            {isCategoryCreating ? 'Создаём…' : 'Создать'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CategorySearchDialog
+        isOpen={fullScreen && isCategoryCreateOpen}
+        categories={categories}
+        initialSelected={Array.from(selectedCategoryIds)}
+        onClose={onCloseCategoryCreate}
+        onConfirm={(selected) => {
+          setSelectedCategoryIds(new Set(selected))
+          onCloseCategoryCreate()
+        }}
+        onCreateCategory={onCreateCategory}
+        title="Выбрать категории"
+      />
 
       <Dialog
         open={isDeleteConfirmOpen && Boolean(expense)}
