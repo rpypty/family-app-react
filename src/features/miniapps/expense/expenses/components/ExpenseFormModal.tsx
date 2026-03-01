@@ -93,6 +93,7 @@ export function ExpenseFormModal({
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
+  const [categoryInputValue, setCategoryInputValue] = useState('')
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const wasCategoryCreateOpen = useRef(isCategoryCreateOpen)
@@ -125,6 +126,7 @@ export function ExpenseFormModal({
     setNewCategoryEmoji('')
     setSaving(false)
     setDeleting(false)
+    setCategoryInputValue('')
   }, [expense, isOpen])
 
   useEffect(() => {
@@ -313,13 +315,19 @@ export function ExpenseFormModal({
                   filterSelectedOptions
                   options={categories}
                   value={selectedCategoryList}
+                  inputValue={categoryInputValue}
                   loading={isCategoryCreating}
-                  onInputChange={(_event, _value, reason) => {
+                  onInputChange={(_event, value, reason) => {
+                    setCategoryInputValue(value)
                     if (reason === 'input' && categoryCreateError) {
                       setCategoryCreateError('')
                     }
                   }}
-                  onChange={(_, value) => {
+                  onChange={(_, value, reason) => {
+                    if (reason === 'clear') {
+                      setCategoryInputValue('')
+                      return
+                    }
                     void handleCategoriesChange(value)
                   }}
                   filterOptions={(options, params) => {
