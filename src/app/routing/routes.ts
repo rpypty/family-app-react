@@ -1,4 +1,4 @@
-export type TabId = 'expenses' | 'analytics' | 'reports'
+export type TabId = 'expenses' | 'analytics' | 'reports' | 'settings'
 export type AppId = 'home' | 'expenses' | 'todo' | 'workouts'
 export type WorkoutsRoute =
   | { view: 'home' }
@@ -25,6 +25,7 @@ export const ROUTES = {
   expenseAnalyticsTags: '/miniapps/expenses/analytics/tags',
   expenseAnalyticsDrilldown: '/miniapps/expenses/analytics/drilldown',
   expenseReports: '/miniapps/expenses/reports',
+  expenseSettings: '/miniapps/expenses/settings',
   todo: '/miniapps/todo',
   workouts: '/miniapps/workouts',
 } as const
@@ -62,6 +63,7 @@ export const EXPENSE_TAB_ROUTES: Record<TabId, string> = {
   expenses: ROUTES.expenses,
   analytics: ROUTES.expenseAnalytics,
   reports: ROUTES.expenseReports,
+  settings: ROUTES.expenseSettings,
 }
 
 export type ResolvedRoute = {
@@ -270,6 +272,9 @@ export const resolveAppRoute = (pathname: string): ResolvedRoute => {
     }
     if (section === 'reports') {
       return { activeApp: 'expenses', activeTab: 'reports' }
+    }
+    if (section === 'settings') {
+      return { activeApp: 'expenses', activeTab: 'settings' }
     }
     if (isValidExpensesDetailPath(segments)) {
       return { activeApp: 'expenses', activeTab: 'expenses' }

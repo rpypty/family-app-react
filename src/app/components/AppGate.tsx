@@ -1,4 +1,4 @@
-import { isSupabaseConfigured } from '../../features/auth/api/auth'
+import { isAuthConfigured } from '../../features/auth/api/auth'
 import { AuthScreen } from '../../features/auth/screens/AuthScreen'
 import { FamilyScreen } from '../../features/family/screens/FamilyScreen'
 import { AppLoadingScreen } from '../../features/onboarding/screens/AppLoadingScreen'
@@ -25,7 +25,7 @@ export function AppGate({ gate, shell }: AppGateProps) {
   }
 
   if (isUnauthenticated) {
-    return <AuthScreen onSignIn={gate.onSignIn} isConfigured={isSupabaseConfigured} />
+    return <AuthScreen onSignIn={gate.onSignIn} isConfigured={isAuthConfigured} />
   }
 
   if (!gate.familyId) {

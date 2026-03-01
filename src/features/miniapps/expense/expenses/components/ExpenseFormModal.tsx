@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -19,35 +19,20 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
-  DEFAULT_CATEGORY_COLOR,
-  CATEGORY_COLOR_OPTIONS,
   normalizeCategoryColor,
-  normalizeCategoryEmoji,
   withCategoryEmoji,
   type CategoryAppearanceInput,
 } from '../../../../../shared/lib/categoryAppearance'
-import { EmojiPickerField } from '../../../../../shared/ui/EmojiPickerField'
-import { CategoryColorPickerField } from '../../../../../shared/ui/CategoryColorPickerField'
-import { findCategoryByName, selectedCategories } from '../../../../../shared/lib/categoryUtils'
+import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
+import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
 import { createId } from '../../../../../shared/lib/uuid'
+import { getTopCategories, type TopCategoryItem, type TopCategoriesStatus } from '../api/topCategories'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
-
-type CategoryCreateOption = {
-  inputValue: string
-  name: string
-  isNew: true
-}
-
-type CategoryOption = Category | CategoryCreateOption
-
-type PendingCategoryCreate = {
-  name: string
-  nextIds: string[]
-}
 
 type ExpenseFormModalProps = {
   isOpen: boolean
@@ -86,29 +71,15 @@ export function ExpenseFormModal({
   const [currency, setCurrency] = useState<Currency>('BYN')
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
-  const [isCategoryCreating, setCategoryCreating] = useState(false)
-  const [categoryCreateError, setCategoryCreateError] = useState('')
-  const [pendingCategoryCreate, setPendingCategoryCreate] = useState<PendingCategoryCreate | null>(null)
-  const [newCategoryColor, setNewCategoryColor] = useState<string | null>(DEFAULT_CATEGORY_COLOR)
-  const [newCategoryEmoji, setNewCategoryEmoji] = useState('')
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
+  const [categoryInputValue, setCategoryInputValue] = useState('')
+  const [topCategoryItems, setTopCategoryItems] = useState<TopCategoryItem[]>([])
+  const [topCategoriesStatus, setTopCategoriesStatus] = useState<TopCategoriesStatus | null>(null)
+  const [isTopCategoriesLoading, setTopCategoriesLoading] = useState(false)
+  const [isPopularInfoOpen, setPopularInfoOpen] = useState(false)
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const wasCategoryCreateOpen = useRef(isCategoryCreateOpen)
-
-  const resetPendingCategoryCreate = () => {
-    setPendingCategoryCreate(null)
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
-    setCategoryCreateError('')
-  }
-
-  const closeCategoryCreateDialog = () => {
-    if (isCategoryCreating) return
-    resetPendingCategoryCreate()
-    onCloseCategoryCreate()
-  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -118,91 +89,91 @@ export function ExpenseFormModal({
     setCurrency(expense?.currency ?? 'BYN')
     setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
-    setCategoryCreateError('')
-    setCategoryCreating(false)
-    setPendingCategoryCreate(null)
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
     setSaving(false)
     setDeleting(false)
+    setCategoryInputValue('')
+    setTopCategoryItems([])
+    setTopCategoriesStatus(null)
+    setTopCategoriesLoading(false)
+    setPopularInfoOpen(false)
   }, [expense, isOpen])
 
   useEffect(() => {
-    if (wasCategoryCreateOpen.current && !isCategoryCreateOpen) {
-      resetPendingCategoryCreate()
+    if (!fullScreen && isCategoryCreateOpen) {
+      onCloseCategoryCreate()
     }
-    wasCategoryCreateOpen.current = isCategoryCreateOpen
-  }, [isCategoryCreateOpen])
+  }, [fullScreen, isCategoryCreateOpen, onCloseCategoryCreate])
+
+  useEffect(() => {
+    if (!isOpen || expense) {
+      setTopCategoryItems([])
+      setTopCategoriesStatus(null)
+      setTopCategoriesLoading(false)
+      return
+    }
+    let isCancelled = false
+    setTopCategoriesLoading(true)
+    ;(async () => {
+      try {
+        const response = await getTopCategories()
+        if (isCancelled) return
+        setTopCategoriesStatus(response.status)
+        setTopCategoryItems(response.status === 'OK' ? response.items : [])
+      } catch {
+        if (isCancelled) return
+        setTopCategoriesStatus(null)
+        setTopCategoryItems([])
+      } finally {
+        if (!isCancelled) {
+          setTopCategoriesLoading(false)
+        }
+      }
+    })()
+    return () => {
+      isCancelled = true
+    }
+  }, [isOpen, expense])
 
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
     [categories, selectedCategoryIds],
   )
 
-  const handleCategoriesChange = async (value: Array<CategoryOption | string>) => {
-    setCategoryCreateError('')
-    const nextIds = new Set<string>()
-    let createName = ''
-
-    value.forEach((option) => {
-      if (typeof option === 'string') {
-        createName = option
-        return
+  const popularCategorySuggestions = useMemo(() => {
+    if (expense || topCategoriesStatus !== 'OK') return []
+    const categoryMap = new Map(categories.map((category) => [category.id, category]))
+    const unique = new Map<string, Category>()
+    topCategoryItems.forEach((item) => {
+      if (selectedCategoryIds.has(item.categoryId)) return
+      const category = categoryMap.get(item.categoryId) ?? {
+        id: item.categoryId,
+        name: item.categoryName,
       }
-      if ('isNew' in option) {
-        createName = option.name
-        return
+      if (!unique.has(category.id)) {
+        unique.set(category.id, category)
       }
-      nextIds.add(option.id)
     })
+    return Array.from(unique.values())
+  }, [categories, expense, selectedCategoryIds, topCategoryItems, topCategoriesStatus])
 
-    if (!createName) {
-      setSelectedCategoryIds(nextIds)
-      return
-    }
+  const shouldShowTopCategoriesCard =
+    !expense && (isTopCategoriesLoading || popularCategorySuggestions.length > 0)
 
-    const trimmed = createName.trim()
-    if (!trimmed) {
-      setSelectedCategoryIds(nextIds)
-      return
-    }
-
-    const existing = findCategoryByName(categories, trimmed)
-    if (existing) {
-      nextIds.add(existing.id)
-      setSelectedCategoryIds(nextIds)
-      return
-    }
-
-    setSelectedCategoryIds(nextIds)
-    setPendingCategoryCreate({
-      name: trimmed,
-      nextIds: Array.from(nextIds),
+  const handleCategoryRemove = (categoryId: string) => {
+    setSelectedCategoryIds((prev) => {
+      const next = new Set(prev)
+      next.delete(categoryId)
+      return next
     })
-    setNewCategoryColor(DEFAULT_CATEGORY_COLOR)
-    setNewCategoryEmoji('')
-    onOpenCategoryCreate()
   }
 
-  const handleConfirmCategoryCreate = async () => {
-    if (!pendingCategoryCreate) return
-    setCategoryCreating(true)
-    setCategoryCreateError('')
-    try {
-      const created = await onCreateCategory(pendingCategoryCreate.name, {
-        color: newCategoryColor === null ? null : normalizeCategoryColor(newCategoryColor) ?? null,
-        emoji: normalizeCategoryEmoji(newCategoryEmoji) ?? null,
-      })
-      const nextIds = new Set(pendingCategoryCreate.nextIds)
-      nextIds.add(created.id)
-      setSelectedCategoryIds(nextIds)
-      resetPendingCategoryCreate()
-      onCloseCategoryCreate()
-    } catch {
-      setCategoryCreateError('Не удалось создать категорию. Попробуйте ещё раз.')
-    } finally {
-      setCategoryCreating(false)
-    }
+  const handleSelectTopCategory = (categoryId: string) => {
+    setSelectedCategoryIds((prev) => {
+      if (prev.has(categoryId)) return prev
+      const next = new Set(prev)
+      next.add(categoryId)
+      return next
+    })
   }
 
   const handleSave = async () => {
@@ -306,115 +277,216 @@ export function ExpenseFormModal({
             </Stack>
             <Box>
               <Stack spacing={1}>
-                <Autocomplete<CategoryOption, true, false, true>
-                  multiple
-                  freeSolo
-                  disableCloseOnSelect
-                  filterSelectedOptions
-                  options={categories}
-                  value={selectedCategoryList}
-                  loading={isCategoryCreating}
-                  onInputChange={(_event, _value, reason) => {
-                    if (reason === 'input' && categoryCreateError) {
-                      setCategoryCreateError('')
-                    }
-                  }}
-                  onChange={(_, value) => {
-                    void handleCategoriesChange(value)
-                  }}
-                  filterOptions={(options, params) => {
-                    const inputValue = params.inputValue.trim()
-                    const normalized = inputValue.toLowerCase()
-                    const filtered = options.filter((option) =>
-                      option.name.toLowerCase().includes(normalized),
-                    )
-                    if (inputValue && !findCategoryByName(categories, inputValue)) {
-                      filtered.push({ inputValue, name: inputValue, isNew: true })
-                    }
-                    return filtered
-                  }}
-                  getOptionLabel={(option) => {
-                    if (typeof option === 'string') return option
-                    if ('isNew' in option) return option.name
-                    return withCategoryEmoji(option)
-                  }}
-                  isOptionEqualToValue={(option, value) => {
-                    if (typeof option === 'string' || typeof value === 'string') {
-                      return option === value
-                    }
-                    if ('isNew' in option || 'isNew' in value) return false
-                    return option.id === value.id
-                  }}
-                  renderOption={(props, option) => {
-                    if ('isNew' in option) {
-                      return <li {...props}>{`Добавить категорию "${option.name}"`}</li>
-                    }
-                    const categoryColor = normalizeCategoryColor(option.color)
-                    return (
-                      <li {...props}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Box
-                            sx={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 999,
-                              bgcolor: categoryColor ?? 'divider',
-                              border: '1px solid',
-                              borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
-                              flexShrink: 0,
-                            }}
-                          />
-                          <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
-                        </Stack>
-                      </li>
-                    )
-                  }}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => {
-                      const label =
-                        typeof option === 'string'
-                          ? option
-                          : 'isNew' in option
-                            ? option.name
-                            : withCategoryEmoji(option)
-                      const categoryColor =
-                        typeof option === 'object' && !('isNew' in option)
-                          ? normalizeCategoryColor(option.color)
-                          : null
-                      return (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={
-                            typeof option === 'string'
-                              ? `${option}-${index}`
-                              : 'isNew' in option
-                                ? `${option.name}-${index}`
-                                : option.id
-                          }
-                          size="small"
-                          label={label}
-                          sx={
-                            categoryColor
-                              ? {
-                                  borderColor: alpha(categoryColor, 0.55),
-                                  bgcolor: alpha(categoryColor, 0.14),
-                                }
-                              : undefined
-                          }
-                        />
-                      )
-                    })
-                  }
-                  renderInput={(params) => (
+                {fullScreen ? (
+                  <>
                     <TextField
-                      {...params}
+                      fullWidth
+                      value=""
+                      onClick={isSaving || isDeleting ? undefined : onOpenCategoryCreate}
+                      onKeyDown={(event) => {
+                        if (isSaving || isDeleting) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onOpenCategoryCreate()
+                        }
+                      }}
                       label="Выбрать категории"
-                      placeholder="Поиск или создание"
-                      error={Boolean(categoryCreateError)}
-                      helperText={categoryCreateError || undefined}
+                      placeholder={selectedCategoryList.length === 0 ? 'Нажмите, чтобы выбрать' : ''}
+                      InputLabelProps={{ shrink: true }}
+                      InputProps={{
+                        readOnly: true,
+                        startAdornment:
+                          selectedCategoryList.length > 0 ? (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.75,
+                                overflowX: 'auto',
+                                maxWidth: '100%',
+                                py: 0.25,
+                                '&::-webkit-scrollbar': {
+                                  display: 'none',
+                                },
+                                scrollbarWidth: 'none',
+                              }}
+                            >
+                              {selectedCategoryList.map((category) => {
+                                const categoryColor = normalizeCategoryColor(category.color)
+                                return (
+                                  <Chip
+                                    key={category.id}
+                                    label={withCategoryEmoji(category)}
+                                    size="small"
+                                    variant="outlined"
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onTouchStart={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onDelete={
+                                      isSaving || isDeleting
+                                        ? undefined
+                                        : () => {
+                                            handleCategoryRemove(category.id)
+                                          }
+                                    }
+                                    sx={{
+                                      flexShrink: 0,
+                                      ...(categoryColor
+                                        ? {
+                                            borderColor: alpha(categoryColor, 0.55),
+                                            bgcolor: alpha(categoryColor, 0.14),
+                                          }
+                                        : {}),
+                                    }}
+                                  />
+                                )
+                              })}
+                            </Box>
+                          ) : undefined,
+                      }}
+                      disabled={isSaving || isDeleting}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          alignItems: 'center',
+                          minHeight: 56,
+                        },
+                        '& .MuiInputBase-input': {
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          minWidth: selectedCategoryList.length > 0 ? 0 : 'auto',
+                          width: selectedCategoryList.length > 0 ? 0 : 'auto',
+                          padding: selectedCategoryList.length > 0 ? 0 : undefined,
+                          cursor: isSaving || isDeleting ? 'default' : 'pointer',
+                        },
+                      }}
                     />
-                  )}
-                />
+                  </>
+                ) : (
+                  <Autocomplete<Category, true, false, false>
+                    multiple
+                    filterSelectedOptions
+                    options={categories}
+                    value={selectedCategoryList}
+                    inputValue={categoryInputValue}
+                    onInputChange={(_event, value) => {
+                      setCategoryInputValue(value)
+                    }}
+                    onChange={(_event, value, reason) => {
+                      if (reason === 'clear') {
+                        setCategoryInputValue('')
+                        return
+                      }
+                      setSelectedCategoryIds(new Set(value.map((category) => category.id)))
+                    }}
+                    disabled={isSaving || isDeleting}
+                    getOptionLabel={(option) => withCategoryEmoji(option)}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderOption={(props, option) => {
+                      const categoryColor = normalizeCategoryColor(option.color)
+                      return (
+                        <li {...props}>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 999,
+                                bgcolor: categoryColor ?? 'divider',
+                                border: '1px solid',
+                                borderColor: categoryColor ? alpha(categoryColor, 0.5) : 'divider',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <Typography variant="body2">{withCategoryEmoji(option)}</Typography>
+                          </Stack>
+                        </li>
+                      )
+                    }}
+                    renderTags={(value, getTagProps) =>
+                      value.map((category, index) => {
+                        const categoryColor = normalizeCategoryColor(category.color)
+                        const { key, ...tagProps } = getTagProps({ index })
+                        return (
+                          <Chip
+                            {...tagProps}
+                            key={key}
+                            size="small"
+                            label={withCategoryEmoji(category)}
+                            sx={
+                              categoryColor
+                                ? {
+                                    borderColor: alpha(categoryColor, 0.55),
+                                    bgcolor: alpha(categoryColor, 0.14),
+                                  }
+                                : undefined
+                            }
+                          />
+                        )
+                      })
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Выбрать категории"
+                        placeholder="Поиск категории"
+                      />
+                    )}
+                  />
+                )}
+                {shouldShowTopCategoriesCard ? (
+                  <Stack spacing={0.75} sx={{ pt: 0.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        Популярные
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        aria-label="О популярных категориях"
+                        onClick={() => setPopularInfoOpen(true)}
+                        sx={{ p: 0.25 }}
+                      >
+                        <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Stack>
+                    {isTopCategoriesLoading ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Подбираем подсказки...
+                      </Typography>
+                    ) : (
+                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ width: 'max-content', minWidth: '100%' }}>
+                          {popularCategorySuggestions.map((category) => {
+                            const categoryColor = normalizeCategoryColor(category.color)
+                            return (
+                              <Chip
+                                key={category.id}
+                                label={withCategoryEmoji(category)}
+                                size="small"
+                                variant="filled"
+                                clickable
+                                onClick={() => handleSelectTopCategory(category.id)}
+                                disabled={isSaving || isDeleting}
+                                sx={{
+                                  flexShrink: 0,
+                                  ...(categoryColor
+                                    ? {
+                                        borderColor: 'transparent',
+                                        bgcolor: alpha(categoryColor, 0.12),
+                                      }
+                                    : {
+                                        borderColor: 'transparent',
+                                        bgcolor: 'action.hover',
+                                      }),
+                                }}
+                              />
+                            )
+                          })}
+                        </Stack>
+                      </Box>
+                    )}
+                  </Stack>
+                ) : null}
               </Stack>
             </Box>
             <TextField
@@ -470,54 +542,33 @@ export function ExpenseFormModal({
         </DialogActions>
       </Dialog>
 
+      <CategorySearchDialog
+        isOpen={fullScreen && isCategoryCreateOpen}
+        categories={categories}
+        initialSelected={Array.from(selectedCategoryIds)}
+        onClose={onCloseCategoryCreate}
+        onConfirm={(selected) => {
+          setSelectedCategoryIds(new Set(selected))
+          onCloseCategoryCreate()
+        }}
+        onCreateCategory={onCreateCategory}
+        title="Выбрать категории"
+      />
+
       <Dialog
-        open={isCategoryCreateOpen && Boolean(pendingCategoryCreate)}
-        onClose={closeCategoryCreateDialog}
+        open={isPopularInfoOpen}
+        onClose={() => setPopularInfoOpen(false)}
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Новая категория</DialogTitle>
+        <DialogTitle>О популярных категориях</DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={1.5}>
-            <TextField
-              label="Название"
-              value={pendingCategoryCreate?.name ?? ''}
-              fullWidth
-              disabled
-              size="small"
-            />
-            <EmojiPickerField
-              value={newCategoryEmoji}
-              onChange={(emoji) => {
-                setNewCategoryEmoji(emoji)
-                if (categoryCreateError) setCategoryCreateError('')
-              }}
-            />
-            <CategoryColorPickerField
-              value={newCategoryColor}
-              onChange={setNewCategoryColor}
-              options={CATEGORY_COLOR_OPTIONS}
-            />
-            {categoryCreateError ? (
-              <Typography color="error" variant="body2">
-                {categoryCreateError}
-              </Typography>
-            ) : null}
-          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            Популярные категории сформированы на основе ваших выборов
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeCategoryCreateDialog} disabled={isCategoryCreating}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              void handleConfirmCategoryCreate()
-            }}
-            disabled={isCategoryCreating}
-          >
-            {isCategoryCreating ? 'Создаём…' : 'Создать'}
-          </Button>
+          <Button onClick={() => setPopularInfoOpen(false)}>Понятно</Button>
         </DialogActions>
       </Dialog>
 

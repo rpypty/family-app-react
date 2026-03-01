@@ -1,6 +1,7 @@
 import { AnalyticsScreen } from '../../../features/miniapps/expense/analytics/screens/AnalyticsScreen'
 import { ExpensesScreen } from '../../../features/miniapps/expense/expenses/screens/ExpensesScreen'
 import { ReportsScreen } from '../../../features/miniapps/expense/reports/screens/ReportsScreen'
+import { ExpenseSettingsScreen } from '../../../features/miniapps/expense/settings/screens/ExpenseSettingsScreen'
 import { TodoScreen } from '../../../features/miniapps/todo/screens/TodoScreen'
 import { WorkoutsScreen } from '../../../features/miniapps/workouts/screens/WorkoutsScreen'
 import { MiniAppsScreen } from '../../../features/home/screens/MiniAppsScreen'
@@ -68,6 +69,14 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
 
       {model.activeApp === 'expenses' && model.activeTab === 'reports' ? (
         <ReportsScreen readOnly={model.isReadOnly} />
+      ) : null}
+
+      {model.activeApp === 'expenses' && model.activeTab === 'settings' ? (
+        <ExpenseSettingsScreen
+          themeMode={model.themeMode}
+          onToggleTheme={model.onToggleTheme}
+          onOpenFamilyDialog={model.onOpenFamilyDialog}
+        />
       ) : null}
 
       {model.activeApp === 'workouts' ? (

@@ -64,7 +64,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     server: {
-      allowedHosts: ['fmapp.site'],
+      allowedHosts: ['fmapp.site', 'http://192.168.1.10:5173', 'http://localhost:5173'],
       proxy: {
         '/api': {
           target: apiProxyTarget,

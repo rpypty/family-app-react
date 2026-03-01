@@ -1,5 +1,6 @@
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import { getSupabaseClient, isSupabaseConfigured } from '../../../shared/api/supabaseClient'
+import { getAuthMe, type AuthMe } from './authApi'
 
 export type AuthProvider = 'google'
 
@@ -18,6 +19,15 @@ export type AuthSession = {
   provider: AuthProvider
   createdAt: string
 }
+
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  if (!value) return false
+  const normalized = value.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+}
+
+export const isSkipAuthEnabled = parseBooleanEnv(import.meta.env.VITE_SKIP_AUTH)
+export const isAuthConfigured = isSkipAuthEnabled || isSupabaseConfigured
 
 const resolveProvider = (user: User | null): AuthProvider => {
   const provider = user?.app_metadata?.provider
@@ -58,10 +68,41 @@ const mapSession = (session: Session | null): AuthSession | null => {
   }
 }
 
+const mapSkipAuthIdentity = (authMe: AuthMe | null): { session: AuthSession; user: AuthUser } => {
+  const createdAt = new Date().toISOString()
+  const userId = authMe?.id?.trim() || 'skip-auth-user'
+  const email = authMe?.email ?? `${userId}@local.skip`
+  return {
+    session: {
+      id: `skip-auth:${userId}`,
+      userId,
+      provider: 'google',
+      createdAt,
+    },
+    user: {
+      id: userId,
+      name: authMe?.name ?? email.split('@')[0] ?? 'Пользователь',
+      email,
+      provider: 'google',
+      createdAt,
+      avatarUrl: authMe?.avatarUrl ?? undefined,
+    },
+  }
+}
+
 export const getSession = async (): Promise<{
   session: AuthSession | null
   user: AuthUser | null
 }> => {
+  if (isSkipAuthEnabled) {
+    try {
+      const authMe = await getAuthMe()
+      return mapSkipAuthIdentity(authMe)
+    } catch {
+      return mapSkipAuthIdentity(null)
+    }
+  }
+
   if (!isSupabaseConfigured) return { session: null, user: null }
   const { data, error } = await getSupabaseClient().auth.getSession()
   if (error) {
@@ -74,6 +115,7 @@ export const getSession = async (): Promise<{
 }
 
 export const signInWithGoogle = async (): Promise<void> => {
+  if (isSkipAuthEnabled) return
   if (!isSupabaseConfigured) {
     throw new Error('supabase_not_configured')
   }
@@ -89,6 +131,7 @@ export const signInWithGoogle = async (): Promise<void> => {
 }
 
 export const signOut = async (): Promise<void> => {
+  if (isSkipAuthEnabled) return
   if (!isSupabaseConfigured) return
   await getSupabaseClient().auth.signOut()
 }
@@ -96,6 +139,9 @@ export const signOut = async (): Promise<void> => {
 export const onAuthStateChange = (
   callback: (event: AuthChangeEvent, session: AuthSession | null, user: AuthUser | null) => void,
 ) => {
+  if (isSkipAuthEnabled) {
+    return () => {}
+  }
   if (!isSupabaseConfigured) {
     return () => {}
   }
