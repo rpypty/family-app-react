@@ -19,6 +19,7 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import type { Currency, Expense, Category } from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
@@ -29,6 +30,7 @@ import {
 import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
 import { createId } from '../../../../../shared/lib/uuid'
+import { getTopCategories, type TopCategoryItem, type TopCategoriesStatus } from '../api/topCategories'
 
 const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
 
@@ -72,6 +74,10 @@ export function ExpenseFormModal({
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
   const [categoryInputValue, setCategoryInputValue] = useState('')
+  const [topCategoryItems, setTopCategoryItems] = useState<TopCategoryItem[]>([])
+  const [topCategoriesStatus, setTopCategoriesStatus] = useState<TopCategoriesStatus | null>(null)
+  const [isTopCategoriesLoading, setTopCategoriesLoading] = useState(false)
+  const [isPopularInfoOpen, setPopularInfoOpen] = useState(false)
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -86,6 +92,10 @@ export function ExpenseFormModal({
     setSaving(false)
     setDeleting(false)
     setCategoryInputValue('')
+    setTopCategoryItems([])
+    setTopCategoriesStatus(null)
+    setTopCategoriesLoading(false)
+    setPopularInfoOpen(false)
   }, [expense, isOpen])
 
   useEffect(() => {
@@ -94,15 +104,74 @@ export function ExpenseFormModal({
     }
   }, [fullScreen, isCategoryCreateOpen, onCloseCategoryCreate])
 
+  useEffect(() => {
+    if (!isOpen || expense) {
+      setTopCategoryItems([])
+      setTopCategoriesStatus(null)
+      setTopCategoriesLoading(false)
+      return
+    }
+    let isCancelled = false
+    setTopCategoriesLoading(true)
+    ;(async () => {
+      try {
+        const response = await getTopCategories()
+        if (isCancelled) return
+        setTopCategoriesStatus(response.status)
+        setTopCategoryItems(response.status === 'OK' ? response.items : [])
+      } catch {
+        if (isCancelled) return
+        setTopCategoriesStatus(null)
+        setTopCategoryItems([])
+      } finally {
+        if (!isCancelled) {
+          setTopCategoriesLoading(false)
+        }
+      }
+    })()
+    return () => {
+      isCancelled = true
+    }
+  }, [isOpen, expense])
+
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
     [categories, selectedCategoryIds],
   )
 
+  const popularCategorySuggestions = useMemo(() => {
+    if (expense || topCategoriesStatus !== 'OK') return []
+    const categoryMap = new Map(categories.map((category) => [category.id, category]))
+    const unique = new Map<string, Category>()
+    topCategoryItems.forEach((item) => {
+      if (selectedCategoryIds.has(item.categoryId)) return
+      const category = categoryMap.get(item.categoryId) ?? {
+        id: item.categoryId,
+        name: item.categoryName,
+      }
+      if (!unique.has(category.id)) {
+        unique.set(category.id, category)
+      }
+    })
+    return Array.from(unique.values())
+  }, [categories, expense, selectedCategoryIds, topCategoryItems, topCategoriesStatus])
+
+  const shouldShowTopCategoriesCard =
+    !expense && (isTopCategoriesLoading || popularCategorySuggestions.length > 0)
+
   const handleCategoryRemove = (categoryId: string) => {
     setSelectedCategoryIds((prev) => {
       const next = new Set(prev)
       next.delete(categoryId)
+      return next
+    })
+  }
+
+  const handleSelectTopCategory = (categoryId: string) => {
+    setSelectedCategoryIds((prev) => {
+      if (prev.has(categoryId)) return prev
+      const next = new Set(prev)
+      next.add(categoryId)
       return next
     })
   }
@@ -212,7 +281,7 @@ export function ExpenseFormModal({
                   <>
                     <TextField
                       fullWidth
-                      value="Выбрать категории"
+                      value=""
                       onClick={isSaving || isDeleting ? undefined : onOpenCategoryCreate}
                       onKeyDown={(event) => {
                         if (isSaving || isDeleting) return
@@ -221,42 +290,77 @@ export function ExpenseFormModal({
                           onOpenCategoryCreate()
                         }
                       }}
-                      InputProps={{ readOnly: true }}
+                      label="Выбрать категории"
+                      placeholder={selectedCategoryList.length === 0 ? 'Нажмите, чтобы выбрать' : ''}
+                      InputLabelProps={{ shrink: true }}
+                      InputProps={{
+                        readOnly: true,
+                        startAdornment:
+                          selectedCategoryList.length > 0 ? (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.75,
+                                overflowX: 'auto',
+                                maxWidth: '100%',
+                                py: 0.25,
+                                '&::-webkit-scrollbar': {
+                                  display: 'none',
+                                },
+                                scrollbarWidth: 'none',
+                              }}
+                            >
+                              {selectedCategoryList.map((category) => {
+                                const categoryColor = normalizeCategoryColor(category.color)
+                                return (
+                                  <Chip
+                                    key={category.id}
+                                    label={withCategoryEmoji(category)}
+                                    size="small"
+                                    variant="outlined"
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onTouchStart={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onDelete={
+                                      isSaving || isDeleting
+                                        ? undefined
+                                        : () => {
+                                            handleCategoryRemove(category.id)
+                                          }
+                                    }
+                                    sx={{
+                                      flexShrink: 0,
+                                      ...(categoryColor
+                                        ? {
+                                            borderColor: alpha(categoryColor, 0.55),
+                                            bgcolor: alpha(categoryColor, 0.14),
+                                          }
+                                        : {}),
+                                    }}
+                                  />
+                                )
+                              })}
+                            </Box>
+                          ) : undefined,
+                      }}
                       disabled={isSaving || isDeleting}
                       sx={{
+                        '& .MuiInputBase-root': {
+                          alignItems: 'center',
+                          minHeight: 56,
+                        },
                         '& .MuiInputBase-input': {
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          minWidth: selectedCategoryList.length > 0 ? 0 : 'auto',
+                          width: selectedCategoryList.length > 0 ? 0 : 'auto',
+                          padding: selectedCategoryList.length > 0 ? 0 : undefined,
                           cursor: isSaving || isDeleting ? 'default' : 'pointer',
                         },
                       }}
                     />
-                    {selectedCategoryList.length > 0 ? (
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {selectedCategoryList.map((category) => {
-                          const categoryColor = normalizeCategoryColor(category.color)
-                          return (
-                            <Chip
-                              key={category.id}
-                              label={withCategoryEmoji(category)}
-                              size="small"
-                              variant="outlined"
-                              onDelete={
-                                isSaving || isDeleting
-                                  ? undefined
-                                  : () => handleCategoryRemove(category.id)
-                              }
-                              sx={
-                                categoryColor
-                                  ? {
-                                      borderColor: alpha(categoryColor, 0.55),
-                                      bgcolor: alpha(categoryColor, 0.14),
-                                    }
-                                  : undefined
-                              }
-                            />
-                          )
-                        })}
-                      </Stack>
-                    ) : null}
                   </>
                 ) : (
                   <Autocomplete<Category, true, false, false>
@@ -302,10 +406,11 @@ export function ExpenseFormModal({
                     renderTags={(value, getTagProps) =>
                       value.map((category, index) => {
                         const categoryColor = normalizeCategoryColor(category.color)
+                        const { key, ...tagProps } = getTagProps({ index })
                         return (
                           <Chip
-                            {...getTagProps({ index })}
-                            key={category.id}
+                            {...tagProps}
+                            key={key}
                             size="small"
                             label={withCategoryEmoji(category)}
                             sx={
@@ -329,6 +434,59 @@ export function ExpenseFormModal({
                     )}
                   />
                 )}
+                {shouldShowTopCategoriesCard ? (
+                  <Stack spacing={0.75} sx={{ pt: 0.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        Популярные
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        aria-label="О популярных категориях"
+                        onClick={() => setPopularInfoOpen(true)}
+                        sx={{ p: 0.25 }}
+                      >
+                        <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Stack>
+                    {isTopCategoriesLoading ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Подбираем подсказки...
+                      </Typography>
+                    ) : (
+                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ width: 'max-content', minWidth: '100%' }}>
+                          {popularCategorySuggestions.map((category) => {
+                            const categoryColor = normalizeCategoryColor(category.color)
+                            return (
+                              <Chip
+                                key={category.id}
+                                label={withCategoryEmoji(category)}
+                                size="small"
+                                variant="filled"
+                                clickable
+                                onClick={() => handleSelectTopCategory(category.id)}
+                                disabled={isSaving || isDeleting}
+                                sx={{
+                                  flexShrink: 0,
+                                  ...(categoryColor
+                                    ? {
+                                        borderColor: 'transparent',
+                                        bgcolor: alpha(categoryColor, 0.12),
+                                      }
+                                    : {
+                                        borderColor: 'transparent',
+                                        bgcolor: 'action.hover',
+                                      }),
+                                }}
+                              />
+                            )
+                          })}
+                        </Stack>
+                      </Box>
+                    )}
+                  </Stack>
+                ) : null}
               </Stack>
             </Box>
             <TextField
@@ -396,6 +554,23 @@ export function ExpenseFormModal({
         onCreateCategory={onCreateCategory}
         title="Выбрать категории"
       />
+
+      <Dialog
+        open={isPopularInfoOpen}
+        onClose={() => setPopularInfoOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>О популярных категориях</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            Популярные категории сформированы на основе ваших выборов
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPopularInfoOpen(false)}>Понятно</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={isDeleteConfirmOpen && Boolean(expense)}
