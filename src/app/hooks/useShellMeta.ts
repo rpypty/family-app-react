@@ -27,6 +27,12 @@ const TABS: Array<{
     title: 'Отчеты',
     subtitle: 'Сравнение месячных итогов.',
   },
+  {
+    id: 'settings',
+    label: 'Настройки',
+    title: 'Настройки',
+    subtitle: 'Тема, категории и параметры учета.',
+  },
 ]
 
 type UseShellMetaParams = {

@@ -1,6 +1,7 @@
 import BarChartRounded from '@mui/icons-material/BarChartRounded'
 import ListAltRounded from '@mui/icons-material/ListAltRounded'
 import PieChartRounded from '@mui/icons-material/PieChartRounded'
+import SettingsRounded from '@mui/icons-material/SettingsRounded'
 import {
   BottomNavigation,
   BottomNavigationAction,
@@ -53,6 +54,11 @@ export function AppShellExpensesTabs({ model }: AppShellExpensesTabsProps) {
           label="Отчеты"
           value="reports"
           icon={<BarChartRounded />}
+        />
+        <BottomNavigationAction
+          label="Настройки"
+          value="settings"
+          icon={<SettingsRounded />}
         />
       </BottomNavigation>
     </Paper>

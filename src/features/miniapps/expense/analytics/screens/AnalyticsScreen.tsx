@@ -253,6 +253,10 @@ export function AnalyticsScreen({
     setFilterCategoryIds(new Set())
   }
 
+  const openCategoryFilters = () => {
+    navigate(ROUTES.expenseAnalyticsTags)
+  }
+
   const openDrilldownRoute = (payload: DrilldownRouteState) => {
     const params = new URLSearchParams()
     params.set('from', payload.from)
@@ -611,51 +615,78 @@ export function AnalyticsScreen({
             <Stack spacing={0} sx={{ pt: 2 }}>
               <TextField
                 fullWidth
-                value="Выбрать категории"
-                onClick={() => navigate(ROUTES.expenseAnalyticsTags)}
+                label="Категории"
+                value={selectedCategoryList.length > 0 ? '' : 'Выбрать категории'}
+                onClick={openCategoryFilters}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    navigate(ROUTES.expenseAnalyticsTags)
+                    openCategoryFilters()
                   }
                 }}
-                InputProps={{ readOnly: true }}
+                InputProps={{
+                  readOnly: true,
+                  startAdornment:
+                    selectedCategoryList.length > 0 ? (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.75,
+                          overflowX: 'auto',
+                          maxWidth: '100%',
+                          py: 0.25,
+                          '&::-webkit-scrollbar': {
+                            display: 'none',
+                          },
+                          scrollbarWidth: 'none',
+                        }}
+                      >
+                        {selectedCategoryList.map((category) => {
+                          const categoryColor = normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR
+                          return (
+                            <Chip
+                              key={category.id}
+                              label={withCategoryEmoji(category)}
+                              size="small"
+                              variant="outlined"
+                              onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}
+                              onTouchStart={(touchEvent) => touchEvent.stopPropagation()}
+                              onClick={(mouseEvent) => mouseEvent.stopPropagation()}
+                              onDelete={() =>
+                                setFilterCategoryIds((prev) => {
+                                  const next = new Set(prev)
+                                  next.delete(category.id)
+                                  return next
+                                })
+                              }
+                              sx={{
+                                flexShrink: 0,
+                                borderColor: alpha(categoryColor, 0.55),
+                                bgcolor: alpha(categoryColor, 0.14),
+                              }}
+                            />
+                          )
+                        })}
+                      </Box>
+                    ) : undefined,
+                }}
                 sx={{
+                  '& .MuiInputBase-root': {
+                    alignItems: 'center',
+                    minHeight: 56,
+                  },
                   '& .MuiInputBase-input': {
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    minWidth: selectedCategoryList.length > 0 ? 0 : 'auto',
+                    width: selectedCategoryList.length > 0 ? 0 : 'auto',
+                    padding: selectedCategoryList.length > 0 ? 0 : undefined,
                     cursor: 'pointer',
                   },
                 }}
               />
-              {selectedCategoryList.length > 0 ? (
-                <Box sx={{ mt: 1 }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
-                      {selectedCategoryList.map((category) => {
-                        const categoryColor = normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR
-                        return (
-                          <Chip
-                            key={category.id}
-                            label={withCategoryEmoji(category)}
-                            size="small"
-                            variant="outlined"
-                            onDelete={() =>
-                              setFilterCategoryIds((prev) => {
-                                const next = new Set(prev)
-                                next.delete(category.id)
-                                return next
-                              })
-                            }
-                            sx={{
-                              borderColor: alpha(categoryColor, 0.55),
-                              bgcolor: alpha(categoryColor, 0.14),
-                            }}
-                          />
-                        )
-                      })}
-                    </Stack>
-                  </Stack>
-                </Box>
-              ) : null}
             </Stack>
           </Stack>
         </CardContent>
