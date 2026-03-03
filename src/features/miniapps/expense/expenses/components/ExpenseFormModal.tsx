@@ -311,8 +311,8 @@ export function ExpenseFormModal({
                         Подбираем подсказки...
                       </Typography>
                     ) : (
-                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
-                        <Stack direction="row" spacing={1} sx={{ width: 'max-content', minWidth: '100%' }}>
+                      <Box sx={{ pb: 0.5 }}>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ width: '100%' }}>
                           {popularCategorySuggestions.map((category) => {
                             const categoryColor = normalizeCategoryColor(category.color)
                             return (
@@ -368,14 +368,11 @@ export function ExpenseFormModal({
                               sx={{
                                 display: 'flex',
                                 alignItems: 'center',
+                                flexWrap: 'wrap',
                                 gap: 0.75,
-                                overflowX: 'auto',
-                                maxWidth: '100%',
-                                py: 0.25,
-                                '&::-webkit-scrollbar': {
-                                  display: 'none',
-                                },
-                                scrollbarWidth: 'none',
+                                width: '100%',
+                                px: 0.25,
+                                py: 0.5,
                               }}
                             >
                               {selectedCategoryList.map((category) => {
@@ -417,6 +414,7 @@ export function ExpenseFormModal({
                         '& .MuiInputBase-root': {
                           alignItems: 'center',
                           minHeight: 56,
+                          py: selectedCategoryList.length > 0 ? 0.75 : 0,
                         },
                         '& .MuiInputBase-input': {
                           overflow: 'hidden',

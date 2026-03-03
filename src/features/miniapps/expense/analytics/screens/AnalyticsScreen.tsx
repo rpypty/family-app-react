@@ -719,14 +719,11 @@ export function AnalyticsScreen({
                         sx={{
                           display: 'flex',
                           alignItems: 'center',
+                          flexWrap: 'wrap',
                           gap: 0.75,
-                          overflowX: 'auto',
-                          maxWidth: '100%',
-                          py: 0.25,
-                          '&::-webkit-scrollbar': {
-                            display: 'none',
-                          },
-                          scrollbarWidth: 'none',
+                          width: '100%',
+                          px: 0.25,
+                          py: 0.5,
                         }}
                       >
                         {selectedCategoryList.map((category) => {
@@ -762,6 +759,7 @@ export function AnalyticsScreen({
                   '& .MuiInputBase-root': {
                     alignItems: 'center',
                     minHeight: 56,
+                    py: selectedCategoryList.length > 0 ? 0.75 : 0,
                   },
                   '& .MuiInputBase-input': {
                     overflow: 'hidden',
