@@ -5,6 +5,7 @@ export type Family = {
   name: string
   code: string
   ownerId: string
+  defaultCurrency: string
   createdAt: string
 }
 
@@ -21,6 +22,7 @@ type ApiFamily = {
   name: string
   code: string
   owner_id: string
+  default_currency: string
   created_at: string
 }
 
@@ -37,6 +39,7 @@ const mapFamily = (family: ApiFamily): Family => ({
   name: family.name,
   code: family.code,
   ownerId: family.owner_id,
+  defaultCurrency: family.default_currency,
   createdAt: family.created_at,
 })
 
@@ -139,6 +142,16 @@ export const updateFamilyName = async (name: string): Promise<Family> => {
   const family = await apiFetch<ApiFamily>('/families/me', {
     method: 'PATCH',
     body: JSON.stringify({ name }),
+  })
+  const mapped = mapFamily(family)
+  setCurrentFamilyCache(mapped)
+  return mapped
+}
+
+export const updateFamilyDefaultCurrency = async (defaultCurrency: string): Promise<Family> => {
+  const family = await apiFetch<ApiFamily>('/families/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ default_currency: defaultCurrency }),
   })
   const mapped = mapFamily(family)
   setCurrentFamilyCache(mapped)

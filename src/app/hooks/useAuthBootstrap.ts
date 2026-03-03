@@ -71,6 +71,7 @@ const isSameFamily = (left: Family | null, right: Family | null): boolean => {
     left.name === right.name &&
     left.code === right.code &&
     left.ownerId === right.ownerId &&
+    left.defaultCurrency === right.defaultCurrency &&
     left.createdAt === right.createdAt
   )
 }

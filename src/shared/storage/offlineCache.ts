@@ -12,6 +12,7 @@ type OfflineFamily = {
   name: string
   code?: string
   ownerId?: string
+  defaultCurrency?: string
 }
 
 export type OfflineCache = {

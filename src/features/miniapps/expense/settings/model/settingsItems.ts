@@ -34,7 +34,7 @@ export const EXPENSE_SETTINGS_ITEMS: ExpenseSettingsItem[] = [
     id: 'defaultCurrency',
     title: 'Валюта по умолчанию',
     description: 'Базовая валюта для новых расходов.',
-    availability: 'comingSoon',
+    availability: 'ready',
   },
   {
     id: 'categories',

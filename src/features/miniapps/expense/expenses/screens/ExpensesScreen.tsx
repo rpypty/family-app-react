@@ -42,6 +42,7 @@ import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll
 type ExpensesScreenProps = {
   expenses: Expense[]
   categories: Category[]
+  familyDefaultCurrency?: string | null
   total: number
   hasMore: boolean
   isLoadingMore: boolean
@@ -59,6 +60,7 @@ type ExpensesScreenProps = {
 export function ExpensesScreen({
   expenses,
   categories,
+  familyDefaultCurrency,
   total,
   hasMore,
   isLoadingMore,
@@ -420,6 +422,7 @@ export function ExpensesScreen({
       <ExpenseFormModal
         isOpen={isFormOpen}
         expense={editingExpense}
+        defaultCurrency={familyDefaultCurrency}
         isCategoryCreateOpen={isCategoryCreateOpen}
         isDeleteConfirmOpen={isDeleteConfirmOpen}
         categories={categories}

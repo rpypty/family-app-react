@@ -1,4 +1,9 @@
-export type Currency = 'BYN' | 'USD' | 'EUR' | 'RUB'
+export const SUPPORTED_CURRENCIES = ['BYN', 'USD', 'EUR', 'RUB'] as const
+export type Currency = (typeof SUPPORTED_CURRENCIES)[number]
+export const DEFAULT_CURRENCY: Currency = 'BYN'
+
+export const isCurrency = (value: string): value is Currency =>
+  (SUPPORTED_CURRENCIES as readonly string[]).includes(value)
 
 export type ThemeMode = 'light' | 'dark'
 

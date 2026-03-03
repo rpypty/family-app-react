@@ -30,6 +30,7 @@ type UseAppShellActionsParams = {
     handleSignOut: () => Promise<void>
     handleCloseFamilyDialog: () => void
     handleRemoveMember: (member: FamilyMember) => Promise<void>
+    handleUpdateFamilyDefaultCurrency: (currency: string) => Promise<void>
   }
   todo: {
     handleCreateTodoList: (title: string) => Promise<void>
@@ -94,6 +95,7 @@ export function useAppShellActions({
     handleSignOut,
     handleCloseFamilyDialog,
     handleRemoveMember,
+    handleUpdateFamilyDefaultCurrency,
   },
   todo: {
     handleCreateTodoList,
@@ -141,6 +143,7 @@ export function useAppShellActions({
     onSignOut: handleSignOut,
     onCloseFamilyDialog: handleCloseFamilyDialog,
     onRemoveMember: handleRemoveMember,
+    onUpdateFamilyDefaultCurrency: handleUpdateFamilyDefaultCurrency,
     onManualRetry: handleManualRetry,
     onRefreshActiveScreen: handleRefreshActiveScreen,
     onRefreshExpenseCategories: handleRefreshExpenseCategories,

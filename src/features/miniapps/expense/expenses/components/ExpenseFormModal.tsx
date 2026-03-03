@@ -20,7 +20,14 @@ import { alpha, useTheme } from '@mui/material/styles'
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import type { Currency, Expense, Category } from '../../../../../shared/types'
+import {
+  DEFAULT_CURRENCY,
+  SUPPORTED_CURRENCIES,
+  isCurrency,
+  type Currency,
+  type Expense,
+  type Category,
+} from '../../../../../shared/types'
 import { formatDate } from '../../../../../shared/lib/formatters'
 import {
   normalizeCategoryColor,
@@ -32,11 +39,10 @@ import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDia
 import { createId } from '../../../../../shared/lib/uuid'
 import { getTopCategories, type TopCategoryItem, type TopCategoriesStatus } from '../api/topCategories'
 
-const CURRENCIES: Currency[] = ['EUR', 'USD', 'BYN', 'RUB']
-
 type ExpenseFormModalProps = {
   isOpen: boolean
   expense?: Expense | null
+  defaultCurrency?: string | null
   isCategoryCreateOpen: boolean
   isDeleteConfirmOpen: boolean
   categories: Category[]
@@ -54,6 +60,7 @@ type ExpenseFormModalProps = {
 export function ExpenseFormModal({
   isOpen,
   expense,
+  defaultCurrency,
   isCategoryCreateOpen,
   isDeleteConfirmOpen,
   categories,
@@ -67,10 +74,14 @@ export function ExpenseFormModal({
   onCreateCategory,
   onRefreshCategories,
 }: ExpenseFormModalProps) {
+  const normalizedDefaultCurrency = useMemo(() => {
+    const raw = defaultCurrency?.trim().toUpperCase()
+    return raw && isCurrency(raw) ? raw : DEFAULT_CURRENCY
+  }, [defaultCurrency])
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
   const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState<Currency>('BYN')
+  const [currency, setCurrency] = useState<Currency>(DEFAULT_CURRENCY)
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
   const [isSaving, setSaving] = useState(false)
@@ -88,7 +99,7 @@ export function ExpenseFormModal({
     setDate(expense?.date ?? formatDate(new Date()))
     setTitle(expense?.title ?? '')
     setAmount(expense?.amount?.toString() ?? '')
-    setCurrency(expense?.currency ?? 'BYN')
+    setCurrency(expense?.currency ?? normalizedDefaultCurrency)
     setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
     setSaving(false)
@@ -98,7 +109,7 @@ export function ExpenseFormModal({
     setTopCategoriesStatus(null)
     setTopCategoriesLoading(false)
     setPopularInfoOpen(false)
-  }, [expense, isOpen])
+  }, [expense, isOpen, normalizedDefaultCurrency])
 
   useEffect(() => {
     if (!fullScreen && isCategoryCreateOpen) {
@@ -282,7 +293,7 @@ export function ExpenseFormModal({
                 onChange={(event) => setCurrency(event.target.value as Currency)}
                 sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
               >
-                {CURRENCIES.map((value) => (
+                {SUPPORTED_CURRENCIES.map((value) => (
                   <MenuItem key={value} value={value}>
                     {value}
                   </MenuItem>

@@ -44,6 +44,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
         <ExpensesScreen
           expenses={model.state.expenses}
           categories={model.state.categories}
+          familyDefaultCurrency={model.family?.defaultCurrency}
           total={model.expensesTotal}
           hasMore={!model.isReadOnly && model.state.expenses.length < model.expensesTotal}
           isLoadingMore={model.isExpensesLoadingMore}
@@ -77,8 +78,11 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
       {model.activeApp === 'expenses' && model.activeTab === 'settings' ? (
         <ExpenseSettingsScreen
           themeMode={model.themeMode}
+          familyDefaultCurrency={model.family?.defaultCurrency}
+          isReadOnly={model.isReadOnly}
           onToggleTheme={model.onToggleTheme}
           onOpenFamilyDialog={model.onOpenFamilyDialog}
+          onUpdateFamilyDefaultCurrency={model.onUpdateFamilyDefaultCurrency}
         />
       ) : null}
 
