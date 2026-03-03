@@ -201,6 +201,7 @@ export function useAppControllerActions({
     handleUpdateCategory,
     handleDeleteCategory,
     handleRefreshExpenses,
+    handleRefreshExpenseCategories,
   } = useExpenseActions({
     state: {
       state,
@@ -270,6 +271,7 @@ export function useAppControllerActions({
       canRefreshExpenses,
       handleRefreshTodoLists,
       handleRefreshExpenses,
+      handleRefreshExpenseCategories,
       performManualRefresh,
       setOfflineSyncNoticeOpen: syncSetters.setOfflineSyncNoticeOpen,
     },

@@ -97,6 +97,7 @@ export function useAppController() {
     resetOfflineOutboxStorage,
     resetSyncInFlight,
   } = useDataSync({
+    activeApp,
     familyId,
     authSession,
     dataSyncStatus,

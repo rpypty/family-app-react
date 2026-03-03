@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   CardContent,
@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   EXPENSES_ROUTES,
   ROUTES,
+  normalizePathname,
   resolveExpensesRoute,
 } from '../../../../../app/routing/routes'
 import type { Expense, Category } from '../../../../../shared/types'
@@ -49,6 +50,8 @@ type ExpensesScreenProps = {
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
   onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onRefreshListData?: () => void
+  onRefreshCategories?: () => void
   readOnly?: boolean
   allowOfflineCreate?: boolean
 }
@@ -64,6 +67,8 @@ export function ExpensesScreen({
   onUpdateExpense,
   onDeleteExpense,
   onCreateCategory,
+  onRefreshListData,
+  onRefreshCategories,
   readOnly = false,
   allowOfflineCreate = false,
 }: ExpensesScreenProps) {
@@ -71,6 +76,8 @@ export function ExpensesScreen({
   const navigate = useNavigate()
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
+  const currentPath = normalizePathname(location.pathname)
+  const isBaseListRoute = currentPath === ROUTES.expenses
   const maxCategoryVisible = isSmall ? 2 : 3
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
@@ -111,6 +118,31 @@ export function ExpensesScreen({
     return null
   }, [expenseRoute, expenses])
   const isFormOpen = isNewRoute || Boolean(editingExpense)
+  const previousRouteViewRef = useRef<typeof expenseRoute.view | null>(null)
+  const wasBaseListRouteRef = useRef(false)
+
+  useEffect(() => {
+    if (isBaseListRoute && !wasBaseListRouteRef.current) {
+      onRefreshListData?.()
+    }
+    wasBaseListRouteRef.current = isBaseListRoute
+  }, [isBaseListRoute, onRefreshListData])
+
+  useEffect(() => {
+    const nextView = expenseRoute.view
+    const prevView = previousRouteViewRef.current
+
+    const isCategorySearchContext =
+      nextView === 'new' ||
+      nextView === 'edit' ||
+      nextView === 'new-category' ||
+      nextView === 'edit-category'
+    if (isCategorySearchContext && prevView !== nextView) {
+      onRefreshCategories?.()
+    }
+
+    previousRouteViewRef.current = nextView
+  }, [expenseRoute.view, onRefreshCategories])
 
   useEffect(() => {
     if (!canCreate && isNewRoute) {
@@ -399,6 +431,7 @@ export function ExpensesScreen({
         onSave={handleSave}
         onDelete={handleDelete}
         onCreateCategory={onCreateCategory}
+        onRefreshCategories={onRefreshCategories}
       />
 
       {canCreate ? (

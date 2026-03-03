@@ -13,7 +13,7 @@ import type { DataSyncSetters } from '../sync/contracts'
 import { EXPENSES_PAGE_SIZE, MANUAL_RETRY_TIMEOUT_MS } from '../sync/constants'
 import { logDataSync } from '../sync/logging'
 import { isNetworkLikeError } from '../sync/network'
-import type { DataSyncStatus, DataSyncTrigger } from '../sync/types'
+import type { DataSyncScope, DataSyncStatus, DataSyncTrigger } from '../sync/types'
 import { applyPendingSyncState, mergeFetchedStateWithPendingCreates } from '../sync/stateTransforms'
 import type { OfflineFlushResult } from './useOfflineOutbox'
 
@@ -68,13 +68,17 @@ export function useSyncRunner({
     async ({
       timeoutMs,
       trigger,
+      scope = 'all',
     }: {
       timeoutMs: number
       trigger: DataSyncTrigger
+      scope?: DataSyncScope
     }): Promise<boolean> => {
       if (!familyId) return false
       if (!authSession && !isOfflineRef.current) return false
       if (syncInFlightRef.current) return false
+      const shouldFetchExpenses = scope === 'all' || scope === 'expenses'
+      const shouldFetchTodo = scope === 'all' || scope === 'todo'
       const hasLocalData =
         stateRef.current.expenses.length > 0 ||
         stateRef.current.categories.length > 0 ||
@@ -93,6 +97,7 @@ export function useSyncRunner({
       const startedAt = performance.now()
       logDataSync('sync_started', {
         trigger,
+        scope,
         timeoutMs,
         hasLocalData,
       })
@@ -122,22 +127,28 @@ export function useSyncRunner({
         }
 
         const [expensePage, categories, todoListPage] = await Promise.all([
-          listExpensePage(
-            { limit: EXPENSES_PAGE_SIZE, offset: 0 },
-            { timeoutMs },
-          ),
-          listCategories({ timeoutMs }),
-          listTodoLists(
-            { includeItems: true, itemsArchived: 'all' },
-            { timeoutMs },
-          ),
+          shouldFetchExpenses
+            ? listExpensePage(
+                { limit: EXPENSES_PAGE_SIZE, offset: 0 },
+                { timeoutMs },
+              )
+            : Promise.resolve(null),
+          shouldFetchExpenses
+            ? listCategories({ timeoutMs })
+            : Promise.resolve(stateRef.current.categories),
+          shouldFetchTodo
+            ? listTodoLists(
+                { includeItems: true, itemsArchived: 'all' },
+                { timeoutMs },
+              )
+            : Promise.resolve({ items: stateRef.current.todoLists, total: stateRef.current.todoLists.length }),
         ])
 
         const pendingOperations = getOutboxOperationsForFamily()
         const pendingCreateIds = resolvePendingCreateIds(pendingOperations)
         const nextSlices = mergeFetchedStateWithPendingCreates(
           {
-            expenses: expensePage.items,
+            expenses: expensePage?.items ?? stateRef.current.expenses,
             categories,
             todoLists: todoListPage.items,
           },
@@ -156,13 +167,15 @@ export function useSyncRunner({
             pendingOperations,
           ),
         )
-        setExpensesTotal(
-          Math.max(
-            expensePage.total + pendingCreateIds.expenseIds.size,
-            nextSlices.expenses.length,
-          ),
-        )
-        setExpensesOffset(expensePage.items.length)
+        if (expensePage) {
+          setExpensesTotal(
+            Math.max(
+              expensePage.total + pendingCreateIds.expenseIds.size,
+              nextSlices.expenses.length,
+            ),
+          )
+          setExpensesOffset(expensePage.items.length)
+        }
         const now = new Date().toISOString()
         setLastSyncAt(now)
         saveCacheMeta({ familyId, lastSyncAt: now })
@@ -172,10 +185,11 @@ export function useSyncRunner({
         setSyncErrorMessage(null)
         logDataSync('sync_succeeded', {
           trigger,
+          scope,
           timeoutMs,
           durationMs: Math.round(performance.now() - startedAt),
-          expensesCount: expensePage.items.length,
-          expensesTotal: expensePage.total,
+          expensesCount: expensePage?.items.length,
+          expensesTotal: expensePage?.total,
           syncedOfflineOperations: flushResult.syncedOperations,
           pendingOfflineOperations: flushResult.remainingOperations,
         })
@@ -195,6 +209,7 @@ export function useSyncRunner({
         }
         logDataSync('sync_failed', {
           trigger,
+          scope,
           timeoutMs,
           status,
           durationMs: Math.round(performance.now() - startedAt),
@@ -235,11 +250,12 @@ export function useSyncRunner({
     ],
   )
 
-  const performManualRefresh = useCallback(async () => {
+  const performManualRefresh = useCallback(async (scope: DataSyncScope = 'all') => {
     if (!authSession || !familyId) return
     await syncAllData({
       timeoutMs: MANUAL_RETRY_TIMEOUT_MS,
       trigger: 'manual',
+      scope,
     })
   }, [authSession, familyId, syncAllData])
 

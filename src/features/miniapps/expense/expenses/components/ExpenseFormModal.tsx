@@ -48,6 +48,7 @@ type ExpenseFormModalProps = {
   onSave: (expense: Expense) => Promise<void>
   onDelete: (expenseId: string) => Promise<void>
   onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onRefreshCategories?: () => void
 }
 
 export function ExpenseFormModal({
@@ -64,6 +65,7 @@ export function ExpenseFormModal({
   onSave,
   onDelete,
   onCreateCategory,
+  onRefreshCategories,
 }: ExpenseFormModalProps) {
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
@@ -181,6 +183,11 @@ export function ExpenseFormModal({
       next.add(categoryId)
       return next
     })
+  }
+
+  const handleOpenCategorySearch = () => {
+    onRefreshCategories?.()
+    onOpenCategoryCreate()
   }
 
   const handleSave = async () => {
@@ -342,12 +349,12 @@ export function ExpenseFormModal({
                     <TextField
                       fullWidth
                       value=""
-                      onClick={isSaving || isDeleting ? undefined : onOpenCategoryCreate}
+                      onClick={isSaving || isDeleting ? undefined : handleOpenCategorySearch}
                       onKeyDown={(event) => {
                         if (isSaving || isDeleting) return
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          onOpenCategoryCreate()
+                          handleOpenCategorySearch()
                         }
                       }}
                       label=""
@@ -440,6 +447,7 @@ export function ExpenseFormModal({
                       }
                       setSelectedCategoryIds(new Set(value.map((category) => category.id)))
                     }}
+                    onOpen={() => onRefreshCategories?.()}
                     disabled={isSaving || isDeleting}
                     getOptionLabel={(option) => withCategoryEmoji(option)}
                     isOptionEqualToValue={(option, value) => option.id === value.id}

@@ -39,6 +39,42 @@ type UseAuthBootstrapParams = {
   setBootstrapping: Dispatch<SetStateAction<boolean>>
 }
 
+const isSameSession = (left: AuthSession | null, right: AuthSession | null): boolean => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return (
+    left.id === right.id &&
+    left.userId === right.userId &&
+    left.provider === right.provider &&
+    left.createdAt === right.createdAt
+  )
+}
+
+const isSameUser = (left: AuthUser | null, right: AuthUser | null): boolean => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return (
+    left.id === right.id &&
+    left.email === right.email &&
+    left.name === right.name &&
+    left.provider === right.provider &&
+    left.createdAt === right.createdAt &&
+    left.avatarUrl === right.avatarUrl
+  )
+}
+
+const isSameFamily = (left: Family | null, right: Family | null): boolean => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.code === right.code &&
+    left.ownerId === right.ownerId &&
+    left.createdAt === right.createdAt
+  )
+}
+
 export function useAuthBootstrap({
   navigate,
   isOfflineRef,
@@ -61,6 +97,23 @@ export function useAuthBootstrap({
   const persistOfflineSnapshotRef = useRef(persistOfflineSnapshot)
   const onMenuCloseRef = useRef(onMenuClose)
   const onResetOfflineOutboxRef = useRef(onResetOfflineOutbox)
+  const navigateRef = useRef(navigate)
+
+  const setAuthSessionIfChanged = (next: AuthSession | null) => {
+    setAuthSession((prev) => (isSameSession(prev, next) ? prev : next))
+  }
+
+  const setAuthUserIfChanged = (next: AuthUser | null) => {
+    setAuthUser((prev) => (isSameUser(prev, next) ? prev : next))
+  }
+
+  const setFamilyIfChanged = (next: Family | null) => {
+    setFamily((prev) => (isSameFamily(prev, next) ? prev : next))
+  }
+
+  const setFamilyIdIfChanged = (next: string | null) => {
+    setFamilyId((prev) => (prev === next ? prev : next))
+  }
 
   useEffect(() => {
     persistOfflineSnapshotRef.current = persistOfflineSnapshot
@@ -75,6 +128,10 @@ export function useAuthBootstrap({
   }, [onResetOfflineOutbox])
 
   useEffect(() => {
+    navigateRef.current = navigate
+  }, [navigate])
+
+  useEffect(() => {
     let isActive = true
 
     const applySnapshot = async (session: AuthSession | null, user: AuthUser | null) => {
@@ -86,10 +143,10 @@ export function useAuthBootstrap({
         if (offline && cached?.lastUser && cached?.lastFamily) {
           const offlineUser = toOfflineAuthUser(cached.lastUser)
           const offlineFamily = toOfflineFamily(cached.lastFamily, offlineUser.id)
-          setAuthSession(toOfflineSession(offlineUser))
-          setAuthUser(offlineUser)
-          setFamily(offlineFamily)
-          setFamilyId(offlineFamily.id)
+          setAuthSessionIfChanged(toOfflineSession(offlineUser))
+          setAuthUserIfChanged(offlineUser)
+          setFamilyIfChanged(offlineFamily)
+          setFamilyIdIfChanged(offlineFamily.id)
           onMenuCloseRef.current()
           setDataStale(true)
           setDataSyncStatus('offline')
@@ -98,12 +155,12 @@ export function useAuthBootstrap({
           return
         }
 
-        setAuthSession(session)
-        setAuthUser(user)
-        setFamilyId(null)
-        setFamily(null)
+        setAuthSessionIfChanged(session)
+        setAuthUserIfChanged(user)
+        setFamilyIdIfChanged(null)
+        setFamilyIfChanged(null)
         onMenuCloseRef.current()
-        navigate(ROUTES.home, { replace: true })
+        navigateRef.current(ROUTES.home, { replace: true })
         setDataStale(false)
         if (offline) {
           setDataSyncStatus('offline')
@@ -119,14 +176,14 @@ export function useAuthBootstrap({
         return
       }
 
-      setAuthSession(session)
-      setAuthUser(user)
+      setAuthSessionIfChanged(session)
+      setAuthUserIfChanged(user)
       setSyncErrorMessage(null)
 
       if (offline) {
         const cachedFamily = cached?.lastFamily ? toOfflineFamily(cached.lastFamily, user.id) : null
-        setFamily(cachedFamily)
-        setFamilyId(cachedFamily?.id ?? null)
+        setFamilyIfChanged(cachedFamily)
+        setFamilyIdIfChanged(cachedFamily?.id ?? null)
         setDataSyncStatus('offline')
         if (cachedFamily) {
           persistOfflineSnapshotRef.current({ lastUser: user, lastFamily: cachedFamily })
@@ -140,8 +197,8 @@ export function useAuthBootstrap({
       } catch (error) {
         if (!isActive) return
         const cachedFamily = cached?.lastFamily ? toOfflineFamily(cached.lastFamily, user.id) : null
-        setFamily(cachedFamily)
-        setFamilyId(cachedFamily?.id ?? null)
+        setFamilyIfChanged(cachedFamily)
+        setFamilyIdIfChanged(cachedFamily?.id ?? null)
         setDataStale(true)
         const status: DataSyncStatus = isNetworkLikeError(error) ? 'offline' : 'error'
         setDataSyncStatus(status)
@@ -154,8 +211,8 @@ export function useAuthBootstrap({
       }
 
       if (!isActive) return
-      setFamily(currentFamily)
-      setFamilyId(currentFamily?.id ?? null)
+      setFamilyIfChanged(currentFamily)
+      setFamilyIdIfChanged(currentFamily?.id ?? null)
       setDataSyncStatus('loading')
       if (currentFamily) {
         persistOfflineSnapshotRef.current({ lastUser: user, lastFamily: currentFamily })
@@ -173,10 +230,10 @@ export function useAuthBootstrap({
         if (cached?.lastUser && cached?.lastFamily) {
           const offlineUser = toOfflineAuthUser(cached.lastUser)
           const offlineFamily = toOfflineFamily(cached.lastFamily, offlineUser.id)
-          setAuthSession(toOfflineSession(offlineUser))
-          setAuthUser(offlineUser)
-          setFamily(offlineFamily)
-          setFamilyId(offlineFamily.id)
+          setAuthSessionIfChanged(toOfflineSession(offlineUser))
+          setAuthUserIfChanged(offlineUser)
+          setFamilyIfChanged(offlineFamily)
+          setFamilyIdIfChanged(offlineFamily.id)
           setDataStale(true)
           setDataSyncStatus(status)
           setLastSyncAt(cached.lastSyncAt ?? null)
@@ -208,5 +265,5 @@ export function useAuthBootstrap({
     }
     // This bootstrap effect should run once and keep internal callback refs up to date.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate])
+  }, [])
 }

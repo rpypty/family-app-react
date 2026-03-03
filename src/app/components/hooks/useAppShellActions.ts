@@ -10,6 +10,7 @@ type UseAppShellActionsParams = {
     canRefreshExpenses: boolean
     handleRefreshTodoLists: () => Promise<void>
     handleRefreshExpenses: () => Promise<void>
+    handleRefreshExpenseCategories: () => Promise<void>
     performManualRefresh: () => Promise<void>
     setOfflineSyncNoticeOpen: Dispatch<SetStateAction<boolean>>
   }
@@ -73,6 +74,7 @@ export function useAppShellActions({
     canRefreshExpenses,
     handleRefreshTodoLists,
     handleRefreshExpenses,
+    handleRefreshExpenseCategories,
     performManualRefresh,
     setOfflineSyncNoticeOpen,
   },
@@ -141,6 +143,7 @@ export function useAppShellActions({
     onRemoveMember: handleRemoveMember,
     onManualRetry: handleManualRetry,
     onRefreshActiveScreen: handleRefreshActiveScreen,
+    onRefreshExpenseCategories: handleRefreshExpenseCategories,
     onOpenExpenses: () => navigateExpenseTab('expenses'),
     onOpenTodo: navigateTodo,
     onOpenWorkouts: navigateWorkouts,

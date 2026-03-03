@@ -52,6 +52,8 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
           onUpdateExpense={model.onUpdateExpense}
           onDeleteExpense={model.onDeleteExpense}
           onCreateCategory={model.onCreateCategory}
+          onRefreshListData={model.onRefreshActiveScreen}
+          onRefreshCategories={model.onRefreshExpenseCategories}
           readOnly={model.isReadOnly}
           allowOfflineCreate={model.isOfflineLike}
         />
@@ -64,6 +66,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
           onCreateCategory={model.onCreateCategory}
           onUpdateCategory={model.onUpdateCategory}
           onDeleteCategory={model.onDeleteCategory}
+          onRefreshCategories={model.onRefreshExpenseCategories}
         />
       ) : null}
 

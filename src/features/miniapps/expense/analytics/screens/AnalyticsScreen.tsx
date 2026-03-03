@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Box,
@@ -60,10 +60,12 @@ type AnalyticsScreenProps = {
   onCreateCategory?: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   onUpdateCategory?: (categoryId: string, name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   onDeleteCategory?: (categoryId: string) => Promise<void>
+  onRefreshCategories?: () => void
 }
 
 const FALLBACK_FROM = '2000-01-01'
 const FILTER_STORAGE_KEY = 'expense:analytics:filters:v1'
+const ANALYTICS_PAGE_SIZE = 50
 
 type DayRange = {
   from: Date
@@ -147,6 +149,7 @@ export function AnalyticsScreen({
   onCreateCategory,
   onUpdateCategory,
   onDeleteCategory,
+  onRefreshCategories,
   readOnly = false,
 }: AnalyticsScreenProps) {
   const location = useLocation()
@@ -184,12 +187,19 @@ export function AnalyticsScreen({
   const [timeseriesLoading, setTimeseriesLoading] = useState(false)
   const [timeseriesError, setTimeseriesError] = useState<string | null>(null)
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
+  const [filteredTotal, setFilteredTotal] = useState(0)
+  const [filteredOffset, setFilteredOffset] = useState(0)
   const [isListLoading, setListLoading] = useState(false)
+  const [isListLoadingMore, setListLoadingMore] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [activeSliceId, setActiveSliceId] = useState<string | null>(null)
   const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
+  const [drilldownTotal, setDrilldownTotal] = useState(0)
+  const [drilldownOffset, setDrilldownOffset] = useState(0)
   const [drilldownLoading, setDrilldownLoading] = useState(false)
+  const [drilldownLoadingMore, setDrilldownLoadingMore] = useState(false)
   const [drilldownError, setDrilldownError] = useState<string | null>(null)
+  const wasCategoryRouteRef = useRef(false)
 
   const hasFilters = fromDate !== null || toDate !== null || filterCategoryIds.size > 0
 
@@ -256,6 +266,13 @@ export function AnalyticsScreen({
   const openCategoryFilters = () => {
     navigate(ROUTES.expenseAnalyticsTags)
   }
+
+  useEffect(() => {
+    if (isCategoryRoute && !wasCategoryRouteRef.current) {
+      onRefreshCategories?.()
+    }
+    wasCategoryRouteRef.current = isCategoryRoute
+  }, [isCategoryRoute, onRefreshCategories])
 
   const openDrilldownRoute = (payload: DrilldownRouteState) => {
     const params = new URLSearchParams()
@@ -394,6 +411,9 @@ export function AnalyticsScreen({
     let isActive = true
     if (!hasFilters) {
       setFilteredExpenses([])
+      setFilteredTotal(0)
+      setFilteredOffset(0)
+      setListLoadingMore(false)
       setListError(null)
       return () => {
         isActive = false
@@ -401,6 +421,9 @@ export function AnalyticsScreen({
     }
     if (readOnly) {
       setFilteredExpenses([])
+      setFilteredTotal(0)
+      setFilteredOffset(0)
+      setListLoadingMore(false)
       setListError('Оффлайн: список недоступен.')
       setListLoading(false)
       return () => {
@@ -410,21 +433,26 @@ export function AnalyticsScreen({
 
     const loadList = async () => {
       setListLoading(true)
+      setListLoadingMore(false)
       setListError(null)
       try {
         const response = await listExpensePage({
           from: range.from,
           to: range.to,
           categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
-          limit: 50,
+          limit: ANALYTICS_PAGE_SIZE,
           offset: 0,
         })
         if (!isActive) return
         setFilteredExpenses(response.items)
+        setFilteredTotal(response.total)
+        setFilteredOffset(response.items.length)
       } catch {
         if (!isActive) return
         setListError('Не удалось загрузить список по фильтрам.')
         setFilteredExpenses([])
+        setFilteredTotal(0)
+        setFilteredOffset(0)
       } finally {
         if (isActive) setListLoading(false)
       }
@@ -437,6 +465,8 @@ export function AnalyticsScreen({
   }, [readOnly, hasFilters, range.from, range.to, categoryIds, categoryIdsKey])
 
   const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
+  const hasMoreFilteredExpenses = filteredOffset < filteredTotal
+  const hasMoreDrilldownExpenses = drilldownOffset < drilldownTotal
 
   const rowsForBreakdown = useMemo(() => {
     return byCategoryRows
@@ -469,6 +499,9 @@ export function AnalyticsScreen({
   const closeDrilldown = () => {
     navigate(ROUTES.expenseAnalytics, { replace: true })
     setDrilldownExpenses([])
+    setDrilldownTotal(0)
+    setDrilldownOffset(0)
+    setDrilldownLoadingMore(false)
     setDrilldownError(null)
   }
 
@@ -531,29 +564,37 @@ export function AnalyticsScreen({
     let isActive = true
     if (readOnly) {
       setDrilldownLoading(false)
+      setDrilldownLoadingMore(false)
       setDrilldownError('Оффлайн: данные недоступны.')
       setDrilldownExpenses([])
+      setDrilldownTotal(0)
+      setDrilldownOffset(0)
       return () => {
         isActive = false
       }
     }
     const loadDrilldown = async () => {
       setDrilldownLoading(true)
+      setDrilldownLoadingMore(false)
       setDrilldownError(null)
       try {
         const response = await listExpensePage({
           from: drilldownRouteState.from,
           to: drilldownRouteState.to,
           categoryIds: drilldownRouteState.categoryIds,
-          limit: 50,
+          limit: ANALYTICS_PAGE_SIZE,
           offset: 0,
         })
         if (!isActive) return
         setDrilldownExpenses(response.items)
+        setDrilldownTotal(response.total)
+        setDrilldownOffset(response.items.length)
       } catch {
         if (!isActive) return
         setDrilldownError('Не удалось загрузить список по категории.')
         setDrilldownExpenses([])
+        setDrilldownTotal(0)
+        setDrilldownOffset(0)
       } finally {
         if (isActive) setDrilldownLoading(false)
       }
@@ -564,6 +605,52 @@ export function AnalyticsScreen({
       isActive = false
     }
   }, [readOnly, drilldownRouteState])
+
+  const handleLoadMoreFilteredExpenses = async () => {
+    if (readOnly || !hasFilters) return
+    if (isListLoading || isListLoadingMore) return
+    if (!hasMoreFilteredExpenses) return
+    setListLoadingMore(true)
+    try {
+      const response = await listExpensePage({
+        from: range.from,
+        to: range.to,
+        categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+        limit: ANALYTICS_PAGE_SIZE,
+        offset: filteredOffset,
+      })
+      setFilteredExpenses((prev) => [...prev, ...response.items])
+      setFilteredTotal(response.total)
+      setFilteredOffset((prev) => prev + response.items.length)
+    } catch {
+      setListError('Не удалось загрузить ещё записи.')
+    } finally {
+      setListLoadingMore(false)
+    }
+  }
+
+  const handleLoadMoreDrilldownExpenses = async () => {
+    if (readOnly || !drilldownRouteState) return
+    if (drilldownLoading || drilldownLoadingMore) return
+    if (!hasMoreDrilldownExpenses) return
+    setDrilldownLoadingMore(true)
+    try {
+      const response = await listExpensePage({
+        from: drilldownRouteState.from,
+        to: drilldownRouteState.to,
+        categoryIds: drilldownRouteState.categoryIds,
+        limit: ANALYTICS_PAGE_SIZE,
+        offset: drilldownOffset,
+      })
+      setDrilldownExpenses((prev) => [...prev, ...response.items])
+      setDrilldownTotal(response.total)
+      setDrilldownOffset((prev) => prev + response.items.length)
+    } catch {
+      setDrilldownError('Не удалось загрузить ещё записи по категории.')
+    } finally {
+      setDrilldownLoadingMore(false)
+    }
+  }
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -924,6 +1011,15 @@ export function AnalyticsScreen({
                       </Box>
                     )
                   })}
+                  {hasMoreFilteredExpenses ? (
+                    <Button
+                      size="small"
+                      onClick={() => void handleLoadMoreFilteredExpenses()}
+                      disabled={isListLoadingMore}
+                    >
+                      {isListLoadingMore ? 'Загружаем...' : 'Показать ещё'}
+                    </Button>
+                  ) : null}
                 </Stack>
               )}
             </Stack>
@@ -1046,6 +1142,15 @@ export function AnalyticsScreen({
                   </Box>
                 )
               })}
+              {hasMoreDrilldownExpenses ? (
+                <Button
+                  size="small"
+                  onClick={() => void handleLoadMoreDrilldownExpenses()}
+                  disabled={drilldownLoadingMore}
+                >
+                  {drilldownLoadingMore ? 'Загружаем...' : 'Показать ещё'}
+                </Button>
+              ) : null}
             </Stack>
           )}
         </DialogContent>

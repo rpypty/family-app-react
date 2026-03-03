@@ -9,6 +9,7 @@ import {
 import {
   createCategory,
   deleteCategory,
+  listCategories,
   updateCategory,
 } from '../expenses/api/categories'
 import type { SyncOperation } from '../../../sync/api/sync'
@@ -22,7 +23,7 @@ import type { Expense, StorageState, Category } from '../../../../shared/types'
 import type { CategoryAppearanceInput } from '../../../../shared/lib/categoryAppearance'
 import { EXPENSES_PAGE_SIZE } from '../../../../app/sync/constants'
 import { isNetworkLikeError } from '../../../../app/sync/network'
-import type { DataSyncStatus } from '../../../../app/sync/types'
+import type { DataSyncScope, DataSyncStatus } from '../../../../app/sync/types'
 import { sortExpensesByDateDesc } from '../../../../app/sync/stateTransforms'
 
 type UseExpenseActionsParams = {
@@ -50,7 +51,7 @@ type UseExpenseActionsParams = {
   sync: {
     getOutboxOperationsForFamily: () => OfflineOutboxOperation[]
     enqueueOfflineOperation: (operation: SyncOperation) => void
-    onManualRefresh: () => Promise<void>
+    onManualRefresh: (scope?: DataSyncScope) => Promise<void>
   }
 }
 
@@ -246,9 +247,25 @@ export function useExpenseActions({
     if (!authSession || !familyId || isExpensesRefreshing) return
     setExpensesRefreshing(true)
     try {
-      await onManualRefresh()
+      await onManualRefresh('expenses')
     } finally {
       setExpensesRefreshing(false)
+    }
+  }
+
+  const handleRefreshExpenseCategories = async () => {
+    if (!authSession || !familyId) return
+    try {
+      const categories = await listCategories()
+      updateState((prev) => ({
+        ...prev,
+        categories,
+      }))
+    } catch (error) {
+      if (isNetworkLikeError(error)) {
+        setDataSyncStatus('offline')
+      }
+      setDataStale(true)
     }
   }
 
@@ -261,5 +278,6 @@ export function useExpenseActions({
     handleUpdateCategory,
     handleDeleteCategory,
     handleRefreshExpenses,
+    handleRefreshExpenseCategories,
   }
 }
