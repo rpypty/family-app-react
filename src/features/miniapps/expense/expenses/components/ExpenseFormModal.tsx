@@ -159,6 +159,13 @@ export function ExpenseFormModal({
   const shouldShowTopCategoriesCard =
     !expense && (isTopCategoriesLoading || popularCategorySuggestions.length > 0)
 
+  const unifiedPlaceholderSx = {
+    '& .MuiInputBase-input::placeholder': {
+      color: 'text.secondary',
+      opacity: 1,
+    },
+  }
+
   const handleCategoryRemove = (categoryId: string) => {
     setSelectedCategoryIds((prev) => {
       const next = new Set(prev)
@@ -277,6 +284,59 @@ export function ExpenseFormModal({
             </Stack>
             <Box>
               <Stack spacing={1}>
+                {shouldShowTopCategoriesCard ? (
+                  <Stack spacing={0.75} sx={{ pt: 0.5 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        Популярные категории
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        aria-label="О популярных категориях"
+                        onClick={() => setPopularInfoOpen(true)}
+                        sx={{ p: 0.25 }}
+                      >
+                        <InfoOutlinedIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Stack>
+                    {isTopCategoriesLoading ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Подбираем подсказки...
+                      </Typography>
+                    ) : (
+                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ width: 'max-content', minWidth: '100%' }}>
+                          {popularCategorySuggestions.map((category) => {
+                            const categoryColor = normalizeCategoryColor(category.color)
+                            return (
+                              <Chip
+                                key={category.id}
+                                label={withCategoryEmoji(category)}
+                                size="small"
+                                variant="filled"
+                                clickable
+                                onClick={() => handleSelectTopCategory(category.id)}
+                                disabled={isSaving || isDeleting}
+                                sx={{
+                                  flexShrink: 0,
+                                  ...(categoryColor
+                                    ? {
+                                        borderColor: 'transparent',
+                                        bgcolor: alpha(categoryColor, 0.12),
+                                      }
+                                    : {
+                                        borderColor: 'transparent',
+                                        bgcolor: 'action.hover',
+                                      }),
+                                }}
+                              />
+                            )
+                          })}
+                        </Stack>
+                      </Box>
+                    )}
+                  </Stack>
+                ) : null}
                 {fullScreen ? (
                   <>
                     <TextField
@@ -290,8 +350,8 @@ export function ExpenseFormModal({
                           onOpenCategoryCreate()
                         }
                       }}
-                      label="Выбрать категории"
-                      placeholder={selectedCategoryList.length === 0 ? 'Нажмите, чтобы выбрать' : ''}
+                      label=""
+                      placeholder={selectedCategoryList.length === 0 ? 'Выбрать категории...' : ''}
                       InputLabelProps={{ shrink: true }}
                       InputProps={{
                         readOnly: true,
@@ -346,6 +406,7 @@ export function ExpenseFormModal({
                       }}
                       disabled={isSaving || isDeleting}
                       sx={{
+                        ...unifiedPlaceholderSx,
                         '& .MuiInputBase-root': {
                           alignItems: 'center',
                           minHeight: 56,
@@ -430,63 +491,11 @@ export function ExpenseFormModal({
                         {...params}
                         label="Выбрать категории"
                         placeholder="Поиск категории"
+                        sx={unifiedPlaceholderSx}
                       />
                     )}
                   />
                 )}
-                {shouldShowTopCategoriesCard ? (
-                  <Stack spacing={0.75} sx={{ pt: 0.5 }}>
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                        Популярные
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        aria-label="О популярных категориях"
-                        onClick={() => setPopularInfoOpen(true)}
-                        sx={{ p: 0.25 }}
-                      >
-                        <InfoOutlinedIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Stack>
-                    {isTopCategoriesLoading ? (
-                      <Typography variant="body2" color="text.secondary">
-                        Подбираем подсказки...
-                      </Typography>
-                    ) : (
-                      <Box sx={{ overflowX: 'auto', pb: 0.5 }}>
-                        <Stack direction="row" spacing={1} sx={{ width: 'max-content', minWidth: '100%' }}>
-                          {popularCategorySuggestions.map((category) => {
-                            const categoryColor = normalizeCategoryColor(category.color)
-                            return (
-                              <Chip
-                                key={category.id}
-                                label={withCategoryEmoji(category)}
-                                size="small"
-                                variant="filled"
-                                clickable
-                                onClick={() => handleSelectTopCategory(category.id)}
-                                disabled={isSaving || isDeleting}
-                                sx={{
-                                  flexShrink: 0,
-                                  ...(categoryColor
-                                    ? {
-                                        borderColor: 'transparent',
-                                        bgcolor: alpha(categoryColor, 0.12),
-                                      }
-                                    : {
-                                        borderColor: 'transparent',
-                                        bgcolor: 'action.hover',
-                                      }),
-                                }}
-                              />
-                            )
-                          })}
-                        </Stack>
-                      </Box>
-                    )}
-                  </Stack>
-                ) : null}
               </Stack>
             </Box>
             <TextField
@@ -498,10 +507,11 @@ export function ExpenseFormModal({
               fullWidth
             />
             <TextField
-              label="Свое название"
+              label="Ввести свой заголовок..."
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Например: «Пицца» или «Такси»"
+              sx={unifiedPlaceholderSx}
               fullWidth
             />
             {error ? <Alert severity="error">{error}</Alert> : null}
