@@ -289,10 +289,11 @@ export function ExpensesScreen({
                               }
                               sx={{
                                 p: 1.5,
-                                display: 'flex',
-                                flexDirection: { xs: 'column', sm: 'row' },
-                                justifyContent: 'space-between',
-                                gap: 1.5,
+                                display: 'grid',
+                                gridTemplateColumns: '40px minmax(0, 1fr) auto',
+                                alignItems: 'center',
+                                columnGap: 1.1,
+                                borderRadius: 1,
                                 borderLeft: iconColor ? `3px solid ${alpha(iconColor, 0.85)}` : undefined,
                                 cursor: canEdit ? 'pointer' : 'default',
                                 transition: 'box-shadow 0.2s, border-color 0.2s',
@@ -304,108 +305,114 @@ export function ExpensesScreen({
                                   : undefined,
                               }}
                             >
-                              <Stack
-                                direction="row"
-                                spacing={1.5}
-                                alignItems="center"
-                                sx={{ flex: 1, minWidth: 0 }}
-                              >
-                                <ExpenseIcon emoji={iconEmoji} color={iconColor} />
-                                <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
-                                  <Stack direction="row" spacing={2} alignItems="center">
-                                    <Typography
-                                      fontWeight={500}
-                                      variant="body2"
-                                      color="text.secondary"
-                                      noWrap
-                                      sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
-                                    >
-                                      {expenseTitle}
-                                    </Typography>
-                                    {expense.syncState && expense.syncState !== 'synced' ? (
-                                      <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
-                                        <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
-                                      </Tooltip>
-                                    ) : null}
-                                    <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
-                                      {baseApprox ? (
-                                        <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
-                                          {baseApprox}
-                                        </Typography>
-                                      ) : null}
-                                      <Typography
-                                        fontWeight={600}
-                                        variant="body2"
-                                        color="text.secondary"
-                                        sx={{ whiteSpace: 'nowrap' }}
-                                      >
-                                        {formatAmount(expense.amount)} {expense.currency}
-                                      </Typography>
-                                    </Stack>
-                                  </Stack>
-                                  {expenseCategories.length > 0 ? (
-                                    <Stack
-                                      direction="row"
-                                      spacing={1}
-                                      sx={{
-                                        flexWrap: 'nowrap',
-                                        overflow: 'hidden',
-                                      }}
-                                    >
-                                      {visibleCategories.map((category) => {
-                                        const categoryColor = normalizeCategoryColor(category.color)
-                                        return (
-                                          <Chip
-                                            key={category.id}
-                                            label={category.name}
-                                            size="small"
-                                            variant="outlined"
-                                            sx={(theme) => ({
-                                              flexShrink: 0,
-                                              maxWidth: 150,
-                                              height: 20,
-                                              color: categoryColor ?? theme.palette.text.secondary,
-                                              borderColor: categoryColor
-                                                ? alpha(categoryColor, 0.5)
-                                                : theme.palette.divider,
-                                              bgcolor: categoryColor
-                                                ? alpha(
-                                                    categoryColor,
-                                                    theme.palette.mode === 'dark' ? 0.28 : 0.12,
-                                                  )
-                                                : 'transparent',
-                                              '& .MuiChip-label': {
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                                px: 0.8,
-                                                fontSize: '0.67rem',
-                                              },
-                                            })}
-                                          />
-                                        )
-                                      })}
-                                      {remainingCategories > 0 ? (
-                                        <Chip
-                                          label={`${remainingCategories}+ категорий`}
-                                          size="small"
-                                          variant="outlined"
-                                          sx={{
-                                            flexShrink: 0,
-                                            height: 20,
-                                            color: 'text.secondary',
-                                            borderColor: 'divider',
-                                            '& .MuiChip-label': {
-                                              whiteSpace: 'nowrap',
-                                              px: 0.8,
-                                              fontSize: '0.67rem',
-                                            },
-                                          }}
-                                        />
-                                      ) : null}
-                                    </Stack>
+                              <Stack justifyContent="center" alignItems="center" sx={{ width: 40 }}>
+                                <ExpenseIcon
+                                  size={45}
+                                  emoji={iconEmoji}
+                                  color={iconColor}
+                                  showBorder={false}
+                                  showBackground={false}
+                                />
+                              </Stack>
+                              <Stack spacing={0.25} sx={{ minWidth: 0, justifyContent: 'center' }}>
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                                  <Typography
+                                    fontWeight={400}
+                                    variant="body1"
+                                    color={theme.palette.mode === 'dark' ? 'common.white' : 'text.primary'}
+                                    noWrap
+                                    sx={{ flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
+                                  >
+                                    {expenseTitle}
+                                  </Typography>
+                                  {expense.syncState && expense.syncState !== 'synced' ? (
+                                    <Tooltip title="Изменение сохранено локально и будет отправлено при подключении к сети">
+                                      <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
+                                    </Tooltip>
                                   ) : null}
                                 </Stack>
+                                {expenseCategories.length > 0 ? (
+                                  <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    sx={{
+                                      flexWrap: 'nowrap',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    {visibleCategories.map((category) => {
+                                      const categoryColor = normalizeCategoryColor(category.color)
+                                      return (
+                                        <Chip
+                                          key={category.id}
+                                          label={category.name}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={(theme) => ({
+                                            flexShrink: 0,
+                                            maxWidth: 150,
+                                            height: 20,
+                                            borderRadius: '6px',
+                                            color: categoryColor ?? theme.palette.text.secondary,
+                                            border: 'solid 0.5px',
+                                            bgcolor: categoryColor
+                                              ? alpha(
+                                                  categoryColor,
+                                                  theme.palette.mode === 'dark' ? 0.28 : 0.12,
+                                                )
+                                              : 'transparent',
+                                            '& .MuiChip-label': {
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap',
+                                              px: 0.8,
+                                              fontSize: '0.75rem',
+                                            },
+                                          })}
+                                        />
+                                      )
+                                    })}
+                                    {remainingCategories > 0 ? (
+                                      <Chip
+                                        label={`${remainingCategories}+ категорий`}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{
+                                          flexShrink: 0,
+                                          height: 20,
+                                          borderRadius: '6px',
+                                          color: 'text.secondary',
+                                          border: 'none',
+                                          '& .MuiChip-label': {
+                                            whiteSpace: 'nowrap',
+                                            px: 0.8,
+                                            fontSize: '0.75rem',
+                                          },
+                                        }}
+                                      />
+                                    ) : null}
+                                  </Stack>
+                                ) : null}
+                              </Stack>
+                              <Stack
+                                spacing={0.125}
+                                justifyContent="center"
+                                alignItems="flex-end"
+                                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                              >
+                                <Typography
+                                  fontWeight={400}
+                                  variant={baseApprox ? 'body2' : 'body1'}
+                                  color={theme.palette.mode === 'dark' ? 'common.white' : 'text.primary'}
+                                  sx={{ whiteSpace: 'nowrap' }}
+                                >
+                                  {formatAmount(expense.amount)} {expense.currency}
+                                </Typography>
+                                {baseApprox ? (
+                                  <Typography variant="body2" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                    {baseApprox}
+                                  </Typography>
+                                ) : null}
                               </Stack>
                             </Paper>
                           )

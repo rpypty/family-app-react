@@ -7,9 +7,17 @@ type ExpenseIconProps = {
   size?: number
   color?: string | null
   emoji?: string | null
+  showBorder?: boolean
+  showBackground?: boolean
 }
 
-export function ExpenseIcon({ size = 36, color, emoji }: ExpenseIconProps) {
+export function ExpenseIcon({
+  size = 36,
+  color,
+  emoji,
+  showBorder = true,
+  showBackground = true,
+}: ExpenseIconProps) {
   const normalizedColor = normalizeCategoryColor(color)
   const normalizedEmoji = normalizeCategoryEmoji(emoji)
   return (
@@ -18,10 +26,10 @@ export function ExpenseIcon({ size = 36, color, emoji }: ExpenseIconProps) {
       sx={{
         width: size,
         height: size,
-        bgcolor: normalizedColor ? alpha(normalizedColor, 0.14) : 'action.hover',
+        bgcolor: showBackground ? (normalizedColor ? alpha(normalizedColor, 0.14) : 'action.hover') : 'transparent',
         color: normalizedColor ?? 'text.secondary',
-        border: '1px solid',
-        borderColor: normalizedColor ? alpha(normalizedColor, 0.5) : 'divider',
+        border: showBorder ? '1px solid' : 'none',
+        borderColor: showBorder ? (normalizedColor ? alpha(normalizedColor, 0.5) : 'divider') : 'transparent',
         fontSize: Math.max(16, Math.round(size * 0.48)),
         lineHeight: 1,
         flexShrink: 0,
