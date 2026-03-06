@@ -1,5 +1,5 @@
 export const SUPPORTED_CURRENCIES = ['BYN', 'USD', 'EUR', 'RUB'] as const
-export type Currency = (typeof SUPPORTED_CURRENCIES)[number]
+export type Currency = string
 export const DEFAULT_CURRENCY: Currency = 'BYN'
 
 export const isCurrency = (value: string): value is Currency =>
@@ -14,6 +14,11 @@ export type Expense = {
   date: string
   amount: number
   currency: Currency
+  baseCurrency?: string | null
+  exchangeRate?: number | null
+  amountInBase?: number | null
+  rateDate?: string | null
+  rateSource?: string | null
   title: string
   categoryIds: string[]
   syncState?: SyncState

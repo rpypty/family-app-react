@@ -22,13 +22,11 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import {
   DEFAULT_CURRENCY,
-  SUPPORTED_CURRENCIES,
-  isCurrency,
-  type Currency,
   type Expense,
   type Category,
 } from '../../../../../shared/types'
-import { formatDate } from '../../../../../shared/lib/formatters'
+import { isApiError } from '../../../../../shared/api/client'
+import { formatAmount, formatDate } from '../../../../../shared/lib/formatters'
 import {
   normalizeCategoryColor,
   withCategoryEmoji,
@@ -38,6 +36,9 @@ import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
 import { createId } from '../../../../../shared/lib/uuid'
 import { getTopCategories, type TopCategoryItem, type TopCategoriesStatus } from '../api/topCategories'
+import { listCurrencies, type CurrencyItem } from '../../api/currencies'
+import { getExchangeRate } from '../../api/exchangeRates'
+import { parseAmountInput, resolveExchangePreview } from '../lib/exchangePreview'
 
 type ExpenseFormModalProps = {
   isOpen: boolean
@@ -56,6 +57,16 @@ type ExpenseFormModalProps = {
   onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   onRefreshCategories?: () => void
 }
+
+const FALLBACK_CURRENCIES: CurrencyItem[] = [
+  { code: 'BYN', name: 'Belarusian Ruble' },
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'RUB', name: 'Russian Ruble' },
+]
+
+const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
+  item.icon ? `${item.icon} ${item.code}` : item.code
 
 export function ExpenseFormModal({
   isOpen,
@@ -76,14 +87,20 @@ export function ExpenseFormModal({
 }: ExpenseFormModalProps) {
   const normalizedDefaultCurrency = useMemo(() => {
     const raw = defaultCurrency?.trim().toUpperCase()
-    return raw && isCurrency(raw) ? raw : DEFAULT_CURRENCY
+    return raw || DEFAULT_CURRENCY
   }, [defaultCurrency])
   const [date, setDate] = useState(formatDate(new Date()))
   const [title, setTitle] = useState('')
   const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState<Currency>(DEFAULT_CURRENCY)
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
+  const [currencies, setCurrencies] = useState<CurrencyItem[]>([])
+  const [isCurrenciesLoading, setCurrenciesLoading] = useState(false)
+  const [currenciesError, setCurrenciesError] = useState<string | null>(null)
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
+  const [isRateLoading, setRateLoading] = useState(false)
+  const [rateError, setRateError] = useState<string | null>(null)
   const [isSaving, setSaving] = useState(false)
   const [isDeleting, setDeleting] = useState(false)
   const [categoryInputValue, setCategoryInputValue] = useState('')
@@ -100,6 +117,9 @@ export function ExpenseFormModal({
     setTitle(expense?.title ?? '')
     setAmount(expense?.amount?.toString() ?? '')
     setCurrency(expense?.currency ?? normalizedDefaultCurrency)
+    setExchangeRate(expense?.exchangeRate ?? null)
+    setRateError(null)
+    setRateLoading(false)
     setSelectedCategoryIds(new Set(expense?.categoryIds ?? []))
     setError('')
     setSaving(false)
@@ -146,6 +166,126 @@ export function ExpenseFormModal({
       isCancelled = true
     }
   }, [isOpen, expense])
+
+  useEffect(() => {
+    if (!isOpen) return
+    let isCancelled = false
+    setCurrenciesLoading(true)
+    setCurrenciesError(null)
+    ;(async () => {
+      try {
+        const response = await listCurrencies()
+        if (isCancelled) return
+        setCurrencies(response.length > 0 ? response : FALLBACK_CURRENCIES)
+      } catch {
+        if (isCancelled) return
+        setCurrencies(FALLBACK_CURRENCIES)
+        setCurrenciesError('Не удалось загрузить список валют. Доступен базовый набор.')
+      } finally {
+        if (!isCancelled) {
+          setCurrenciesLoading(false)
+        }
+      }
+    })()
+    return () => {
+      isCancelled = true
+    }
+  }, [isOpen])
+
+  const parsedAmount = useMemo(() => parseAmountInput(amount), [amount])
+
+  const currencyOptions = useMemo(() => {
+    const map = new Map<string, CurrencyItem>()
+    currencies.forEach((item) => {
+      map.set(item.code, item)
+    })
+    if (!map.has(normalizedDefaultCurrency)) {
+      map.set(normalizedDefaultCurrency, {
+        code: normalizedDefaultCurrency,
+        name: normalizedDefaultCurrency,
+      })
+    }
+    if (currency && !map.has(currency)) {
+      map.set(currency, { code: currency, name: currency })
+    }
+    return Array.from(map.values())
+  }, [currencies, normalizedDefaultCurrency, currency])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const shouldSkipRateLookup =
+      parsedAmount === null || currency.trim().length === 0 || date.trim().length === 0
+    if (shouldSkipRateLookup) {
+      setExchangeRate(null)
+      setRateError(null)
+      setRateLoading(false)
+      return
+    }
+
+    if (currency === normalizedDefaultCurrency) {
+      setExchangeRate(1)
+      setRateError(null)
+      setRateLoading(false)
+      return
+    }
+
+    let isCancelled = false
+    setRateLoading(true)
+    setRateError(null)
+    ;(async () => {
+      try {
+        const response = await getExchangeRate({
+          from: currency,
+          to: normalizedDefaultCurrency,
+          date,
+        })
+        if (isCancelled) return
+        setExchangeRate(response.rate)
+      } catch (caughtError) {
+        if (isCancelled) return
+        setExchangeRate(null)
+        if (
+          isApiError(caughtError) &&
+          caughtError.status === 422 &&
+          caughtError.code === 'rate_not_available'
+        ) {
+          setRateError('Курс на выбранную дату недоступен. Выберите другую дату или валюту.')
+          return
+        }
+        setRateError('Не удалось получить курс валюты.')
+      } finally {
+        if (!isCancelled) {
+          setRateLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isOpen, parsedAmount, currency, date, normalizedDefaultCurrency])
+
+  const exchangePreview = useMemo(
+    () =>
+      resolveExchangePreview({
+        amount: parsedAmount,
+        expenseCurrency: currency,
+        baseCurrency: normalizedDefaultCurrency,
+        exchangeRate,
+      }),
+    [parsedAmount, currency, normalizedDefaultCurrency, exchangeRate],
+  )
+  const isBaseCurrencySelected = currency === normalizedDefaultCurrency
+  const shouldShowBasePreviewHint = !isBaseCurrencySelected && (
+    isRateLoading ||
+    rateError !== null ||
+    exchangePreview.amountInBase !== null
+  )
+  const basePreviewText =
+    exchangePreview.amountInBase === null
+      ? null
+      : `~${formatAmount(exchangePreview.amountInBase)} ${normalizedDefaultCurrency}`
 
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
@@ -202,12 +342,11 @@ export function ExpenseFormModal({
   }
 
   const handleSave = async () => {
-    const normalizedAmount = amount.replace(/\s/g, '').replace(',', '.')
-    const parsedAmount = Number.parseFloat(normalizedAmount)
+    const normalizedAmount = parseAmountInput(amount)
     const trimmedTitle = title.trim()
     const fallbackTitle = selectedCategoryList[0]?.name?.trim() ?? ''
 
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    if (normalizedAmount === null) {
       setError('Введите корректные данные')
       return
     }
@@ -215,7 +354,7 @@ export function ExpenseFormModal({
     const payload: Expense = {
       id: expense?.id ?? createId(),
       date,
-      amount: parsedAmount,
+      amount: normalizedAmount,
       currency,
       title: trimmedTitle || fallbackTitle,
       categoryIds: Array.from(selectedCategoryIds),
@@ -224,7 +363,15 @@ export function ExpenseFormModal({
     try {
       await onSave(payload)
       onClose()
-    } catch {
+    } catch (caughtError) {
+      if (
+        isApiError(caughtError) &&
+        caughtError.status === 422 &&
+        caughtError.code === 'rate_not_available'
+      ) {
+        setError('Курс на выбранную дату недоступен. Проверьте дату или выберите другую валюту.')
+        return
+      }
       setError('Не удалось сохранить расход. Попробуйте ещё раз.')
     } finally {
       setSaving(false)
@@ -277,28 +424,51 @@ export function ExpenseFormModal({
         </DialogTitle>
         <DialogContent dividers sx={{ bgcolor: 'background.paper' }}>
           <Stack spacing={2}>
-            <Stack direction="row" spacing={1.5} alignItems="flex-start">
-              <TextField
-                label="Сумма"
-                value={amount}
-                onChange={(event) => handleAmountChange(event.target.value)}
-                inputMode="decimal"
-                slotProps={{ htmlInput: { pattern: '[0-9]*[.,]?[0-9]*' } }}
-                fullWidth
-              />
-              <TextField
-                label="Валюта"
-                select
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value as Currency)}
-                sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
-              >
-                {SUPPORTED_CURRENCIES.map((value) => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
+            <Stack spacing={0.35}>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <TextField
+                  label="Сумма"
+                  value={amount}
+                  onChange={(event) => handleAmountChange(event.target.value)}
+                  slotProps={{ htmlInput: { inputMode: 'decimal', pattern: '[0-9]*[.,]?[0-9]*' } }}
+                  fullWidth
+                />
+                <TextField
+                  label="Валюта"
+                  select
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                  SelectProps={{
+                    renderValue: (value) => {
+                      const selected = currencyOptions.find((item) => item.code === value)
+                      return selected ? formatCurrencyOptionLabel(selected) : String(value)
+                    },
+                  }}
+                  sx={{ width: { xs: 112, sm: 128 }, flexShrink: 0 }}
+                  disabled={isSaving || isDeleting || isCurrenciesLoading}
+                  helperText={isCurrenciesLoading ? 'Загрузка...' : undefined}
+                >
+                  {currencyOptions.map((item) => (
+                    <MenuItem key={item.code} value={item.code}>
+                      {formatCurrencyOptionLabel(item)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+              {shouldShowBasePreviewHint ? (
+                <Typography variant="caption" color={rateError ? 'warning.main' : 'text.secondary'} sx={{ pl: 0.25 }}>
+                  {rateError
+                    ? rateError
+                    : isRateLoading
+                      ? 'Эквивалент в базовой валюте: пересчитываем...'
+                      : `Эквивалент в базовой валюте: ${basePreviewText}`}
+                </Typography>
+              ) : null}
+              {currenciesError ? (
+                <Typography variant="caption" color="warning.main" sx={{ pl: 0.25 }}>
+                  {currenciesError}
+                </Typography>
+              ) : null}
             </Stack>
             <Box>
               <Stack spacing={1}>

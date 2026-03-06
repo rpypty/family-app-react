@@ -38,6 +38,7 @@ import {
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
+import { formatExpenseBaseApproxAmount } from '../lib/expenseBaseEquivalent'
 
 type ExpensesScreenProps = {
   expenses: Expense[]
@@ -269,6 +270,7 @@ export function ExpensesScreen({
                           const remainingCategories = expenseCategories.length - visibleCategories.length
                           const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                           const iconColor = getFirstCategoryColor(expenseCategories)
+                          const baseApprox = formatExpenseBaseApproxAmount(expense)
                           return (
                             <Paper
                               key={expense.id}
@@ -326,14 +328,21 @@ export function ExpensesScreen({
                                         <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
                                       </Tooltip>
                                     ) : null}
-                                    <Typography
-                                      fontWeight={600}
-                                      variant="body2"
-                                      color="text.secondary"
-                                      sx={{ whiteSpace: 'nowrap' }}
-                                    >
-                                      {formatAmount(expense.amount)} {expense.currency}
-                                    </Typography>
+                                    <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                                      {baseApprox ? (
+                                        <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                          {baseApprox}
+                                        </Typography>
+                                      ) : null}
+                                      <Typography
+                                        fontWeight={600}
+                                        variant="body2"
+                                        color="text.secondary"
+                                        sx={{ whiteSpace: 'nowrap' }}
+                                      >
+                                        {formatAmount(expense.amount)} {expense.currency}
+                                      </Typography>
+                                    </Stack>
                                   </Stack>
                                   {expenseCategories.length > 0 ? (
                                     <Stack

@@ -7,6 +7,7 @@ import LocalOfferRounded from '@mui/icons-material/LocalOfferRounded'
 import RepeatRounded from '@mui/icons-material/RepeatRounded'
 import TuneRounded from '@mui/icons-material/TuneRounded'
 import WorkspacePremiumRounded from '@mui/icons-material/WorkspacePremiumRounded'
+import LockRounded from '@mui/icons-material/LockRounded'
 import {
   Alert,
   Button,
@@ -22,7 +23,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  MenuItem,
   TextField,
 } from '@mui/material'
 import { useMemo, useState, type ReactElement } from 'react'
@@ -30,11 +30,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTES, normalizePathname } from '../../../../../app/routing/routes'
 import {
   DEFAULT_CURRENCY,
-  SUPPORTED_CURRENCIES,
-  isCurrency,
-  type Currency,
   type ThemeMode,
 } from '../../../../../shared/types'
+import { isApiError } from '../../../../../shared/api/client'
 import { resolveSettingsItemHandlers } from '../model/resolveSettingsItemHandlers'
 import {
   EXPENSE_SETTINGS_ITEMS,
@@ -72,15 +70,16 @@ export function ExpenseSettingsScreen({
   const location = useLocation()
   const navigate = useNavigate()
   const [isCurrencyDialogOpen, setCurrencyDialogOpen] = useState(false)
-  const [draftCurrency, setDraftCurrency] = useState<Currency>(DEFAULT_CURRENCY)
+  const [draftCurrency, setDraftCurrency] = useState(DEFAULT_CURRENCY)
   const [isSavingCurrency, setSavingCurrency] = useState(false)
   const [currencyError, setCurrencyError] = useState<string | null>(null)
   const currentPath = normalizePathname(location.pathname)
   const themeDescription = themeMode === 'dark' ? 'Сейчас: тёмная.' : 'Сейчас: светлая.'
   const canEditDefaultCurrency = !isReadOnly
+  const isDefaultCurrencyLocked = true
   const normalizedFamilyCurrency = useMemo(() => {
     const raw = familyDefaultCurrency?.trim().toUpperCase()
-    return raw && isCurrency(raw) ? raw : DEFAULT_CURRENCY
+    return raw || DEFAULT_CURRENCY
   }, [familyDefaultCurrency])
 
   const openCategories = () => {
@@ -102,6 +101,10 @@ export function ExpenseSettingsScreen({
 
   const handleSaveDefaultCurrency = async () => {
     if (!canEditDefaultCurrency || isSavingCurrency) return
+    if (isDefaultCurrencyLocked) {
+      setCurrencyError('Базовая валюта фиксируется при создании семьи и не может быть изменена.')
+      return
+    }
     if (draftCurrency === normalizedFamilyCurrency) {
       setCurrencyDialogOpen(false)
       return
@@ -111,7 +114,15 @@ export function ExpenseSettingsScreen({
     try {
       await onUpdateFamilyDefaultCurrency(draftCurrency)
       setCurrencyDialogOpen(false)
-    } catch {
+    } catch (caughtError) {
+      if (
+        isApiError(caughtError) &&
+        caughtError.status === 409 &&
+        caughtError.code === 'base_currency_locked'
+      ) {
+        setCurrencyError('Базовая валюта уже зафиксирована и не может быть изменена.')
+        return
+      }
       setCurrencyError('Не удалось обновить валюту семьи. Попробуйте ещё раз.')
     } finally {
       setSavingCurrency(false)
@@ -143,7 +154,9 @@ export function ExpenseSettingsScreen({
                     ? `Сейчас: ${normalizedFamilyCurrency}. ${
                         isReadOnly
                           ? 'Нет соединения. Изменение недоступно.'
-                          : item.description
+                          : isDefaultCurrencyLocked
+                            ? 'Валюта зафиксирована и не меняется после создания семьи.'
+                            : item.description
                       }`
                     : item.description
               return (
@@ -159,6 +172,8 @@ export function ExpenseSettingsScreen({
                     <ListItemText primary={item.title} secondary={description} />
                     {item.availability === 'comingSoon' ? (
                       <Chip label="Скоро" size="small" variant="outlined" />
+                    ) : item.id === 'defaultCurrency' && isDefaultCurrencyLocked ? (
+                      <Chip icon={<LockRounded />} label="Locked" size="small" variant="outlined" />
                     ) : (
                       <ChevronRightRounded color="action" />
                     )}
@@ -174,19 +189,12 @@ export function ExpenseSettingsScreen({
         <DialogTitle>Валюта по умолчанию</DialogTitle>
         <DialogContent dividers>
           <TextField
-            select
             label="Валюта"
             value={draftCurrency}
-            onChange={(event) => setDraftCurrency(event.target.value as Currency)}
+            onChange={(event) => setDraftCurrency(event.target.value)}
             fullWidth
-            disabled={!canEditDefaultCurrency || isSavingCurrency}
-          >
-            {SUPPORTED_CURRENCIES.map((currency) => (
-              <MenuItem key={currency} value={currency}>
-                {currency}
-              </MenuItem>
-            ))}
-          </TextField>
+            disabled
+          />
           {currencyError ? (
             <Alert severity="error" sx={{ mt: 2 }}>
               {currencyError}
@@ -195,6 +203,11 @@ export function ExpenseSettingsScreen({
           {!canEditDefaultCurrency ? (
             <Alert severity="info" sx={{ mt: 2 }}>
               Нет соединения. Изменение валюты сейчас недоступно.
+            </Alert>
+          ) : null}
+          {canEditDefaultCurrency && isDefaultCurrencyLocked ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Базовая валюта фиксируется при создании семьи и не может быть изменена.
             </Alert>
           ) : null}
         </DialogContent>
@@ -207,6 +220,7 @@ export function ExpenseSettingsScreen({
             onClick={handleSaveDefaultCurrency}
             disabled={
               !canEditDefaultCurrency ||
+              isDefaultCurrencyLocked ||
               isSavingCurrency ||
               draftCurrency === normalizedFamilyCurrency
             }

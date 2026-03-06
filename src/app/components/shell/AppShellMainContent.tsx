@@ -63,6 +63,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
       {model.activeApp === 'expenses' && model.activeTab === 'analytics' ? (
         <AnalyticsScreen
           categories={model.state.categories}
+          familyDefaultCurrency={model.family?.defaultCurrency}
           readOnly={model.isReadOnly}
           onCreateCategory={model.onCreateCategory}
           onUpdateCategory={model.onUpdateCategory}

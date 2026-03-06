@@ -8,6 +8,11 @@ type ApiExpense = {
   date: string
   amount: number
   currency: string
+  base_currency?: string | null
+  exchange_rate?: number | null
+  amount_in_base?: number | null
+  rate_date?: string | null
+  rate_source?: string | null
   title: string
   category_ids: string[]
   created_at: string
@@ -22,6 +27,7 @@ type ExpenseListResponse = {
 export type ExpenseListParams = {
   from?: string
   to?: string
+  currency?: string
   categoryId?: string
   categoryIds?: string[]
   limit?: number
@@ -33,6 +39,11 @@ const mapExpense = (expense: ApiExpense): Expense => ({
   date: expense.date,
   amount: expense.amount,
   currency: expense.currency as Currency,
+  baseCurrency: expense.base_currency ?? null,
+  exchangeRate: expense.exchange_rate ?? null,
+  amountInBase: expense.amount_in_base ?? null,
+  rateDate: expense.rate_date ?? null,
+  rateSource: expense.rate_source ?? null,
   title: expense.title,
   categoryIds: expense.category_ids ?? [],
 })
@@ -41,6 +52,7 @@ const buildQuery = (params: ExpenseListParams): string => {
   const search = new URLSearchParams()
   if (params.from) search.set('from', params.from)
   if (params.to) search.set('to', params.to)
+  if (params.currency) search.set('currency', params.currency)
   if (params.categoryIds && params.categoryIds.length > 0) {
     search.set('category_ids', params.categoryIds.join(','))
   } else if (params.categoryId) {
