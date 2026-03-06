@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Box,
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  MenuItem,
   Stack,
   TextField,
   ToggleButton,
@@ -26,7 +27,7 @@ import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTES, normalizePathname } from '../../../../../app/routing/routes'
-import type { Expense, Category } from '../../../../../shared/types'
+import { DEFAULT_CURRENCY, type Expense, type Category } from '../../../../../shared/types'
 import {
   dateOnly,
   formatAmount,
@@ -53,17 +54,31 @@ import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDia
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { getAnalyticsByCategory, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
+import { listCurrencies, type CurrencyItem } from '../../api/currencies'
+import { formatExpenseBaseApproxAmount } from '../../expenses/lib/expenseBaseEquivalent'
 
 type AnalyticsScreenProps = {
   categories: Category[]
+  familyDefaultCurrency?: string | null
   readOnly?: boolean
   onCreateCategory?: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   onUpdateCategory?: (categoryId: string, name: string, payload?: CategoryAppearanceInput) => Promise<Category>
   onDeleteCategory?: (categoryId: string) => Promise<void>
+  onRefreshCategories?: () => void
 }
 
 const FALLBACK_FROM = '2000-01-01'
-const FILTER_STORAGE_KEY = 'expense:analytics:filters:v1'
+const FILTER_STORAGE_KEY = 'expense:analytics:filters:v2'
+const ANALYTICS_PAGE_SIZE = 50
+const BASE_CURRENCY_FILTER_VALUE = '__BASE__'
+const FALLBACK_CURRENCIES: CurrencyItem[] = [
+  { code: 'BYN', name: 'Belarusian Ruble' },
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'RUB', name: 'Russian Ruble' },
+]
+const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
+  item.icon ? `${item.icon} ${item.code}` : item.code
 
 type DayRange = {
   from: Date
@@ -74,6 +89,7 @@ type StoredAnalyticsFilters = {
   fromDate: string | null
   toDate: string | null
   categoryIds: string[]
+  currency: string | null
 }
 
 type ChartType = 'donut' | 'bar'
@@ -82,6 +98,7 @@ type DrilldownRouteState = {
   from: string
   to: string
   title: string
+  currency?: string
   categoryIds?: string[]
   activeSliceId?: string
 }
@@ -94,8 +111,10 @@ const isStoredFilters = (value: unknown): value is StoredAnalyticsFilters => {
   const fromDate = value.fromDate
   const toDate = value.toDate
   const categoryIds = value.categoryIds
+  const currency = value.currency
   if (fromDate !== null && typeof fromDate !== 'string') return false
   if (toDate !== null && typeof toDate !== 'string') return false
+  if (currency !== undefined && currency !== null && typeof currency !== 'string') return false
   if (!Array.isArray(categoryIds)) return false
   return categoryIds.every((id) => typeof id === 'string')
 }
@@ -106,7 +125,13 @@ const loadStoredFilters = (): StoredAnalyticsFilters | null => {
     const raw = localStorage.getItem(FILTER_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as unknown
-    return isStoredFilters(parsed) ? parsed : null
+    if (!isStoredFilters(parsed)) return null
+    return {
+      fromDate: parsed.fromDate,
+      toDate: parsed.toDate,
+      categoryIds: parsed.categoryIds,
+      currency: typeof parsed.currency === 'string' ? parsed.currency : null,
+    }
   } catch {
     return null
   }
@@ -144,9 +169,11 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
 
 export function AnalyticsScreen({
   categories,
+  familyDefaultCurrency,
   onCreateCategory,
   onUpdateCategory,
   onDeleteCategory,
+  onRefreshCategories,
   readOnly = false,
 }: AnalyticsScreenProps) {
   const location = useLocation()
@@ -162,6 +189,10 @@ export function AnalyticsScreen({
   const [filterCategoryIds, setFilterCategoryIds] = useState<Set<string>>(
     () => new Set(storedFilters?.categoryIds ?? [])
   )
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(storedFilters?.currency ?? null)
+  const [currencies, setCurrencies] = useState<CurrencyItem[]>([])
+  const [isCurrenciesLoading, setCurrenciesLoading] = useState(false)
+  const [currenciesError, setCurrenciesError] = useState<string | null>(null)
   const [showAllCategoryBreakdown, setShowAllCategoryBreakdown] = useState(false)
   const [chartType, setChartType] = useState<ChartType>('donut')
   const [barGroupBy, setBarGroupBy] = useState<BarGroupBy>('week')
@@ -184,14 +215,23 @@ export function AnalyticsScreen({
   const [timeseriesLoading, setTimeseriesLoading] = useState(false)
   const [timeseriesError, setTimeseriesError] = useState<string | null>(null)
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
+  const [filteredTotal, setFilteredTotal] = useState(0)
+  const [filteredOffset, setFilteredOffset] = useState(0)
   const [isListLoading, setListLoading] = useState(false)
+  const [isListLoadingMore, setListLoadingMore] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [activeSliceId, setActiveSliceId] = useState<string | null>(null)
   const [drilldownExpenses, setDrilldownExpenses] = useState<Expense[]>([])
+  const [drilldownTotal, setDrilldownTotal] = useState(0)
+  const [drilldownOffset, setDrilldownOffset] = useState(0)
   const [drilldownLoading, setDrilldownLoading] = useState(false)
+  const [drilldownLoadingMore, setDrilldownLoadingMore] = useState(false)
   const [drilldownError, setDrilldownError] = useState<string | null>(null)
+  const wasCategoryRouteRef = useRef(false)
+  const normalizedFamilyCurrency = (familyDefaultCurrency?.trim().toUpperCase() || DEFAULT_CURRENCY)
 
-  const hasFilters = fromDate !== null || toDate !== null || filterCategoryIds.size > 0
+  const hasFilters =
+    fromDate !== null || toDate !== null || filterCategoryIds.size > 0 || selectedCurrency !== null
 
   const range = useMemo(() => {
     const today = dateOnly(new Date())
@@ -209,7 +249,18 @@ export function AnalyticsScreen({
   const categoryIds = useMemo(() => Array.from(filterCategoryIds), [filterCategoryIds])
   const categoryIdsKey = categoryIds.join(',')
   const categoryIdsForApi = categoryIds.length > 0 ? categoryIds : undefined
+  const selectedCurrencyForApi = selectedCurrency ?? undefined
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
+  const currencyOptions = useMemo(() => {
+    const map = new Map<string, CurrencyItem>()
+    currencies.forEach((item) => {
+      map.set(item.code, item)
+    })
+    if (selectedCurrency && !map.has(selectedCurrency)) {
+      map.set(selectedCurrency, { code: selectedCurrency, name: selectedCurrency })
+    }
+    return Array.from(map.values())
+  }, [currencies, selectedCurrency])
   const drilldownRouteState = useMemo<DrilldownRouteState | null>(() => {
     if (!isDrilldownRoute) return null
     const params = new URLSearchParams(location.search)
@@ -217,6 +268,7 @@ export function AnalyticsScreen({
     const to = params.get('to')
     const title = params.get('title')
     if (!from || !to || !title) return null
+    const currency = params.get('currency') || undefined
     const ids = params.getAll('categoryId')
     const categoryIds = ids.length > 0 ? ids : undefined
     const activeSliceId = params.get('activeSliceId') || undefined
@@ -224,6 +276,7 @@ export function AnalyticsScreen({
       from,
       to,
       title,
+      currency,
       categoryIds,
       activeSliceId,
     }
@@ -251,11 +304,43 @@ export function AnalyticsScreen({
     setFromDate(null)
     setToDate(null)
     setFilterCategoryIds(new Set())
+    setSelectedCurrency(null)
   }
 
   const openCategoryFilters = () => {
     navigate(ROUTES.expenseAnalyticsTags)
   }
+
+  useEffect(() => {
+    let isActive = true
+    setCurrenciesLoading(true)
+    setCurrenciesError(null)
+    ;(async () => {
+      try {
+        const response = await listCurrencies()
+        if (!isActive) return
+        setCurrencies(response.length > 0 ? response : FALLBACK_CURRENCIES)
+      } catch {
+        if (!isActive) return
+        setCurrencies(FALLBACK_CURRENCIES)
+        setCurrenciesError('Не удалось загрузить справочник валют. Используется базовый набор.')
+      } finally {
+        if (isActive) {
+          setCurrenciesLoading(false)
+        }
+      }
+    })()
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isCategoryRoute && !wasCategoryRouteRef.current) {
+      onRefreshCategories?.()
+    }
+    wasCategoryRouteRef.current = isCategoryRoute
+  }, [isCategoryRoute, onRefreshCategories])
 
   const openDrilldownRoute = (payload: DrilldownRouteState) => {
     const params = new URLSearchParams()
@@ -264,6 +349,9 @@ export function AnalyticsScreen({
     params.set('title', payload.title)
     if (payload.activeSliceId) {
       params.set('activeSliceId', payload.activeSliceId)
+    }
+    if (payload.currency) {
+      params.set('currency', payload.currency)
     }
     payload.categoryIds?.forEach((id) => params.append('categoryId', id))
     navigate(`${ROUTES.expenseAnalyticsDrilldown}?${params.toString()}`)
@@ -284,12 +372,13 @@ export function AnalyticsScreen({
       fromDate,
       toDate,
       categoryIds: Array.from(filterCategoryIds),
+      currency: selectedCurrency,
     })
-  }, [fromDate, toDate, filterCategoryIds])
+  }, [fromDate, toDate, filterCategoryIds, selectedCurrency])
 
   useEffect(() => {
     setShowAllCategoryBreakdown(false)
-  }, [fromDate, toDate, filterCategoryIds])
+  }, [fromDate, toDate, filterCategoryIds, selectedCurrency])
 
   useEffect(() => {
     let isActive = true
@@ -310,11 +399,13 @@ export function AnalyticsScreen({
           getAnalyticsSummary({
             from: range.from,
             to: range.to,
+            currency: selectedCurrencyForApi,
             categoryIds: categoryIdsForApi,
           }),
           getAnalyticsByCategory({
             from: range.from,
             to: range.to,
+            currency: selectedCurrencyForApi,
             categoryIds: categoryIdsForApi,
             limit: 50,
           }),
@@ -336,7 +427,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, range.from, range.to, categoryIdsForApi])
+  }, [readOnly, range.from, range.to, selectedCurrencyForApi, categoryIdsForApi])
 
   useEffect(() => {
     let isActive = true
@@ -370,6 +461,7 @@ export function AnalyticsScreen({
         const response = await getAnalyticsTimeseries({
           from: range.from,
           to: range.to,
+          currency: selectedCurrencyForApi,
           categoryIds: categoryIdsForApi,
           groupBy: barGroupBy,
         })
@@ -388,12 +480,15 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [chartType, barGroupBy, readOnly, range.from, range.to, categoryIdsForApi])
+  }, [chartType, barGroupBy, readOnly, range.from, range.to, selectedCurrencyForApi, categoryIdsForApi])
 
   useEffect(() => {
     let isActive = true
     if (!hasFilters) {
       setFilteredExpenses([])
+      setFilteredTotal(0)
+      setFilteredOffset(0)
+      setListLoadingMore(false)
       setListError(null)
       return () => {
         isActive = false
@@ -401,6 +496,9 @@ export function AnalyticsScreen({
     }
     if (readOnly) {
       setFilteredExpenses([])
+      setFilteredTotal(0)
+      setFilteredOffset(0)
+      setListLoadingMore(false)
       setListError('Оффлайн: список недоступен.')
       setListLoading(false)
       return () => {
@@ -410,21 +508,27 @@ export function AnalyticsScreen({
 
     const loadList = async () => {
       setListLoading(true)
+      setListLoadingMore(false)
       setListError(null)
       try {
         const response = await listExpensePage({
           from: range.from,
           to: range.to,
+          currency: selectedCurrencyForApi,
           categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
-          limit: 50,
+          limit: ANALYTICS_PAGE_SIZE,
           offset: 0,
         })
         if (!isActive) return
         setFilteredExpenses(response.items)
+        setFilteredTotal(response.total)
+        setFilteredOffset(response.items.length)
       } catch {
         if (!isActive) return
         setListError('Не удалось загрузить список по фильтрам.')
         setFilteredExpenses([])
+        setFilteredTotal(0)
+        setFilteredOffset(0)
       } finally {
         if (isActive) setListLoading(false)
       }
@@ -434,9 +538,11 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, hasFilters, range.from, range.to, categoryIds, categoryIdsKey])
+  }, [readOnly, hasFilters, range.from, range.to, selectedCurrencyForApi, categoryIds, categoryIdsKey])
 
   const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
+  const hasMoreFilteredExpenses = filteredOffset < filteredTotal
+  const hasMoreDrilldownExpenses = drilldownOffset < drilldownTotal
 
   const rowsForBreakdown = useMemo(() => {
     return byCategoryRows
@@ -460,6 +566,9 @@ export function AnalyticsScreen({
 
   const totalByCategories = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = summary?.currency ?? ''
+  const analyticsResultCurrencyLabel = summary?.currency
+    ? summary.currency
+    : selectedCurrencyForApi ?? normalizedFamilyCurrency
   const breakdownVisible = showAllCategoryBreakdown ? slices : slices.slice(0, 5)
   const breakdownRemaining = slices.length - breakdownVisible.length
 
@@ -469,6 +578,9 @@ export function AnalyticsScreen({
   const closeDrilldown = () => {
     navigate(ROUTES.expenseAnalytics, { replace: true })
     setDrilldownExpenses([])
+    setDrilldownTotal(0)
+    setDrilldownOffset(0)
+    setDrilldownLoadingMore(false)
     setDrilldownError(null)
   }
 
@@ -480,6 +592,7 @@ export function AnalyticsScreen({
       from: range.from,
       to: range.to,
       title: `Траты по категории: ${linkedCategory?.name ?? slice.label}`,
+      currency: selectedCurrencyForApi,
       categoryIds: [slice.id],
       activeSliceId: slice.id,
     })
@@ -494,6 +607,7 @@ export function AnalyticsScreen({
         from: range.from,
         to: range.to,
         title: `Траты по категории: ${payload.label}`,
+        currency: selectedCurrencyForApi,
         categoryIds: payload.id ? [payload.id] : categoryIdsForApi,
       })
       setDrilldownExpenses([])
@@ -520,6 +634,7 @@ export function AnalyticsScreen({
       from,
       to,
       title,
+      currency: selectedCurrencyForApi,
       categoryIds: categoryIdsForApi,
     })
     setDrilldownExpenses([])
@@ -531,29 +646,38 @@ export function AnalyticsScreen({
     let isActive = true
     if (readOnly) {
       setDrilldownLoading(false)
+      setDrilldownLoadingMore(false)
       setDrilldownError('Оффлайн: данные недоступны.')
       setDrilldownExpenses([])
+      setDrilldownTotal(0)
+      setDrilldownOffset(0)
       return () => {
         isActive = false
       }
     }
     const loadDrilldown = async () => {
       setDrilldownLoading(true)
+      setDrilldownLoadingMore(false)
       setDrilldownError(null)
       try {
         const response = await listExpensePage({
           from: drilldownRouteState.from,
           to: drilldownRouteState.to,
+          currency: drilldownRouteState.currency,
           categoryIds: drilldownRouteState.categoryIds,
-          limit: 50,
+          limit: ANALYTICS_PAGE_SIZE,
           offset: 0,
         })
         if (!isActive) return
         setDrilldownExpenses(response.items)
+        setDrilldownTotal(response.total)
+        setDrilldownOffset(response.items.length)
       } catch {
         if (!isActive) return
         setDrilldownError('Не удалось загрузить список по категории.')
         setDrilldownExpenses([])
+        setDrilldownTotal(0)
+        setDrilldownOffset(0)
       } finally {
         if (isActive) setDrilldownLoading(false)
       }
@@ -564,6 +688,54 @@ export function AnalyticsScreen({
       isActive = false
     }
   }, [readOnly, drilldownRouteState])
+
+  const handleLoadMoreFilteredExpenses = async () => {
+    if (readOnly || !hasFilters) return
+    if (isListLoading || isListLoadingMore) return
+    if (!hasMoreFilteredExpenses) return
+    setListLoadingMore(true)
+    try {
+      const response = await listExpensePage({
+        from: range.from,
+        to: range.to,
+        currency: selectedCurrencyForApi,
+        categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+        limit: ANALYTICS_PAGE_SIZE,
+        offset: filteredOffset,
+      })
+      setFilteredExpenses((prev) => [...prev, ...response.items])
+      setFilteredTotal(response.total)
+      setFilteredOffset((prev) => prev + response.items.length)
+    } catch {
+      setListError('Не удалось загрузить ещё записи.')
+    } finally {
+      setListLoadingMore(false)
+    }
+  }
+
+  const handleLoadMoreDrilldownExpenses = async () => {
+    if (readOnly || !drilldownRouteState) return
+    if (drilldownLoading || drilldownLoadingMore) return
+    if (!hasMoreDrilldownExpenses) return
+    setDrilldownLoadingMore(true)
+    try {
+      const response = await listExpensePage({
+        from: drilldownRouteState.from,
+        to: drilldownRouteState.to,
+        currency: drilldownRouteState.currency,
+        categoryIds: drilldownRouteState.categoryIds,
+        limit: ANALYTICS_PAGE_SIZE,
+        offset: drilldownOffset,
+      })
+      setDrilldownExpenses((prev) => [...prev, ...response.items])
+      setDrilldownTotal(response.total)
+      setDrilldownOffset((prev) => prev + response.items.length)
+    } catch {
+      setDrilldownError('Не удалось загрузить ещё записи по категории.')
+    } finally {
+      setDrilldownLoadingMore(false)
+    }
+  }
 
   const pluralCategory = (count: number) => {
     const mod10 = count % 10
@@ -606,12 +778,53 @@ export function AnalyticsScreen({
                 sx={{ flex: 1, minWidth: 0 }}
               />
             </Stack>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Stack
+              direction="row"
+              spacing={1}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mt: '10px !important', mb: '16px !important' }}
+            >
               <QuickFilterChip label="За неделю" onClick={() => applyQuickRange(7)} />
               <QuickFilterChip label="За месяц" onClick={() => applyQuickRange(30)} />
               <QuickFilterChip label="От 5 до 19" onClick={() => applyDayRange(5, 19)} />
               <QuickFilterChip label="От 20 до 4" onClick={() => applyDayRange(20, 4)} />
             </Stack>
+            <TextField
+              select
+              fullWidth
+              label="Валюта аналитики"
+              value={selectedCurrency ?? BASE_CURRENCY_FILTER_VALUE}
+              onChange={(event) => {
+                const next = event.target.value
+                setSelectedCurrency(next === BASE_CURRENCY_FILTER_VALUE ? null : next)
+              }}
+              disabled={isCurrenciesLoading}
+              SelectProps={{
+                renderValue: (value) => {
+                  if (value === BASE_CURRENCY_FILTER_VALUE) {
+                    return `Все / ${normalizedFamilyCurrency}`
+                  }
+                  const selected = currencyOptions.find((item) => item.code === value)
+                  return selected ? formatCurrencyOptionLabel(selected) : String(value)
+                },
+              }}
+              helperText={
+                isCurrenciesLoading
+                  ? 'Загрузка валют...'
+                  : selectedCurrency === null
+                  ? `Все/${normalizedFamilyCurrency}: суммы агрегируются в базовой валюте.`
+                  : `Только траты в ${selectedCurrency}.`
+              }
+            >
+              <MenuItem value={BASE_CURRENCY_FILTER_VALUE}>Все / {normalizedFamilyCurrency}</MenuItem>
+              {currencyOptions.map((item) => (
+                <MenuItem key={item.code} value={item.code}>
+                  {formatCurrencyOptionLabel(item)}
+                </MenuItem>
+              ))}
+            </TextField>
+            {currenciesError ? <Alert severity="warning">{currenciesError}</Alert> : null}
             <Stack spacing={0} sx={{ pt: 2 }}>
               <TextField
                 fullWidth
@@ -632,14 +845,11 @@ export function AnalyticsScreen({
                         sx={{
                           display: 'flex',
                           alignItems: 'center',
+                          flexWrap: 'wrap',
                           gap: 0.75,
-                          overflowX: 'auto',
-                          maxWidth: '100%',
-                          py: 0.25,
-                          '&::-webkit-scrollbar': {
-                            display: 'none',
-                          },
-                          scrollbarWidth: 'none',
+                          width: '100%',
+                          px: 0.25,
+                          py: 0.5,
                         }}
                       >
                         {selectedCategoryList.map((category) => {
@@ -675,6 +885,7 @@ export function AnalyticsScreen({
                   '& .MuiInputBase-root': {
                     alignItems: 'center',
                     minHeight: 56,
+                    py: selectedCategoryList.length > 0 ? 0.75 : 0,
                   },
                   '& .MuiInputBase-input': {
                     overflow: 'hidden',
@@ -698,9 +909,11 @@ export function AnalyticsScreen({
         <CardContent>
           <Stack spacing={2}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1" fontWeight={600}>
-                Диаграмма
-              </Typography>
+              <Stack spacing={0.75}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  Диаграмма
+                </Typography>
+              </Stack>
               <ToggleButtonGroup
                 size="small"
                 exclusive
@@ -896,6 +1109,7 @@ export function AnalyticsScreen({
                     }))
                     const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                     const iconColor = getFirstCategoryColor(expenseCategories)
+                    const baseApprox = formatExpenseBaseApproxAmount(expense)
                     return (
                       <Box key={expense.id}>
                         <Stack direction="row" justifyContent="space-between" spacing={2}>
@@ -916,14 +1130,30 @@ export function AnalyticsScreen({
                               {categoryItems.length > 0 ? <CategoryRow categories={categoryItems} maxVisible={3} /> : null}
                             </Stack>
                           </Stack>
-                          <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-                            {formatAmount(expense.amount)} {expense.currency}
-                          </Typography>
+                          <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                            {baseApprox ? (
+                              <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                {baseApprox}
+                              </Typography>
+                            ) : null}
+                            <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+                              {formatAmount(expense.amount)} {expense.currency}
+                            </Typography>
+                          </Stack>
                         </Stack>
                         {index < filteredSorted.length - 1 ? <Divider sx={{ mt: 1.5 }} /> : null}
                       </Box>
                     )
                   })}
+                  {hasMoreFilteredExpenses ? (
+                    <Button
+                      size="small"
+                      onClick={() => void handleLoadMoreFilteredExpenses()}
+                      disabled={isListLoadingMore}
+                    >
+                      {isListLoadingMore ? 'Загружаем...' : 'Показать ещё'}
+                    </Button>
+                  ) : null}
                 </Stack>
               )}
             </Stack>
@@ -1016,6 +1246,7 @@ export function AnalyticsScreen({
                 }))
                 const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                 const iconColor = getFirstCategoryColor(expenseCategories)
+                const baseApprox = formatExpenseBaseApproxAmount(expense)
                 return (
                   <Box
                     key={expense.id}
@@ -1033,9 +1264,16 @@ export function AnalyticsScreen({
                           <Typography variant="subtitle2" fontWeight={600} noWrap>
                             {expense.title}
                           </Typography>
-                          <Typography variant="subtitle2" fontWeight={600}>
-                            {formatAmount(expense.amount)} {expense.currency}
-                          </Typography>
+                          <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                            {baseApprox ? (
+                              <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                {baseApprox}
+                              </Typography>
+                            ) : null}
+                            <Typography variant="subtitle2" fontWeight={600}>
+                              {formatAmount(expense.amount)} {expense.currency}
+                            </Typography>
+                          </Stack>
                         </Stack>
                         <Typography variant="caption" color="text.secondary">
                           {formatDateDots(parseDate(expense.date))}
@@ -1046,6 +1284,15 @@ export function AnalyticsScreen({
                   </Box>
                 )
               })}
+              {hasMoreDrilldownExpenses ? (
+                <Button
+                  size="small"
+                  onClick={() => void handleLoadMoreDrilldownExpenses()}
+                  disabled={drilldownLoadingMore}
+                >
+                  {drilldownLoadingMore ? 'Загружаем...' : 'Показать ещё'}
+                </Button>
+              ) : null}
             </Stack>
           )}
         </DialogContent>

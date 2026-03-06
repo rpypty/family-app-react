@@ -4,6 +4,7 @@ import GroupRounded from '@mui/icons-material/GroupRounded'
 import LightModeRounded from '@mui/icons-material/LightModeRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import LocalOfferRounded from '@mui/icons-material/LocalOfferRounded'
+import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Avatar,
@@ -29,8 +30,10 @@ type AppShellMenuProps = {
 export function AppShellMenu({ model }: AppShellMenuProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { onRefreshExpenseCategories } = model
   const currentPath = normalizePathname(location.pathname)
   const isCategoryRoute = currentPath === ROUTES.expenseTags
+  const wasCategoryRouteRef = useRef(false)
   const familySecondary = model.family
     ? `${model.family.name}${model.family.code ? ` · Код: ${model.family.code}` : ''}`
     : '—'
@@ -47,6 +50,13 @@ export function AppShellMenu({ model }: AppShellMenuProps) {
     }
     navigate(ROUTES.expenses, { replace: true })
   }
+
+  useEffect(() => {
+    if (isCategoryRoute && !wasCategoryRouteRef.current) {
+      void onRefreshExpenseCategories()
+    }
+    wasCategoryRouteRef.current = isCategoryRoute
+  }, [isCategoryRoute, onRefreshExpenseCategories])
 
   return (
     <>

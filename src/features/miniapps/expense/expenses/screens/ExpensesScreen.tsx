@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   CardContent,
@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   EXPENSES_ROUTES,
   ROUTES,
+  normalizePathname,
   resolveExpensesRoute,
 } from '../../../../../app/routing/routes'
 import type { Expense, Category } from '../../../../../shared/types'
@@ -37,10 +38,12 @@ import {
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
+import { formatExpenseBaseApproxAmount } from '../lib/expenseBaseEquivalent'
 
 type ExpensesScreenProps = {
   expenses: Expense[]
   categories: Category[]
+  familyDefaultCurrency?: string | null
   total: number
   hasMore: boolean
   isLoadingMore: boolean
@@ -49,6 +52,8 @@ type ExpensesScreenProps = {
   onUpdateExpense: (expense: Expense) => Promise<void>
   onDeleteExpense: (expenseId: string) => Promise<void>
   onCreateCategory: (name: string, payload?: CategoryAppearanceInput) => Promise<Category>
+  onRefreshListData?: () => void
+  onRefreshCategories?: () => void
   readOnly?: boolean
   allowOfflineCreate?: boolean
 }
@@ -56,6 +61,7 @@ type ExpensesScreenProps = {
 export function ExpensesScreen({
   expenses,
   categories,
+  familyDefaultCurrency,
   total,
   hasMore,
   isLoadingMore,
@@ -64,6 +70,8 @@ export function ExpensesScreen({
   onUpdateExpense,
   onDeleteExpense,
   onCreateCategory,
+  onRefreshListData,
+  onRefreshCategories,
   readOnly = false,
   allowOfflineCreate = false,
 }: ExpensesScreenProps) {
@@ -71,6 +79,8 @@ export function ExpensesScreen({
   const navigate = useNavigate()
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
+  const currentPath = normalizePathname(location.pathname)
+  const isBaseListRoute = currentPath === ROUTES.expenses
   const maxCategoryVisible = isSmall ? 2 : 3
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
@@ -111,6 +121,31 @@ export function ExpensesScreen({
     return null
   }, [expenseRoute, expenses])
   const isFormOpen = isNewRoute || Boolean(editingExpense)
+  const previousRouteViewRef = useRef<typeof expenseRoute.view | null>(null)
+  const wasBaseListRouteRef = useRef(false)
+
+  useEffect(() => {
+    if (isBaseListRoute && !wasBaseListRouteRef.current) {
+      onRefreshListData?.()
+    }
+    wasBaseListRouteRef.current = isBaseListRoute
+  }, [isBaseListRoute, onRefreshListData])
+
+  useEffect(() => {
+    const nextView = expenseRoute.view
+    const prevView = previousRouteViewRef.current
+
+    const isCategorySearchContext =
+      nextView === 'new' ||
+      nextView === 'edit' ||
+      nextView === 'new-category' ||
+      nextView === 'edit-category'
+    if (isCategorySearchContext && prevView !== nextView) {
+      onRefreshCategories?.()
+    }
+
+    previousRouteViewRef.current = nextView
+  }, [expenseRoute.view, onRefreshCategories])
 
   useEffect(() => {
     if (!canCreate && isNewRoute) {
@@ -235,6 +270,7 @@ export function ExpensesScreen({
                           const remainingCategories = expenseCategories.length - visibleCategories.length
                           const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                           const iconColor = getFirstCategoryColor(expenseCategories)
+                          const baseApprox = formatExpenseBaseApproxAmount(expense)
                           return (
                             <Paper
                               key={expense.id}
@@ -292,14 +328,21 @@ export function ExpensesScreen({
                                         <CloudOffRounded sx={{ fontSize: 16, color: 'warning.main' }} />
                                       </Tooltip>
                                     ) : null}
-                                    <Typography
-                                      fontWeight={600}
-                                      variant="body2"
-                                      color="text.secondary"
-                                      sx={{ whiteSpace: 'nowrap' }}
-                                    >
-                                      {formatAmount(expense.amount)} {expense.currency}
-                                    </Typography>
+                                    <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                                      {baseApprox ? (
+                                        <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                                          {baseApprox}
+                                        </Typography>
+                                      ) : null}
+                                      <Typography
+                                        fontWeight={600}
+                                        variant="body2"
+                                        color="text.secondary"
+                                        sx={{ whiteSpace: 'nowrap' }}
+                                      >
+                                        {formatAmount(expense.amount)} {expense.currency}
+                                      </Typography>
+                                    </Stack>
                                   </Stack>
                                   {expenseCategories.length > 0 ? (
                                     <Stack
@@ -388,6 +431,7 @@ export function ExpensesScreen({
       <ExpenseFormModal
         isOpen={isFormOpen}
         expense={editingExpense}
+        defaultCurrency={familyDefaultCurrency}
         isCategoryCreateOpen={isCategoryCreateOpen}
         isDeleteConfirmOpen={isDeleteConfirmOpen}
         categories={categories}
@@ -399,6 +443,7 @@ export function ExpensesScreen({
         onSave={handleSave}
         onDelete={handleDelete}
         onCreateCategory={onCreateCategory}
+        onRefreshCategories={onRefreshCategories}
       />
 
       {canCreate ? (

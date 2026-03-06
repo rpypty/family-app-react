@@ -223,7 +223,7 @@ export function WorkoutsScreen() {
           square
           sx={{
             position: 'fixed',
-            bottom: 0,
+            bottom: -1,
             left: 0,
             right: 0,
             zIndex: (themeValue) => themeValue.zIndex.appBar + 1,

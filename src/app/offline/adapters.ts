@@ -18,13 +18,21 @@ export const toOfflineAuthUser = (cachedUser: {
 })
 
 export const toOfflineFamily = (
-  cachedFamily: { id: string; name: string; code?: string; ownerId?: string; createdAt?: string },
+  cachedFamily: {
+    id: string
+    name: string
+    code?: string
+    ownerId?: string
+    defaultCurrency?: string
+    createdAt?: string
+  },
   fallbackOwnerId?: string,
 ): Family => ({
   id: cachedFamily.id,
   name: cachedFamily.name,
   code: cachedFamily.code ?? '',
   ownerId: cachedFamily.ownerId ?? fallbackOwnerId ?? '',
+  defaultCurrency: cachedFamily.defaultCurrency ?? 'BYN',
   createdAt: cachedFamily.createdAt ?? new Date().toISOString(),
 })
 

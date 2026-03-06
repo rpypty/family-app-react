@@ -13,7 +13,7 @@ import { createOperationId } from '../../../sync/model/offlineOutbox'
 import { createId } from '../../../../shared/lib/uuid'
 import type { StorageState, TodoItem, TodoList } from '../../../../shared/types'
 import { isNetworkLikeError } from '../../../../app/sync/network'
-import type { DataSyncStatus } from '../../../../app/sync/types'
+import type { DataSyncScope, DataSyncStatus } from '../../../../app/sync/types'
 
 type UseTodoActionsParams = {
   state: {
@@ -34,7 +34,7 @@ type UseTodoActionsParams = {
   }
   sync: {
     enqueueOfflineOperation: (operation: SyncOperation) => void
-    onManualRefresh: () => Promise<void>
+    onManualRefresh: (scope?: DataSyncScope) => Promise<void>
   }
 }
 
@@ -64,7 +64,7 @@ export function useTodoActions({
     if (!authSession || !familyId || isTodoRefreshing) return
     setTodoRefreshing(true)
     try {
-      await onManualRefresh()
+      await onManualRefresh('todo')
     } finally {
       setTodoRefreshing(false)
     }

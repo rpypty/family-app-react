@@ -1,4 +1,9 @@
-export type Currency = 'BYN' | 'USD' | 'EUR' | 'RUB'
+export const SUPPORTED_CURRENCIES = ['BYN', 'USD', 'EUR', 'RUB'] as const
+export type Currency = string
+export const DEFAULT_CURRENCY: Currency = 'BYN'
+
+export const isCurrency = (value: string): value is Currency =>
+  (SUPPORTED_CURRENCIES as readonly string[]).includes(value)
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -9,6 +14,11 @@ export type Expense = {
   date: string
   amount: number
   currency: Currency
+  baseCurrency?: string | null
+  exchangeRate?: number | null
+  amountInBase?: number | null
+  rateDate?: string | null
+  rateSource?: string | null
   title: string
   categoryIds: string[]
   syncState?: SyncState

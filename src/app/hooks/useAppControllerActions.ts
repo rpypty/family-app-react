@@ -2,7 +2,10 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import type { AuthSession, AuthUser } from '../../features/auth/api/auth'
 import { signInWithGoogle } from '../../features/auth/api/auth'
-import type { Family } from '../../features/family/api/families'
+import {
+  updateFamilyDefaultCurrency,
+  type Family,
+} from '../../features/family/api/families'
 import type { SyncOperation } from '../../features/sync/api/sync'
 import type { OfflineOutboxOperation } from '../../features/sync/model/offlineOutbox'
 import type { StorageState, TodoList } from '../../shared/types'
@@ -148,6 +151,15 @@ export function useAppControllerActions({
     await signInWithGoogle()
   }
 
+  const handleUpdateFamilyDefaultCurrency = async (currency: string) => {
+    if (guardReadOnly()) return
+    const currentFamily = family
+    if (!currentFamily) return
+    const nextFamily = await updateFamilyDefaultCurrency(currency)
+    sessionSetters.setFamily(nextFamily)
+    persistOfflineSnapshot({ lastFamily: nextFamily })
+  }
+
   const {
     handleFamilyComplete,
     handleSignedOutStateReset,
@@ -201,6 +213,7 @@ export function useAppControllerActions({
     handleUpdateCategory,
     handleDeleteCategory,
     handleRefreshExpenses,
+    handleRefreshExpenseCategories,
   } = useExpenseActions({
     state: {
       state,
@@ -270,6 +283,7 @@ export function useAppControllerActions({
       canRefreshExpenses,
       handleRefreshTodoLists,
       handleRefreshExpenses,
+      handleRefreshExpenseCategories,
       performManualRefresh,
       setOfflineSyncNoticeOpen: syncSetters.setOfflineSyncNoticeOpen,
     },
@@ -289,6 +303,7 @@ export function useAppControllerActions({
       handleSignOut: familyUi.handleSignOut,
       handleCloseFamilyDialog: familyUi.handleCloseFamilyDialog,
       handleRemoveMember: familyUi.handleRemoveMember,
+      handleUpdateFamilyDefaultCurrency,
     },
     todo: {
       handleCreateTodoList,

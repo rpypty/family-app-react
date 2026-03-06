@@ -3,11 +3,13 @@ import type { AuthSession } from '../../features/auth/api/auth'
 import { loadCacheMeta } from '../../shared/storage/cacheMeta'
 import type { MutableRefObject } from 'react'
 import type { StorageState } from '../../shared/types'
+import type { AppId } from '../routing/routes'
 import { AUTO_RETRY_INTERVAL_MS, INITIAL_SYNC_TIMEOUT_MS } from '../sync/constants'
 import type { DataSyncSetters } from '../sync/contracts'
-import type { DataSyncStatus, DataSyncTrigger } from '../sync/types'
+import type { DataSyncScope, DataSyncStatus, DataSyncTrigger } from '../sync/types'
 
 type UseSyncRetryEffectsParams = {
+  activeApp: AppId
   familyId: string | null
   authSession: AuthSession | null
   dataSyncStatus: DataSyncStatus
@@ -25,10 +27,15 @@ type UseSyncRetryEffectsParams = {
     | 'setDataSyncStatus'
     | 'setDataStale'
   >
-  syncAllData: (params: { timeoutMs: number; trigger: DataSyncTrigger }) => Promise<boolean>
+  syncAllData: (params: {
+    timeoutMs: number
+    trigger: DataSyncTrigger
+    scope?: DataSyncScope
+  }) => Promise<boolean>
 }
 
 export function useSyncRetryEffects({
+  activeApp,
   familyId,
   authSession,
   dataSyncStatus,
@@ -48,10 +55,13 @@ export function useSyncRetryEffects({
     setDataSyncStatus,
     setDataStale,
   } = setters
+  const syncScope: DataSyncScope | null =
+    activeApp === 'todo' ? 'todo' : activeApp === 'expenses' ? 'expenses' : null
 
   useEffect(() => {
     if (!familyId) return
     if (!authSession && !isOfflineRef.current) return
+    if (!syncScope) return
     const hasLocalData =
       stateRef.current.expenses.length > 0 ||
       stateRef.current.categories.length > 0 ||
@@ -80,8 +90,10 @@ export function useSyncRetryEffects({
     void syncAllData({
       timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
       trigger: 'initial',
+      scope: syncScope,
     })
   }, [
+    activeApp,
     familyId,
     authSession,
     isOfflineRef,
@@ -94,11 +106,14 @@ export function useSyncRetryEffects({
     setDataSyncStatus,
     setDataStale,
     syncAllData,
+    syncScope,
     offlineSnapshotRef,
   ])
 
   useEffect(() => {
     if (!authSession || !familyId) return
+    if (!isOffline) return
+    if (!syncScope) return
     if (dataSyncStatus !== 'offline' && dataSyncStatus !== 'error') return
     if (typeof window === 'undefined') return
 
@@ -106,21 +121,24 @@ export function useSyncRetryEffects({
       void syncAllData({
         timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
         trigger: 'auto-retry',
+        scope: syncScope,
       })
     }, AUTO_RETRY_INTERVAL_MS)
 
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [authSession, familyId, dataSyncStatus, syncAllData])
+  }, [isOffline, authSession, familyId, dataSyncStatus, syncAllData, syncScope])
 
   useEffect(() => {
     if (isOffline) return
+    if (!syncScope) return
     if (dataSyncStatus !== 'offline' && dataSyncStatus !== 'error') return
     if (!authSession || !familyId) return
     void syncAllData({
       timeoutMs: INITIAL_SYNC_TIMEOUT_MS,
       trigger: 'auto-retry',
+      scope: syncScope,
     })
-  }, [isOffline, dataSyncStatus, authSession, familyId, syncAllData])
+  }, [isOffline, dataSyncStatus, authSession, familyId, syncAllData, syncScope])
 }

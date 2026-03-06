@@ -3,11 +3,13 @@ import type { AuthSession } from '../../features/auth/api/auth'
 import type { StorageState } from '../../shared/types'
 import type { DataSyncSetters } from '../sync/contracts'
 import type { DataSyncStatus } from '../sync/types'
+import type { AppId } from '../routing/routes'
 import { useOfflineOutbox } from './useOfflineOutbox'
 import { useSyncRetryEffects } from './useSyncRetryEffects'
 import { useSyncRunner } from './useSyncRunner'
 
 type UseDataSyncParams = {
+  activeApp: AppId
   familyId: string | null
   authSession: AuthSession | null
   dataSyncStatus: DataSyncStatus
@@ -23,6 +25,7 @@ type UseDataSyncParams = {
 }
 
 export function useDataSync({
+  activeApp,
   familyId,
   authSession,
   dataSyncStatus,
@@ -62,6 +65,7 @@ export function useDataSync({
   })
 
   useSyncRetryEffects({
+    activeApp,
     familyId,
     authSession,
     dataSyncStatus,

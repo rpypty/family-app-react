@@ -44,6 +44,7 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
         <ExpensesScreen
           expenses={model.state.expenses}
           categories={model.state.categories}
+          familyDefaultCurrency={model.family?.defaultCurrency}
           total={model.expensesTotal}
           hasMore={!model.isReadOnly && model.state.expenses.length < model.expensesTotal}
           isLoadingMore={model.isExpensesLoadingMore}
@@ -52,6 +53,8 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
           onUpdateExpense={model.onUpdateExpense}
           onDeleteExpense={model.onDeleteExpense}
           onCreateCategory={model.onCreateCategory}
+          onRefreshListData={model.onRefreshActiveScreen}
+          onRefreshCategories={model.onRefreshExpenseCategories}
           readOnly={model.isReadOnly}
           allowOfflineCreate={model.isOfflineLike}
         />
@@ -60,10 +63,12 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
       {model.activeApp === 'expenses' && model.activeTab === 'analytics' ? (
         <AnalyticsScreen
           categories={model.state.categories}
+          familyDefaultCurrency={model.family?.defaultCurrency}
           readOnly={model.isReadOnly}
           onCreateCategory={model.onCreateCategory}
           onUpdateCategory={model.onUpdateCategory}
           onDeleteCategory={model.onDeleteCategory}
+          onRefreshCategories={model.onRefreshExpenseCategories}
         />
       ) : null}
 
@@ -74,8 +79,11 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
       {model.activeApp === 'expenses' && model.activeTab === 'settings' ? (
         <ExpenseSettingsScreen
           themeMode={model.themeMode}
+          familyDefaultCurrency={model.family?.defaultCurrency}
+          isReadOnly={model.isReadOnly}
           onToggleTheme={model.onToggleTheme}
           onOpenFamilyDialog={model.onOpenFamilyDialog}
+          onUpdateFamilyDefaultCurrency={model.onUpdateFamilyDefaultCurrency}
         />
       ) : null}
 
