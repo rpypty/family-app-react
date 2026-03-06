@@ -855,7 +855,7 @@ export function AnalyticsScreen({
                           return (
                             <Chip
                               key={category.id}
-                              label={withCategoryEmoji(category)}
+                              label={category.name}
                               size="small"
                               variant="outlined"
                               onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}

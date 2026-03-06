@@ -32,7 +32,6 @@ import {
   getFirstCategoryColor,
   getFirstCategoryEmoji,
   normalizeCategoryColor,
-  withCategoryEmoji,
   type CategoryAppearanceInput,
 } from '../../../../../shared/lib/categoryAppearance'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
@@ -358,12 +357,13 @@ export function ExpensesScreen({
                                         return (
                                           <Chip
                                             key={category.id}
-                                            label={withCategoryEmoji(category)}
+                                            label={category.name}
                                             size="small"
                                             variant="outlined"
                                             sx={(theme) => ({
                                               flexShrink: 0,
                                               maxWidth: 150,
+                                              height: 20,
                                               color: categoryColor ?? theme.palette.text.secondary,
                                               borderColor: categoryColor
                                                 ? alpha(categoryColor, 0.5)
@@ -378,6 +378,8 @@ export function ExpensesScreen({
                                                 overflow: 'hidden',
                                                 textOverflow: 'ellipsis',
                                                 whiteSpace: 'nowrap',
+                                                px: 0.8,
+                                                fontSize: '0.67rem',
                                               },
                                             })}
                                           />
@@ -390,9 +392,14 @@ export function ExpensesScreen({
                                           variant="outlined"
                                           sx={{
                                             flexShrink: 0,
+                                            height: 20,
                                             color: 'text.secondary',
                                             borderColor: 'divider',
-                                            '& .MuiChip-label': { whiteSpace: 'nowrap' },
+                                            '& .MuiChip-label': {
+                                              whiteSpace: 'nowrap',
+                                              px: 0.8,
+                                              fontSize: '0.67rem',
+                                            },
                                           }}
                                         />
                                       ) : null}
