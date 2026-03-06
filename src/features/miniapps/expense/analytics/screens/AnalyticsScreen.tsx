@@ -566,9 +566,7 @@ export function AnalyticsScreen({
 
   const totalByCategories = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = summary?.currency ?? ''
-  const analyticsResultCurrencyLabel = summary?.currency
-    ? summary.currency
-    : selectedCurrencyForApi ?? normalizedFamilyCurrency
+
   const breakdownVisible = showAllCategoryBreakdown ? slices : slices.slice(0, 5)
   const breakdownRemaining = slices.length - breakdownVisible.length
 
