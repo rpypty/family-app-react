@@ -561,7 +561,7 @@ export function ExpenseFormModal({
                                 return (
                                   <Chip
                                     key={category.id}
-                                    label={withCategoryEmoji(category)}
+                                    label={category.name}
                                     size="small"
                                     variant="outlined"
                                     onMouseDown={(event) => event.stopPropagation()}
@@ -578,9 +578,9 @@ export function ExpenseFormModal({
                                       flexShrink: 0,
                                       ...(categoryColor
                                         ? {
-                                            borderColor: alpha(categoryColor, 0.55),
-                                            bgcolor: alpha(categoryColor, 0.14),
-                                          }
+                                          borderColor: alpha(categoryColor, 0.55),
+                                          bgcolor: alpha(categoryColor, 0.14),
+                                        }
                                         : {}),
                                     }}
                                   />
@@ -660,7 +660,7 @@ export function ExpenseFormModal({
                             {...tagProps}
                             key={key}
                             size="small"
-                            label={withCategoryEmoji(category)}
+                            label={category.name}
                             sx={
                               categoryColor
                                 ? {

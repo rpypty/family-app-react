@@ -855,7 +855,7 @@ export function AnalyticsScreen({
                           return (
                             <Chip
                               key={category.id}
-                              label={withCategoryEmoji(category)}
+                              label={category.name}
                               size="small"
                               variant="outlined"
                               onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}
@@ -1055,16 +1055,23 @@ export function AnalyticsScreen({
                             bgcolor: slice.color,
                           }}
                         />
-                        <Typography noWrap>{slice.label}</Typography>
+                        <Typography noWrap variant={fullScreen ? 'body2' : 'body1'}>
+                          {slice.label}
+                        </Typography>
                       </Stack>
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Typography variant="caption" color="text.secondary">
+                      <Stack direction="row" spacing={fullScreen ? 1.25 : 2} alignItems="center">
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={fullScreen ? { fontSize: '0.68rem' } : undefined}
+                        >
                           {formatPercent(slice.value, totalByCategories)}%
                         </Typography>
-                        <Typography fontWeight={600}>
-                          {currencyLabel
-                            ? `${formatAmount(slice.value)} ${currencyLabel}`
-                            : formatAmount(slice.value)}
+                        <Typography
+                          fontWeight={600}
+                          sx={fullScreen ? { fontSize: '0.8rem', whiteSpace: 'nowrap' } : undefined}
+                        >
+                          {formatAmount(slice.value)}
                         </Typography>
                       </Stack>
                     </ButtonBase>
