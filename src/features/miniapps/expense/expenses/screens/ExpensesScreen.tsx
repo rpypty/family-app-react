@@ -8,7 +8,6 @@ import {
   Stack,
   Tooltip,
   Typography,
-  useMediaQuery,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
@@ -77,10 +76,8 @@ export function ExpensesScreen({
   const location = useLocation()
   const navigate = useNavigate()
   const theme = useTheme()
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const currentPath = normalizePathname(location.pathname)
   const isBaseListRoute = currentPath === ROUTES.expenses
-  const maxCategoryVisible = isSmall ? 2 : 3
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
   const expenseRoute = useMemo(() => resolveExpensesRoute(location.pathname), [location.pathname])
@@ -265,8 +262,6 @@ export function ExpensesScreen({
                             .map((id) => categoryMap.get(id))
                             .filter((category): category is Category => Boolean(category))
                           const expenseTitle = expense.title.trim() || expenseCategories[0]?.name || ''
-                          const visibleCategories = expenseCategories.slice(0, maxCategoryVisible)
-                          const remainingCategories = expenseCategories.length - visibleCategories.length
                           const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                           const iconColor = getFirstCategoryColor(expenseCategories)
                           const baseApprox = formatExpenseBaseApproxAmount(expense)
@@ -337,10 +332,19 @@ export function ExpensesScreen({
                                     spacing={1}
                                     sx={{
                                       flexWrap: 'nowrap',
-                                      overflow: 'hidden',
+                                      overflowX: 'auto',
+                                      overflowY: 'hidden',
+                                      minWidth: 0,
+                                      pr: 0.5,
+                                      pb: 0.25,
+                                      scrollbarWidth: 'none',
+                                      msOverflowStyle: 'none',
+                                      '&::-webkit-scrollbar': {
+                                        display: 'none',
+                                      },
                                     }}
                                   >
-                                    {visibleCategories.map((category) => {
+                                    {expenseCategories.map((category) => {
                                       const categoryColor = normalizeCategoryColor(category.color)
                                       return (
                                         <Chip
@@ -372,25 +376,6 @@ export function ExpensesScreen({
                                         />
                                       )
                                     })}
-                                    {remainingCategories > 0 ? (
-                                      <Chip
-                                        label={`${remainingCategories}+ категорий`}
-                                        size="small"
-                                        variant="outlined"
-                                        sx={{
-                                          flexShrink: 0,
-                                          height: 20,
-                                          borderRadius: '6px',
-                                          color: 'text.secondary',
-                                          border: 'none',
-                                          '& .MuiChip-label': {
-                                            whiteSpace: 'nowrap',
-                                            px: 0.8,
-                                            fontSize: '0.75rem',
-                                          },
-                                        }}
-                                      />
-                                    ) : null}
                                   </Stack>
                                 ) : null}
                               </Stack>

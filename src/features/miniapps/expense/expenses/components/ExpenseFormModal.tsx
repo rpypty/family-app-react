@@ -713,6 +713,7 @@ export function ExpenseFormModal({
               px: 3,
               fontWeight: 700,
               flex: 1,
+              borderRadius: `${theme.shape.borderRadius}px`,
               '&:hover': {
                 backgroundColor: theme.palette.primary.dark,
               },
@@ -727,11 +728,12 @@ export function ExpenseFormModal({
               onClick={onOpenDeleteConfirm}
               disabled={isSaving || isDeleting}
               aria-label="Удалить расход"
-              sx={{
+              sx={(theme) => ({
                 minWidth: 50,
                 px: 0,
                 flexShrink: 0,
-              }}
+                borderRadius: `${theme.shape.borderRadius}px`,
+              })}
             >
               <DeleteOutlineRoundedIcon />
             </Button>

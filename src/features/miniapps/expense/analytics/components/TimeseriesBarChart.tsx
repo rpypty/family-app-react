@@ -15,6 +15,7 @@ type TimeseriesRow = {
   period: string
   total: number
   count: number
+  breakdown?: CategoryRow[]
 }
 
 type CategoryRow = {
@@ -60,7 +61,44 @@ export function TimeseriesBarChart({
       return show ? shortLabel : ''
     })
     const values = sorted.map((item) => item.total)
-    return { sorted, categories, values }
+    const rowBreakdownMaps = sorted.map((item) => {
+      const map = new Map<string, number>()
+      item.breakdown?.forEach((slice) => {
+        const key = slice.id ? `id:${slice.id}` : `label:${slice.label}`
+        map.set(key, slice.value)
+      })
+      return map
+    })
+    const totalsByKey = new Map<string, number>()
+    const labelsByKey = new Map<string, string>()
+    const colorsByKey = new Map<string, string>()
+    sorted.forEach((item) => {
+      item.breakdown?.forEach((slice) => {
+        const key = slice.id ? `id:${slice.id}` : `label:${slice.label}`
+        totalsByKey.set(key, (totalsByKey.get(key) ?? 0) + slice.value)
+        if (!labelsByKey.has(key)) {
+          labelsByKey.set(key, slice.label)
+        }
+        if (slice.color && !colorsByKey.has(key)) {
+          colorsByKey.set(key, slice.color)
+        }
+      })
+    })
+    const stackedSeries = Array.from(totalsByKey.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([key]) => ({
+        key,
+        label: labelsByKey.get(key) ?? key,
+        color: colorsByKey.get(key),
+        values: rowBreakdownMaps.map((rowMap) => rowMap.get(key) ?? 0),
+      }))
+    return {
+      sorted,
+      categories,
+      values,
+      stackedSeries,
+      hasBreakdown: stackedSeries.length > 0,
+    }
   }, [rows, compact])
 
   const categoryChartData = useMemo(() => {
@@ -138,6 +176,7 @@ export function TimeseriesBarChart({
     }
 
     const resolvedGroupBy = groupBy === 'week' ? 'week' : 'day'
+    const useStackedTimeSeries = timeChartData.hasBreakdown
     return {
       grid: {
         left: 36,
@@ -159,6 +198,20 @@ export function TimeseriesBarChart({
               ? `Неделя с ${formatDateDots(parseDate(row.period))}`
               : formatDateDots(parseDate(row.period))
           const amount = currency ? `${formatAmount(row.total)} ${currency}` : formatAmount(row.total)
+          if (useStackedTimeSeries && row.breakdown && row.breakdown.length > 0) {
+            const sortedBreakdown = [...row.breakdown].sort((a, b) => b.value - a.value)
+            const details = sortedBreakdown
+              .slice(0, 6)
+              .map((slice) => {
+                const part = currency ? `${formatAmount(slice.value)} ${currency}` : formatAmount(slice.value)
+                const share = row.total > 0 ? ((slice.value / row.total) * 100).toFixed(0) : '0'
+                return `${slice.label}: ${part} (${share}%)`
+              })
+              .join('<br/>')
+            const restCount = sortedBreakdown.length - 6
+            const restLine = restCount > 0 ? `<br/>И ещё ${restCount} кат.` : ''
+            return `${periodLabel}<br/><strong>${amount}</strong><br/>${details}${restLine}`
+          }
           return `${periodLabel}<br/><strong>${amount}</strong>`
         },
       },
@@ -188,23 +241,34 @@ export function TimeseriesBarChart({
           formatter: (value: number) => String(Math.round(value)),
         },
       },
-      series: [
-        {
-          type: 'bar',
-          data: timeChartData.values,
-          // Use relative width so bars spread across the full chart width.
-          barWidth: compact ? '74%' : '68%',
-          itemStyle: {
-            color: alpha(theme.palette.primary.main, 0.82),
-            borderRadius: [4, 4, 0, 0],
-          },
-          emphasis: {
+      series: useStackedTimeSeries
+        ? timeChartData.stackedSeries.map((series) => ({
+            type: 'bar',
+            name: series.label,
+            stack: 'total',
+            data: series.values,
+            barWidth: compact ? '74%' : '68%',
             itemStyle: {
-              color: theme.palette.primary.main,
+              color: series.color || alpha(theme.palette.primary.main, 0.82),
             },
-          },
-        },
-      ],
+          }))
+        : [
+            {
+              type: 'bar',
+              data: timeChartData.values,
+              // Use relative width so bars spread across the full chart width.
+              barWidth: compact ? '74%' : '68%',
+              itemStyle: {
+                color: alpha(theme.palette.primary.main, 0.82),
+                borderRadius: [4, 4, 0, 0],
+              },
+              emphasis: {
+                itemStyle: {
+                  color: theme.palette.primary.main,
+                },
+              },
+            },
+          ],
       animationDuration: 250,
     }
   }, [
@@ -212,6 +276,8 @@ export function TimeseriesBarChart({
     timeChartData.sorted,
     timeChartData.categories,
     timeChartData.values,
+    timeChartData.stackedSeries,
+    timeChartData.hasBreakdown,
     categoryChartData.sorted,
     categoryChartData.labels,
     groupBy,
