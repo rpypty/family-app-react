@@ -4,9 +4,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Category } from '../../../../../shared/types'
 
-const listCurrenciesMock = vi.fn()
-const getExchangeRateMock = vi.fn()
-const getTopCategoriesMock = vi.fn()
+const {
+  listCurrenciesMock,
+  getExchangeRateMock,
+  getTopCategoriesMock,
+} = vi.hoisted(() => ({
+  listCurrenciesMock: vi.fn(),
+  getExchangeRateMock: vi.fn(),
+  getTopCategoriesMock: vi.fn(),
+}))
 
 vi.mock('../../api/currencies', () => ({
   listCurrencies: listCurrenciesMock,
@@ -119,5 +125,47 @@ describe('ExpenseFormModal', () => {
     const labels = options.map((option) => option.textContent?.trim())
 
     expect(labels).toEqual(['$ USD', 'Br BYN'])
+  })
+
+  it('builds an expression with helper buttons, shows a result hint, and saves the resolved amount', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn(async () => {})
+
+    render(<ExpenseFormModal {...baseProps} onSave={onSave} />)
+
+    await user.type(screen.getByLabelText('Сумма'), '1200')
+    await user.click(screen.getByRole('button', { name: '+' }))
+    await user.type(screen.getByLabelText('Сумма'), '350')
+    await user.click(screen.getByRole('button', { name: '-' }))
+    await user.type(screen.getByLabelText('Сумма'), '99')
+
+    const resultHint = await screen.findByRole('button', { name: /Итог:/ })
+    expect(resultHint.textContent).toBe('=1451')
+
+    await user.click(resultHint)
+    expect((screen.getByLabelText('Сумма') as HTMLInputElement).value).toBe('1451')
+
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 1451,
+        }),
+      )
+    })
+  })
+
+  it('does not append a second operator when helper buttons are pressed twice in a row', async () => {
+    const user = userEvent.setup()
+
+    render(<ExpenseFormModal {...baseProps} />)
+
+    const amountInput = screen.getByLabelText('Сумма')
+    await user.type(amountInput, '1200')
+    await user.click(screen.getByRole('button', { name: '+' }))
+    await user.click(screen.getByRole('button', { name: '-' }))
+
+    expect((amountInput as HTMLInputElement).value).toBe('1200+')
   })
 })
