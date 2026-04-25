@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   TextField,
@@ -38,7 +39,11 @@ import { createId } from '../../../../../shared/lib/uuid'
 import { getTopCategories, type TopCategoryItem, type TopCategoriesStatus } from '../api/topCategories'
 import { listCurrencies, type CurrencyItem } from '../../api/currencies'
 import { getExchangeRate } from '../../api/exchangeRates'
-import { parseAmountInput, resolveExchangePreview } from '../lib/exchangePreview'
+import {
+  resolveAmountInput,
+  resolveExchangePreview,
+  sanitizeAmountInput,
+} from '../lib/exchangePreview'
 
 type ExpenseFormModalProps = {
   isOpen: boolean
@@ -192,7 +197,7 @@ export function ExpenseFormModal({
     }
   }, [isOpen])
 
-  const parsedAmount = useMemo(() => parseAmountInput(amount), [amount])
+  const resolvedAmount = useMemo(() => resolveAmountInput(amount), [amount])
 
   const currencyOptions = useMemo(() => {
     const map = new Map<string, CurrencyItem>()
@@ -215,7 +220,7 @@ export function ExpenseFormModal({
     if (!isOpen) return
 
     const shouldSkipRateLookup =
-      parsedAmount === null || currency.trim().length === 0 || date.trim().length === 0
+      resolvedAmount.resolvedAmount === null || currency.trim().length === 0 || date.trim().length === 0
     if (shouldSkipRateLookup) {
       setExchangeRate(null)
       setRateError(null)
@@ -264,17 +269,17 @@ export function ExpenseFormModal({
     return () => {
       isCancelled = true
     }
-  }, [isOpen, parsedAmount, currency, date, normalizedDefaultCurrency])
+  }, [isOpen, resolvedAmount.resolvedAmount, currency, date, normalizedDefaultCurrency])
 
   const exchangePreview = useMemo(
     () =>
       resolveExchangePreview({
-        amount: parsedAmount,
+        amount: resolvedAmount.resolvedAmount,
         expenseCurrency: currency,
         baseCurrency: normalizedDefaultCurrency,
         exchangeRate,
       }),
-    [parsedAmount, currency, normalizedDefaultCurrency, exchangeRate],
+    [resolvedAmount.resolvedAmount, currency, normalizedDefaultCurrency, exchangeRate],
   )
   const isBaseCurrencySelected = currency === normalizedDefaultCurrency
   const shouldShowBasePreviewHint = !isBaseCurrencySelected && (
@@ -286,6 +291,18 @@ export function ExpenseFormModal({
     exchangePreview.amountInBase === null
       ? null
       : `~${formatAmount(exchangePreview.amountInBase)} ${normalizedDefaultCurrency}`
+  const shouldShowResolvedAmountHint = resolvedAmount.hasExpression && resolvedAmount.resolvedAmount !== null
+  const resolvedAmountText =
+    resolvedAmount.resolvedAmount === null
+      ? null
+      : Number.isInteger(resolvedAmount.resolvedAmount)
+        ? resolvedAmount.resolvedAmount.toString()
+        : formatAmount(resolvedAmount.resolvedAmount)
+  const resolvedAmountHint = shouldShowResolvedAmountHint
+    ? `Итог: ${resolvedAmountText}`
+    : null
+  const resolvedAmountChipText = shouldShowResolvedAmountHint ? `=${resolvedAmountText}` : null
+  const isSaveDisabled = isSaving || isDeleting || !resolvedAmount.isValid
 
   const selectedCategoryList = useMemo(
     () => selectedCategories(categories, selectedCategoryIds),
@@ -342,11 +359,10 @@ export function ExpenseFormModal({
   }
 
   const handleSave = async () => {
-    const normalizedAmount = parseAmountInput(amount)
     const trimmedTitle = title.trim()
     const fallbackTitle = selectedCategoryList[0]?.name?.trim() ?? ''
 
-    if (normalizedAmount === null) {
+    if (resolvedAmount.resolvedAmount === null) {
       setError('Введите корректные данные')
       return
     }
@@ -354,7 +370,7 @@ export function ExpenseFormModal({
     const payload: Expense = {
       id: expense?.id ?? createId(),
       date,
-      amount: normalizedAmount,
+      amount: resolvedAmount.resolvedAmount,
       currency,
       title: trimmedTitle || fallbackTitle,
       categoryIds: Array.from(selectedCategoryIds),
@@ -379,14 +395,25 @@ export function ExpenseFormModal({
   }
 
   const handleAmountChange = (rawValue: string) => {
-    let sanitizedValue = rawValue.replace(/[^\d.,]/g, '')
-    const separatorIndex = sanitizedValue.search(/[.,]/)
-    if (separatorIndex !== -1) {
-      const integerPart = sanitizedValue.slice(0, separatorIndex + 1)
-      const fractionalPart = sanitizedValue.slice(separatorIndex + 1).replace(/[.,]/g, '')
-      sanitizedValue = `${integerPart}${fractionalPart}`
-    }
-    setAmount(sanitizedValue)
+    setAmount(sanitizeAmountInput(rawValue))
+    setError('')
+  }
+
+  const handleAppendAmountOperator = (operator: '+' | '-') => {
+    setAmount((prev) => {
+      const sanitizedValue = sanitizeAmountInput(prev)
+      if (sanitizedValue.length === 0 || sanitizedValue.endsWith('+') || sanitizedValue.endsWith('-')) {
+        return sanitizedValue
+      }
+      return `${sanitizedValue}${operator}`
+    })
+    setError('')
+  }
+
+  const handleApplyResolvedAmount = () => {
+    if (resolvedAmount.resolvedAmount === null) return
+    setAmount(resolvedAmount.resolvedAmount.toString())
+    setError('')
   }
 
   return (
@@ -430,7 +457,35 @@ export function ExpenseFormModal({
                   label="Сумма"
                   value={amount}
                   onChange={(event) => handleAmountChange(event.target.value)}
-                  slotProps={{ htmlInput: { inputMode: 'decimal', pattern: '[0-9]*[.,]?[0-9]*' } }}
+                  error={amount.length > 0 && !resolvedAmount.isValid}
+                  slotProps={{ htmlInput: { inputMode: 'decimal', pattern: '[0-9.,+-]*' } }}
+                  InputProps={{
+                    endAdornment: shouldShowResolvedAmountHint ? (
+                      <InputAdornment position="end">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleApplyResolvedAmount}
+                          disabled={isSaving || isDeleting}
+                          aria-label={resolvedAmountHint ?? undefined}
+                          sx={(theme) => ({
+                            minWidth: 0,
+                            px: 1.25,
+                            py: 0.375,
+                            borderRadius: 999,
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            lineHeight: 1.2,
+                            whiteSpace: 'nowrap',
+                            borderColor: alpha(theme.palette.primary.main, 0.3),
+                            bgcolor: alpha(theme.palette.primary.main, 0.08),
+                          })}
+                        >
+                          {resolvedAmountChipText}
+                        </Button>
+                      </InputAdornment>
+                    ) : undefined,
+                  }}
                   fullWidth
                 />
                 <TextField
@@ -455,6 +510,67 @@ export function ExpenseFormModal({
                   ))}
                 </TextField>
               </Stack>
+              <Stack direction="row" spacing={1} sx={{ pl: 0.25, pt: 0.25 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleAppendAmountOperator('+')}
+                  disabled={isSaving || isDeleting}
+                  sx={(theme) => ({
+                    minWidth: 34,
+                    width: 34,
+                    height: 24,
+                    borderRadius: '6px',
+                    px: 0,
+                    fontSize: '0.85rem',
+                    lineHeight: 1,
+                    minHeight: 0,
+                    boxShadow: 'none',
+                    color: 'text.secondary',
+                    borderColor: 'divider',
+                    bgcolor: 'action.hover',
+                    '&:hover': {
+                      backgroundColor: theme.palette.action.selected,
+                      borderColor: theme.palette.divider,
+                      boxShadow: 'none',
+                    },
+                  })}
+                >
+                  +
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleAppendAmountOperator('-')}
+                  disabled={isSaving || isDeleting}
+                  sx={(theme) => ({
+                    minWidth: 34,
+                    width: 34,
+                    height: 24,
+                    borderRadius: '6px',
+                    px: 0,
+                    fontSize: '0.85rem',
+                    lineHeight: 1,
+                    minHeight: 0,
+                    boxShadow: 'none',
+                    color: 'text.secondary',
+                    borderColor: 'divider',
+                    bgcolor: 'action.hover',
+                    '&:hover': {
+                      backgroundColor: theme.palette.action.selected,
+                      borderColor: theme.palette.divider,
+                      boxShadow: 'none',
+                    },
+                  })}
+                >
+                  -
+                </Button>
+              </Stack>
+              {amount.length > 0 && !resolvedAmount.isValid ? (
+                <Typography variant="caption" color="warning.main" sx={{ pl: 0.25 }}>
+                  Введите корректную сумму
+                </Typography>
+              ) : null}
               {shouldShowBasePreviewHint ? (
                 <Typography variant="caption" color={rateError ? 'warning.main' : 'text.secondary'} sx={{ pl: 0.25 }}>
                   {rateError
@@ -708,11 +824,12 @@ export function ExpenseFormModal({
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={isSaving || isDeleting}
+            disabled={isSaveDisabled}
             sx={(theme) => ({
               px: 3,
               fontWeight: 700,
               flex: 1,
+              borderRadius: `${theme.shape.borderRadius}px`,
               '&:hover': {
                 backgroundColor: theme.palette.primary.dark,
               },
@@ -727,11 +844,12 @@ export function ExpenseFormModal({
               onClick={onOpenDeleteConfirm}
               disabled={isSaving || isDeleting}
               aria-label="Удалить расход"
-              sx={{
+              sx={(theme) => ({
                 minWidth: 50,
                 px: 0,
                 flexShrink: 0,
-              }}
+                borderRadius: `${theme.shape.borderRadius}px`,
+              })}
             >
               <DeleteOutlineRoundedIcon />
             </Button>

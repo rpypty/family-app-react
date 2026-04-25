@@ -70,6 +70,7 @@ type AnalyticsScreenProps = {
 const FALLBACK_FROM = '2000-01-01'
 const FILTER_STORAGE_KEY = 'expense:analytics:filters:v2'
 const ANALYTICS_PAGE_SIZE = 50
+const ANALYTICS_CHART_PAGE_SIZE = 200
 const BASE_CURRENCY_FILTER_VALUE = '__BASE__'
 const FALLBACK_CURRENCIES: CurrencyItem[] = [
   { code: 'BYN', name: 'Belarusian Ruble' },
@@ -94,6 +95,18 @@ type StoredAnalyticsFilters = {
 
 type ChartType = 'donut' | 'bar'
 type BarGroupBy = 'week' | 'day' | 'category'
+type TimeseriesBreakdownSlice = {
+  id?: string
+  label: string
+  value: number
+  color: string
+}
+type TimeseriesBreakdownRow = {
+  period: string
+  total: number
+  count: number
+  breakdown?: TimeseriesBreakdownSlice[]
+}
 type DrilldownRouteState = {
   from: string
   to: string
@@ -167,6 +180,63 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
   return { from, to }
 }
 
+const resolveWeekStart = (value: Date): Date => {
+  const start = dateOnly(value)
+  const day = start.getDay()
+  const offset = day === 0 ? -6 : 1 - day
+  start.setDate(start.getDate() + offset)
+  return start
+}
+
+const resolveTimeseriesPeriod = (date: string, groupBy: 'week' | 'day'): string => {
+  if (groupBy === 'day') return date
+  return formatDate(resolveWeekStart(parseDate(date)))
+}
+
+const resolveExpenseAnalyticsAmount = (expense: Expense, selectedCurrency: string | undefined): number => {
+  if (selectedCurrency) return expense.amount
+  if (typeof expense.amountInBase === 'number') return expense.amountInBase
+  return expense.amount
+}
+
+const loadAllExpensesForRange = async (params: {
+  from: string
+  to: string
+  currency?: string
+  categoryIds?: string[]
+}): Promise<Expense[]> => {
+  const firstPage = await listExpensePage({
+    from: params.from,
+    to: params.to,
+    currency: params.currency,
+    categoryIds: params.categoryIds,
+    limit: ANALYTICS_CHART_PAGE_SIZE,
+    offset: 0,
+  })
+  if (firstPage.total <= firstPage.items.length) {
+    return firstPage.items
+  }
+
+  const allItems = [...firstPage.items]
+  let offset = firstPage.items.length
+
+  while (offset < firstPage.total) {
+    const page = await listExpensePage({
+      from: params.from,
+      to: params.to,
+      currency: params.currency,
+      categoryIds: params.categoryIds,
+      limit: ANALYTICS_CHART_PAGE_SIZE,
+      offset,
+    })
+    if (page.items.length === 0) break
+    allItems.push(...page.items)
+    offset += page.items.length
+  }
+
+  return allItems
+}
+
 export function AnalyticsScreen({
   categories,
   familyDefaultCurrency,
@@ -209,9 +279,7 @@ export function AnalyticsScreen({
   >([])
   const [isLoading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [timeseriesRows, setTimeseriesRows] = useState<
-    Array<{ period: string; total: number; count: number }>
-  >([])
+  const [timeseriesRows, setTimeseriesRows] = useState<TimeseriesBreakdownRow[]>([])
   const [timeseriesLoading, setTimeseriesLoading] = useState(false)
   const [timeseriesError, setTimeseriesError] = useState<string | null>(null)
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([])
@@ -453,20 +521,83 @@ export function AnalyticsScreen({
         isActive = false
       }
     }
+    const resolvedGroupBy: 'week' | 'day' = barGroupBy === 'week' ? 'week' : 'day'
 
     const loadTimeseries = async () => {
       setTimeseriesLoading(true)
       setTimeseriesError(null)
       try {
-        const response = await getAnalyticsTimeseries({
-          from: range.from,
-          to: range.to,
-          currency: selectedCurrencyForApi,
-          categoryIds: categoryIdsForApi,
-          groupBy: barGroupBy,
+        const [response, expenses] = await Promise.all([
+          getAnalyticsTimeseries({
+            from: range.from,
+            to: range.to,
+            currency: selectedCurrencyForApi,
+            categoryIds: categoryIdsForApi,
+            groupBy: resolvedGroupBy,
+          }),
+          loadAllExpensesForRange({
+            from: range.from,
+            to: range.to,
+            currency: selectedCurrencyForApi,
+            categoryIds: categoryIdsForApi,
+          }),
+        ])
+        const breakdownByPeriod = new Map<
+          string,
+          Map<string, { id?: string; label: string; color: string; value: number }>
+        >()
+        expenses.forEach((expense) => {
+          const amount = resolveExpenseAnalyticsAmount(expense, selectedCurrencyForApi)
+          if (amount <= 0) return
+          const period = resolveTimeseriesPeriod(expense.date, resolvedGroupBy)
+          const categoriesForExpense = expense.categoryIds.length > 0 ? Array.from(new Set(expense.categoryIds)) : ['']
+          let periodMap = breakdownByPeriod.get(period)
+          if (!periodMap) {
+            periodMap = new Map()
+            breakdownByPeriod.set(period, periodMap)
+          }
+          categoriesForExpense.forEach((categoryId) => {
+            const key = categoryId || '__uncategorized__'
+            const linkedCategory = categoryId ? categoryMap.get(categoryId) : undefined
+            const label = categoryId
+              ? linkedCategory
+                ? withCategoryEmoji(linkedCategory)
+                : 'Неизвестная категория'
+              : 'Без категории'
+            const color = normalizeCategoryColor(linkedCategory?.color) ?? DEFAULT_CATEGORY_COLOR
+            const existing = periodMap.get(key)
+            if (existing) {
+              existing.value += amount
+              return
+            }
+            periodMap.set(key, {
+              id: categoryId || undefined,
+              label,
+              color,
+              value: amount,
+            })
+          })
+        })
+
+        const rowsWithBreakdown: TimeseriesBreakdownRow[] = response.map((row) => {
+          const periodEntries = breakdownByPeriod.get(row.period)
+          if (!periodEntries) return row
+          const breakdown = Array.from(periodEntries.values()).sort((a, b) => b.value - a.value)
+          const rawTotal = breakdown.reduce((sum, item) => sum + item.value, 0)
+          if (rawTotal <= 0 || row.total <= 0) {
+            return { ...row, breakdown: [] }
+          }
+          const scale = row.total / rawTotal
+          return {
+            ...row,
+            breakdown: breakdown.map((item) => ({
+              ...item,
+              value: item.value * scale,
+            })),
+          }
         })
         if (!isActive) return
-        setTimeseriesRows(response)
+        setTimeseriesRows(rowsWithBreakdown)
       } catch {
         if (!isActive) return
         setTimeseriesError('Не удалось загрузить столбчатую диаграмму.')
@@ -480,7 +611,16 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [chartType, barGroupBy, readOnly, range.from, range.to, selectedCurrencyForApi, categoryIdsForApi])
+  }, [
+    chartType,
+    barGroupBy,
+    readOnly,
+    range.from,
+    range.to,
+    selectedCurrencyForApi,
+    categoryIdsForApi,
+    categoryMap,
+  ])
 
   useEffect(() => {
     let isActive = true
