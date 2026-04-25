@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -90,6 +90,7 @@ export function ExpenseFormModal({
   onCreateCategory,
   onRefreshCategories,
 }: ExpenseFormModalProps) {
+  const amountInputRef = useRef<HTMLInputElement | null>(null)
   const normalizedDefaultCurrency = useMemo(() => {
     const raw = defaultCurrency?.trim().toUpperCase()
     return raw || DEFAULT_CURRENCY
@@ -358,6 +359,21 @@ export function ExpenseFormModal({
     onOpenCategoryCreate()
   }
 
+  const focusAmountInput = () => {
+    window.setTimeout(() => {
+      const input = amountInputRef.current
+      if (!input) return
+      input.focus()
+      const position = input.value.length
+      input.setSelectionRange(position, position)
+    }, 0)
+  }
+
+  const handleAmountHelperPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    focusAmountInput()
+  }
+
   const handleSave = async () => {
     const trimmedTitle = title.trim()
     const fallbackTitle = selectedCategoryList[0]?.name?.trim() ?? ''
@@ -408,12 +424,14 @@ export function ExpenseFormModal({
       return `${sanitizedValue}${operator}`
     })
     setError('')
+    focusAmountInput()
   }
 
   const handleApplyResolvedAmount = () => {
     if (resolvedAmount.resolvedAmount === null) return
     setAmount(resolvedAmount.resolvedAmount.toString())
     setError('')
+    focusAmountInput()
   }
 
   return (
@@ -457,6 +475,7 @@ export function ExpenseFormModal({
                   label="Сумма"
                   value={amount}
                   onChange={(event) => handleAmountChange(event.target.value)}
+                  inputRef={amountInputRef}
                   error={amount.length > 0 && !resolvedAmount.isValid}
                   slotProps={{ htmlInput: { inputMode: 'decimal', pattern: '[0-9.,+-]*' } }}
                   InputProps={{
@@ -466,6 +485,7 @@ export function ExpenseFormModal({
                           variant="outlined"
                           size="small"
                           onClick={handleApplyResolvedAmount}
+                          onPointerDown={handleAmountHelperPointerDown}
                           disabled={isSaving || isDeleting}
                           aria-label={resolvedAmountHint ?? undefined}
                           sx={(theme) => ({
@@ -515,6 +535,7 @@ export function ExpenseFormModal({
                   variant="outlined"
                   size="small"
                   onClick={() => handleAppendAmountOperator('+')}
+                  onPointerDown={handleAmountHelperPointerDown}
                   disabled={isSaving || isDeleting}
                   sx={(theme) => ({
                     minWidth: 34,
@@ -542,6 +563,7 @@ export function ExpenseFormModal({
                   variant="outlined"
                   size="small"
                   onClick={() => handleAppendAmountOperator('-')}
+                  onPointerDown={handleAmountHelperPointerDown}
                   disabled={isSaving || isDeleting}
                   sx={(theme) => ({
                     minWidth: 34,

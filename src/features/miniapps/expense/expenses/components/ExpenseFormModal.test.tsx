@@ -168,4 +168,20 @@ describe('ExpenseFormModal', () => {
 
     expect((amountInput as HTMLInputElement).value).toBe('1200+')
   })
+
+  it('keeps focus on the amount input after tapping helper buttons', async () => {
+    const user = userEvent.setup()
+
+    render(<ExpenseFormModal {...baseProps} />)
+
+    const amountInput = screen.getByLabelText('Сумма') as HTMLInputElement
+    amountInput.focus()
+
+    await user.type(amountInput, '1200')
+    await user.click(screen.getByRole('button', { name: '+' }))
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(amountInput)
+    })
+  })
 })
