@@ -29,6 +29,9 @@ export class ApiTimeoutError extends Error {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const isFormDataBody = (body: BodyInit | null | undefined): body is FormData =>
+  typeof FormData !== 'undefined' && body instanceof FormData
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5010').replace(
   /\/$/,
   '',
@@ -126,7 +129,7 @@ export const apiFetch = async <T>(
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  if (requestOptions.body && !headers.has('Content-Type')) {
+  if (requestOptions.body && !headers.has('Content-Type') && !isFormDataBody(requestOptions.body)) {
     headers.set('Content-Type', 'application/json')
   }
   const requestSignal = resolveSignal(externalSignal ?? null, timeoutMs)
