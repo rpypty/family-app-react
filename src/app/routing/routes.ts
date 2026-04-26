@@ -13,6 +13,7 @@ export type ExpensesRoute =
   | { view: 'list' }
   | { view: 'new' }
   | { view: 'new-category' }
+  | { view: 'receipt' }
   | { view: 'edit'; expenseId: string }
   | { view: 'edit-category'; expenseId: string }
   | { view: 'edit-delete'; expenseId: string }
@@ -52,6 +53,7 @@ export const EXPENSES_ROUTES = {
   home: ROUTES.expenses,
   new: `${ROUTES.expenses}/new`,
   newCategory: `${ROUTES.expenses}/new/category`,
+  receipt: `${ROUTES.expenses}/receipt`,
   edit: (expenseId: string) => `${ROUTES.expenses}/${encodeURIComponent(expenseId)}/edit`,
   editCategory: (expenseId: string) =>
     `${ROUTES.expenses}/${encodeURIComponent(expenseId)}/edit/category`,
@@ -97,6 +99,10 @@ const isValidExpensesDetailPath = (segments: string[]) => {
     return segments.length === 3 || (segments.length === 4 && segments[3] === 'category')
   }
 
+  if (segments[2] === 'receipt') {
+    return segments.length === 3
+  }
+
   if (segments[3] === 'edit') {
     return (
       segments.length === 4 ||
@@ -121,6 +127,10 @@ export const resolveExpensesRoute = (pathname: string): ExpensesRoute => {
       return { view: 'new' }
     }
     return { view: 'list' }
+  }
+
+  if (segments[2] === 'receipt' && segments.length === 3) {
+    return { view: 'receipt' }
   }
 
   if (segments[3] === 'edit') {
@@ -231,6 +241,9 @@ export const resolveExpensesBackNavigationTarget = (pathname: string, search = '
   }
   if (route.view === 'new-category') {
     return EXPENSES_ROUTES.new
+  }
+  if (route.view === 'receipt') {
+    return EXPENSES_ROUTES.home
   }
   if (route.view === 'edit') {
     return EXPENSES_ROUTES.home

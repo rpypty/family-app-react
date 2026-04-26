@@ -37,6 +37,14 @@ import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
 import { formatExpenseBaseApproxAmount } from '../lib/expenseBaseEquivalent'
+import { ReceiptParseAction } from '../../receipts/components/ReceiptParseAction'
+import { ReceiptParseDialog } from '../../receipts/components/ReceiptParseDialog'
+import { useReceiptParseJob } from '../../receipts/hooks/useReceiptParseJob'
+import type {
+  ApproveReceiptParseExpense,
+  CreateReceiptParseInput,
+  UpdateReceiptParseItemInput,
+} from '../../receipts/api/receiptParses'
 
 type ExpensesScreenProps = {
   expenses: Expense[]
@@ -76,12 +84,14 @@ export function ExpensesScreen({
   const location = useLocation()
   const navigate = useNavigate()
   const theme = useTheme()
+  const receiptParseJob = useReceiptParseJob()
   const currentPath = normalizePathname(location.pathname)
   const isBaseListRoute = currentPath === ROUTES.expenses
   const canCreate = !readOnly || allowOfflineCreate
   const canEdit = !readOnly
   const expenseRoute = useMemo(() => resolveExpensesRoute(location.pathname), [location.pathname])
   const isNewRoute = expenseRoute.view === 'new' || expenseRoute.view === 'new-category'
+  const isReceiptRoute = expenseRoute.view === 'receipt'
   const isEditRoute =
     expenseRoute.view === 'edit' ||
     expenseRoute.view === 'edit-category' ||
@@ -117,6 +127,11 @@ export function ExpensesScreen({
     return null
   }, [expenseRoute, expenses])
   const isFormOpen = isNewRoute || Boolean(editingExpense)
+  const receiptDialogKey = isReceiptRoute
+    ? receiptParseJob.parse?.status === 'ready'
+      ? receiptParseJob.parse.id
+      : receiptParseJob.summary?.id ?? receiptParseJob.parse?.id ?? 'upload'
+    : 'closed'
   const previousRouteViewRef = useRef<typeof expenseRoute.view | null>(null)
   const wasBaseListRouteRef = useRef(false)
 
@@ -154,6 +169,12 @@ export function ExpensesScreen({
       navigate(ROUTES.expenses, { replace: true })
     }
   }, [canEdit, isEditRoute, navigate])
+
+  useEffect(() => {
+    if (!canEdit && isReceiptRoute) {
+      navigate(ROUTES.expenses, { replace: true })
+    }
+  }, [canEdit, isReceiptRoute, navigate])
 
   useEffect(() => {
     if (!isEditRoute || editingExpense) return
@@ -213,6 +234,36 @@ export function ExpensesScreen({
 
   const handleDelete = async (expenseId: string) => {
     await onDeleteExpense(expenseId)
+  }
+
+  const openReceiptDialog = () => {
+    if (!canEdit) return
+    navigate(EXPENSES_ROUTES.receipt)
+    void receiptParseJob.refreshActive()
+  }
+
+  const closeReceiptDialog = () => {
+    navigate(ROUTES.expenses, { replace: true })
+  }
+
+  const handleCreateReceiptParse = async (input: CreateReceiptParseInput) => {
+    await receiptParseJob.create(input)
+  }
+
+  const handleApproveReceiptParse = async (items: ApproveReceiptParseExpense[]) => {
+    const created = await receiptParseJob.approve(items)
+    if (created.length === 0) return
+    navigate(ROUTES.expenses, { replace: true })
+    onRefreshListData?.()
+  }
+
+  const handleUpdateReceiptParseItems = async (items: UpdateReceiptParseItemInput[]) => {
+    return receiptParseJob.updateItems(items)
+  }
+
+  const handleCancelReceiptParse = async () => {
+    await receiptParseJob.cancel()
+    navigate(ROUTES.expenses, { replace: true })
   }
 
   return (
@@ -444,6 +495,31 @@ export function ExpensesScreen({
         onCreateCategory={onCreateCategory}
         onRefreshCategories={onRefreshCategories}
       />
+
+      <ReceiptParseDialog
+        key={receiptDialogKey}
+        open={isReceiptRoute}
+        categories={categories}
+        defaultCurrency={familyDefaultCurrency}
+        parse={receiptParseJob.parse}
+        activeStatus={receiptParseJob.summary?.status}
+        isLoading={receiptParseJob.isLoading}
+        jobError={receiptParseJob.error}
+        onClose={closeReceiptDialog}
+        onCreate={handleCreateReceiptParse}
+        onUpdateItems={handleUpdateReceiptParseItems}
+        onApprove={handleApproveReceiptParse}
+        onCancel={handleCancelReceiptParse}
+        onRefresh={receiptParseJob.refreshCurrent}
+      />
+
+      {canEdit ? (
+        <ReceiptParseAction
+          status={receiptParseJob.parse?.status ?? receiptParseJob.summary?.status}
+          disabled={receiptParseJob.isLoading}
+          onClick={openReceiptDialog}
+        />
+      ) : null}
 
       {canCreate ? (
         <Fab
