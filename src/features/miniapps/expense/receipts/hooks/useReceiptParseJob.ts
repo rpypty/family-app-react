@@ -31,6 +31,9 @@ const resolveCreateErrorMessage = (error: unknown): string => {
   if (error.code === 'receipt_file_too_large') {
     return 'Фото слишком большое. Сожмите его или выберите файл меньше 8 МБ.'
   }
+  if (error.status === 413) {
+    return 'Фото слишком большое для загрузки. Сожмите его или выберите файл меньше 8 МБ.'
+  }
   if (error.code === 'active_receipt_parse_exists') {
     return 'Уже есть активное распознавание чека. Завершите или отмените его.'
   }
