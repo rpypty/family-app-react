@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Publisher"
+  short_description: "Commit changes and open a GitHub PR"
+  default_prompt: "Use $github-pr-publisher to commit the current changes, push a branch, create a GitHub pull request, and report the PR link."
