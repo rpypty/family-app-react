@@ -138,12 +138,24 @@ type ApiReceiptParse = ApiReceiptParseSummary & {
 const normalizeReceiptFileForUpload = (file: File): File => {
   const name = file.name.toLowerCase()
   const isJpegByName = name.endsWith('.jpg') || name.endsWith('.jpeg')
-  const shouldNormalizeJpeg = file.type === 'image/jpg' || (file.type === '' && isJpegByName)
+  const isHeicByName = name.endsWith('.heic')
+  const isHeifByName = name.endsWith('.heif')
+  const shouldResolveTypeByName = file.type === '' || file.type === 'application/octet-stream'
+  const normalizedType =
+    file.type === 'image/jpg'
+      ? 'image/jpeg'
+      : shouldResolveTypeByName && isJpegByName
+        ? 'image/jpeg'
+        : shouldResolveTypeByName && isHeicByName
+          ? 'image/heic'
+          : shouldResolveTypeByName && isHeifByName
+            ? 'image/heif'
+            : null
 
-  if (!shouldNormalizeJpeg) return file
+  if (!normalizedType) return file
 
   return new File([file], file.name, {
-    type: 'image/jpeg',
+    type: normalizedType,
     lastModified: file.lastModified,
   })
 }
