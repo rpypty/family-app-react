@@ -31,6 +31,7 @@ import { DEFAULT_CURRENCY, type Expense, type Category } from '../../../../../sh
 import {
   dateOnly,
   formatAmount,
+  formatAmountWithCurrency,
   formatDate,
   formatDateDots,
   formatPercent,
@@ -73,10 +74,10 @@ const ANALYTICS_PAGE_SIZE = 50
 const ANALYTICS_CHART_PAGE_SIZE = 200
 const BASE_CURRENCY_FILTER_VALUE = '__BASE__'
 const FALLBACK_CURRENCIES: CurrencyItem[] = [
-  { code: 'BYN', name: 'Belarusian Ruble' },
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'RUB', name: 'Russian Ruble' },
+  { code: 'BYN', name: 'Belarusian Ruble', symbol: 'ƃ' },
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'RUB', name: 'Russian Ruble', symbol: '₽' },
 ]
 const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
   item.icon ? `${item.icon} ${item.code}` : item.code
@@ -333,6 +334,15 @@ export function AnalyticsScreen({
     }
     return Array.from(map.values())
   }, [currencies, selectedCurrency])
+  const currencyLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    currencyOptions.forEach((item) => {
+      if (item.symbol) {
+        labels[item.code] = item.symbol
+      }
+    })
+    return labels
+  }, [currencyOptions])
   const drilldownRouteState = useMemo<DrilldownRouteState | null>(() => {
     if (!isDrilldownRoute) return null
     const params = new URLSearchParams(location.search)
@@ -710,6 +720,7 @@ export function AnalyticsScreen({
 
   const totalByCategories = slices.reduce((sum, slice) => sum + slice.value, 0)
   const currencyLabel = summary?.currency ?? ''
+  const currencyDisplayLabel = currencyLabel ? currencyLabels[currencyLabel] ?? currencyLabel : ''
 
   const breakdownVisible = showAllCategoryBreakdown ? slices : slices.slice(0, 5)
   const breakdownRemaining = slices.length - breakdownVisible.length
@@ -717,6 +728,7 @@ export function AnalyticsScreen({
   const selectedCategoryList = selectedCategories(categories, filterCategoryIds)
   const pieChartSize = fullScreen ? 220 : 260
   const drilldownCurrencyLabel = drilldownRouteState?.currency ?? summary?.currency ?? normalizedFamilyCurrency
+  const drilldownCurrencyDisplayLabel = currencyLabels[drilldownCurrencyLabel] ?? drilldownCurrencyLabel
   const drilldownCategorySlices = useMemo(() => {
     const totals = new Map<
       string,
@@ -1208,7 +1220,7 @@ export function AnalyticsScreen({
                         value: slice.value,
                         color: slice.color,
                       }))}
-                      currency={currencyLabel || undefined}
+                      currency={currencyDisplayLabel || undefined}
                       compact={fullScreen}
                       onBarClick={openBarDrilldown}
                     />
@@ -1229,7 +1241,7 @@ export function AnalyticsScreen({
                     mode="time"
                     rows={timeseriesRows}
                     groupBy={barGroupBy}
-                    currency={currencyLabel || undefined}
+                    currency={currencyDisplayLabel || undefined}
                     compact={fullScreen}
                     onBarClick={openBarDrilldown}
                   />
@@ -1252,7 +1264,7 @@ export function AnalyticsScreen({
                     size={pieChartSize}
                     holeRatio={0.58}
                     centerValue={formatAmount(totalByCategories)}
-                    centerLabel={currencyLabel || undefined}
+                    centerLabel={currencyDisplayLabel || undefined}
                     activeSliceId={activeSliceId}
                     onSliceClick={(slice) => {
                       openDrilldown(slice)
@@ -1349,7 +1361,7 @@ export function AnalyticsScreen({
                     }))
                     const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                     const iconColor = getFirstCategoryColor(expenseCategories)
-                    const baseApprox = formatExpenseBaseApproxAmount(expense)
+                    const baseApprox = formatExpenseBaseApproxAmount(expense, currencyLabels)
                     return (
                       <Box key={expense.id}>
                         <Stack direction="row" justifyContent="space-between" spacing={2}>
@@ -1377,7 +1389,7 @@ export function AnalyticsScreen({
                               </Typography>
                             ) : null}
                             <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-                              {formatAmount(expense.amount)} {expense.currency}
+                              {formatAmountWithCurrency(expense.amount, expense.currency, currencyLabels)}
                             </Typography>
                           </Stack>
                         </Stack>
@@ -1516,7 +1528,7 @@ export function AnalyticsScreen({
                       value: slice.value,
                       color: slice.color,
                     }))}
-                    currency={drilldownCurrencyLabel}
+                    currency={drilldownCurrencyDisplayLabel}
                     compact={fullScreen}
                   />
                 ) : (
@@ -1525,7 +1537,7 @@ export function AnalyticsScreen({
                       slices={drilldownCategorySlices}
                       size={fullScreen ? 190 : 220}
                       centerValue={formatAmount(drilldownCategoryTotal)}
-                      centerLabel={drilldownCurrencyLabel}
+                      centerLabel={drilldownCurrencyDisplayLabel}
                     />
                     <Stack spacing={0.75} sx={{ width: '100%' }}>
                       {drilldownCategoryVisible.map((slice) => (
@@ -1576,7 +1588,7 @@ export function AnalyticsScreen({
                 }))
                 const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                 const iconColor = getFirstCategoryColor(expenseCategories)
-                const baseApprox = formatExpenseBaseApproxAmount(expense)
+                const baseApprox = formatExpenseBaseApproxAmount(expense, currencyLabels)
                 return (
                   <Box
                     key={expense.id}
@@ -1601,7 +1613,7 @@ export function AnalyticsScreen({
                               </Typography>
                             ) : null}
                             <Typography variant="subtitle2" fontWeight={600}>
-                              {formatAmount(expense.amount)} {expense.currency}
+                              {formatAmountWithCurrency(expense.amount, expense.currency, currencyLabels)}
                             </Typography>
                           </Stack>
                         </Stack>

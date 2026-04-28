@@ -14,6 +14,17 @@ export const formatDate = (date: Date) => {
 
 export const formatAmount = (amount: number) => amount.toFixed(2)
 
+export type CurrencyLabels = Record<string, string | undefined>
+
+export const formatCurrencyLabel = (currency: string, currencyLabels?: CurrencyLabels) =>
+  currencyLabels?.[currency] ?? currency
+
+export const formatAmountWithCurrency = (
+  amount: number,
+  currency: string,
+  currencyLabels?: CurrencyLabels,
+) => `${formatAmount(amount)} ${formatCurrencyLabel(currency, currencyLabels)}`
+
 export const formatDateDots = (date: Date) => {
   const d = date.getDate().toString().padStart(2, '0')
   const m = (date.getMonth() + 1).toString().padStart(2, '0')
@@ -21,10 +32,10 @@ export const formatDateDots = (date: Date) => {
   return `${d}.${m}.${y}`
 }
 
-export const formatTotals = (totals: Record<string, number>) => {
+export const formatTotals = (totals: Record<string, number>, currencyLabels?: CurrencyLabels) => {
   const entries = Object.entries(totals)
   if (entries.length === 0) return '0'
-  return entries.map(([currency, value]) => `${formatAmount(value)} ${currency}`).join(' · ')
+  return entries.map(([currency, value]) => formatAmountWithCurrency(value, currency, currencyLabels)).join(' · ')
 }
 
 export const dateOnly = (date: Date) =>

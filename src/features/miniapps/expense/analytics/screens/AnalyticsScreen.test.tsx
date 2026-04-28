@@ -102,7 +102,7 @@ describe('AnalyticsScreen currency filter', () => {
     const user = userEvent.setup()
     listCurrenciesMock.mockResolvedValue([
       { code: 'USD', name: 'US Dollar', icon: '$' },
-      { code: 'BYN', name: 'Belarusian Ruble', icon: 'Br' },
+      { code: 'BYN', name: 'Belarusian Ruble', icon: '🇧🇾', symbol: 'ƃ' },
     ])
 
     render(
@@ -119,6 +119,6 @@ describe('AnalyticsScreen currency filter', () => {
     const options = await screen.findAllByRole('option')
     const labels = options.map((option) => option.textContent?.trim())
 
-    expect(labels).toEqual(['Все / BYN', '$ USD', 'Br BYN'])
+    expect(labels).toEqual(['Все / BYN', '$ USD', '🇧🇾 BYN'])
   })
 })

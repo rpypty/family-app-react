@@ -32,7 +32,11 @@ import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
 import type { Category } from '../../../../../shared/types'
 import { DEFAULT_CURRENCY } from '../../../../../shared/types'
-import { formatAmount, formatDate } from '../../../../../shared/lib/formatters'
+import {
+  formatAmount,
+  formatAmountWithCurrency,
+  formatDate,
+} from '../../../../../shared/lib/formatters'
 import {
   getFirstCategoryColor,
   getFirstCategoryEmoji,
@@ -146,10 +150,10 @@ const resolveDefaultDate = (parse: ReceiptParse | null) =>
   parse?.receipt.requestedDate ?? parse?.receipt.purchasedAt ?? formatDate(new Date())
 
 const FALLBACK_CURRENCIES: CurrencyItem[] = [
-  { code: 'BYN', name: 'Belarusian Ruble' },
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'RUB', name: 'Russian Ruble' },
+  { code: 'BYN', name: 'Belarusian Ruble', symbol: 'ƃ' },
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'RUB', name: 'Russian Ruble', symbol: '₽' },
 ]
 
 const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
@@ -300,6 +304,15 @@ export function ReceiptParseDialog({
     parse?.draftExpenses,
     parse?.receipt.currency,
   ])
+  const currencyLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    currencyOptions.forEach((item) => {
+      if (item.symbol) {
+        labels[item.code] = item.symbol
+      }
+    })
+    return labels
+  }, [currencyOptions])
 
   const categoryMap = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
@@ -900,7 +913,7 @@ export function ReceiptParseDialog({
                 variant="body1"
                 color={theme.palette.mode === 'dark' ? 'common.white' : 'text.primary'}
               >
-                {formatAmount(visibleDraft.amount)} {visibleDraft.currency}
+                {formatAmountWithCurrency(visibleDraft.amount, visibleDraft.currency, currencyLabels)}
               </Typography>
               {draft.confidence !== null ? (
                 <Typography variant="caption" color="text.secondary">
@@ -981,7 +994,7 @@ export function ReceiptParseDialog({
         </Stack>
         {visibleDrafts.length ? (
           <Typography variant="body2" color="text.secondary">
-            К созданию: {formatAmount(draftTotal)} {visibleDrafts[0]?.currency ?? currency}
+            К созданию: {formatAmountWithCurrency(draftTotal, visibleDrafts[0]?.currency ?? currency, currencyLabels)}
           </Typography>
         ) : null}
       </Stack>
