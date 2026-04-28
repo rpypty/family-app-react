@@ -44,6 +44,7 @@ const mapExpense = (expense: ApiExpense): Expense => ({
   amountInBase: expense.amount_in_base ?? null,
   rateDate: expense.rate_date ?? null,
   rateSource: expense.rate_source ?? null,
+  updatedAt: expense.updated_at ?? null,
   title: expense.title,
   categoryIds: expense.category_ids ?? [],
 })
