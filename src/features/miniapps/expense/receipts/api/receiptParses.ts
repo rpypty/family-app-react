@@ -64,7 +64,7 @@ export type ReceiptParse = ReceiptParseSummary & {
 }
 
 export type CreateReceiptParseInput = {
-  receipt: File
+  receipts: File[]
   categoryIds: string[]
   allCategories: boolean
   date?: string
@@ -138,19 +138,13 @@ type ApiReceiptParse = ApiReceiptParseSummary & {
 const normalizeReceiptFileForUpload = (file: File): File => {
   const name = file.name.toLowerCase()
   const isJpegByName = name.endsWith('.jpg') || name.endsWith('.jpeg')
-  const isHeicByName = name.endsWith('.heic')
-  const isHeifByName = name.endsWith('.heif')
   const shouldResolveTypeByName = file.type === '' || file.type === 'application/octet-stream'
   const normalizedType =
     file.type === 'image/jpg'
       ? 'image/jpeg'
       : shouldResolveTypeByName && isJpegByName
         ? 'image/jpeg'
-        : shouldResolveTypeByName && isHeicByName
-          ? 'image/heic'
-          : shouldResolveTypeByName && isHeifByName
-            ? 'image/heif'
-            : null
+        : null
 
   if (!normalizedType) return file
 
@@ -243,7 +237,9 @@ const mapExpense = (expense: ApproveReceiptParseResponse['expenses'][number]): E
 
 export const createReceiptParse = async (input: CreateReceiptParseInput): Promise<ReceiptParseSummary> => {
   const body = new FormData()
-  body.append('receipt', normalizeReceiptFileForUpload(input.receipt))
+  input.receipts.forEach((receipt) => {
+    body.append('receipt', normalizeReceiptFileForUpload(receipt))
+  })
   body.append('all_categories', input.allCategories ? 'true' : 'false')
   input.categoryIds.forEach((categoryId) => body.append('category_ids', categoryId))
   if (input.date) body.append('date', input.date)

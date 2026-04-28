@@ -155,42 +155,49 @@ const FALLBACK_CURRENCIES: CurrencyItem[] = [
 const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
   item.icon ? `${item.icon} ${item.code}` : item.code
 
+const MAX_RECEIPT_FILES = 5
 const MAX_RECEIPT_FILE_SIZE_BYTES = 8 * 1024 * 1024
+const MAX_RECEIPT_TOTAL_SIZE_BYTES = 40 * 1024 * 1024
 const RECEIPT_FILE_ACCEPT = [
   'image/png',
   'image/jpeg',
-  'image/jpg',
   'image/webp',
-  'image/heic',
-  'image/heif',
-  'image/heic-sequence',
-  'image/heif-sequence',
   '.jpg',
   '.jpeg',
   '.png',
   '.webp',
-  '.heic',
-  '.heif',
 ].join(',')
 const SUPPORTED_RECEIPT_FILE_TYPES = new Set([
   'image/png',
   'image/jpeg',
-  'image/jpg',
   'image/webp',
-  'image/heic',
-  'image/heif',
-  'image/heic-sequence',
-  'image/heif-sequence',
 ])
-const SUPPORTED_RECEIPT_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']
-
-const isSupportedReceiptFile = (file: File) => {
-  if (SUPPORTED_RECEIPT_FILE_TYPES.has(file.type)) return true
-  const name = file.name.toLowerCase()
-  return file.type === '' && SUPPORTED_RECEIPT_FILE_EXTENSIONS.some((extension) => name.endsWith(extension))
-}
+const isSupportedReceiptFile = (file: File) => SUPPORTED_RECEIPT_FILE_TYPES.has(file.type)
 
 const formatFileSize = (sizeBytes: number) => `${(sizeBytes / 1024 / 1024).toFixed(1)} МБ`
+
+const validateReceiptFiles = (files: File[]): string | null => {
+  if (files.length > MAX_RECEIPT_FILES) {
+    return `Можно загрузить не больше ${MAX_RECEIPT_FILES} файлов.`
+  }
+
+  const unsupportedFile = files.find((file) => !isSupportedReceiptFile(file))
+  if (unsupportedFile) {
+    return `Неподдерживаемый формат файла${unsupportedFile.type ? ` (${unsupportedFile.type})` : ''}. Загрузите JPEG, PNG или WebP.`
+  }
+
+  const oversizedFile = files.find((file) => file.size > MAX_RECEIPT_FILE_SIZE_BYTES)
+  if (oversizedFile) {
+    return `Файл ${oversizedFile.name} слишком большой: ${formatFileSize(oversizedFile.size)}. Максимум 8 МБ на файл.`
+  }
+
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0)
+  if (totalSize > MAX_RECEIPT_TOTAL_SIZE_BYTES) {
+    return `Файлы слишком большие суммарно: ${formatFileSize(totalSize)}. Максимум 40 МБ.`
+  }
+
+  return null
+}
 
 export function ReceiptParseDialog({
   open,
@@ -208,7 +215,7 @@ export function ReceiptParseDialog({
   onRefresh,
 }: ReceiptParseDialogProps) {
   const normalizedDefaultCurrency = defaultCurrency?.trim().toUpperCase() || DEFAULT_CURRENCY
-  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([])
   const [allCategories, setAllCategories] = useState(true)
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([])
   const defaultDate = resolveDefaultDate(parse)
@@ -352,7 +359,7 @@ export function ReceiptParseDialog({
         : 'Распознавание чека'
 
   const canSubmitUpload =
-    receiptFile !== null && (allCategories || selectedCategories.length > 0) && !isLoading
+    receiptFiles.length > 0 && (allCategories || selectedCategories.length > 0) && !isLoading
 
   const approvePayload = useMemo<ApproveReceiptParseExpense[]>(() => {
     return visibleDrafts.map((item) => ({
@@ -393,15 +400,10 @@ export function ReceiptParseDialog({
   }
 
   const handleUpload = async () => {
-    if (!receiptFile) return
-    if (!isSupportedReceiptFile(receiptFile)) {
-      setFormError(
-        `Неподдерживаемый формат файла${receiptFile.type ? ` (${receiptFile.type})` : ''}. Загрузите JPEG, PNG, WebP, HEIC или HEIF.`,
-      )
-      return
-    }
-    if (receiptFile.size > MAX_RECEIPT_FILE_SIZE_BYTES) {
-      setFormError(`Фото слишком большое: ${formatFileSize(receiptFile.size)}. Максимум 8 МБ.`)
+    if (receiptFiles.length === 0) return
+    const filesError = validateReceiptFiles(receiptFiles)
+    if (filesError) {
+      setFormError(filesError)
       return
     }
     if (!allCategories && selectedCategories.length === 0) {
@@ -410,7 +412,7 @@ export function ReceiptParseDialog({
     }
     setFormError(null)
     await onCreate({
-      receipt: receiptFile,
+      receipts: receiptFiles,
       allCategories,
       categoryIds: selectedCategories.map((category) => category.id),
       date,
@@ -425,7 +427,21 @@ export function ReceiptParseDialog({
   }
 
   const handleReceiptFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setReceiptFile(event.target.files?.[0] ?? null)
+    const selectedFiles = Array.from(event.target.files ?? [])
+    const nextFiles = [...receiptFiles, ...selectedFiles]
+    const filesError = validateReceiptFiles(nextFiles)
+    if (filesError) {
+      setFormError(filesError)
+      return
+    }
+    setReceiptFiles(nextFiles)
+    setFormError(null)
+  }
+
+  const handleRemoveReceiptFile = (index: number) => {
+    const nextFiles = receiptFiles.filter((_, currentIndex) => currentIndex !== index)
+    setReceiptFiles(nextFiles)
+    setFormError(validateReceiptFiles(nextFiles))
   }
 
   const handleSaveItem = async () => {
@@ -543,6 +559,7 @@ export function ReceiptParseDialog({
         ref={galleryInputRef}
         type="file"
         accept={RECEIPT_FILE_ACCEPT}
+        multiple
         hidden
         onChange={handleReceiptFileChange}
       />
@@ -551,6 +568,7 @@ export function ReceiptParseDialog({
         type="file"
         accept={RECEIPT_FILE_ACCEPT}
         capture="environment"
+        multiple
         hidden
         onChange={handleReceiptFileChange}
       />
@@ -569,14 +587,51 @@ export function ReceiptParseDialog({
           onClick={() => openFileInput(cameraInputRef.current)}
           fullWidth
         >
-          Сфоткать чек
+          Сфоткать часть чека
         </Button>
       </Stack>
-      {receiptFile ? (
-        <Alert severity="success" icon={<UploadFileRoundedIcon />}>
-          Файл прикреплен: {receiptFile.name} · {formatFileSize(receiptFile.size)}
-          {receiptFile.type ? ` · ${receiptFile.type}` : ''}
-        </Alert>
+      <Typography variant="body2" color="text.secondary">
+        Загрузите один чек или несколько фото частей одного чека. До 5 изображений JPEG, PNG или WebP.
+      </Typography>
+      {receiptFiles.length > 0 ? (
+        <Stack spacing={1}>
+          <Typography variant="subtitle2">
+            Выбранные файлы: {receiptFiles.length} · {formatFileSize(receiptFiles.reduce((sum, file) => sum + file.size, 0))}
+          </Typography>
+          {receiptFiles.map((file, index) => (
+            <Paper
+              key={`${file.name}-${file.lastModified}-${index}`}
+              variant="outlined"
+              sx={{
+                borderRadius: 1,
+                p: 1,
+                display: 'grid',
+                gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                gap: 1,
+                alignItems: 'center',
+              }}
+            >
+              <UploadFileRoundedIcon color="action" fontSize="small" />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography fontWeight={600} noWrap>
+                  {index + 1}. {file.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {formatFileSize(file.size)}
+                  {file.type ? ` · ${file.type}` : ''}
+                </Typography>
+              </Box>
+              <IconButton
+                aria-label={`Удалить файл ${file.name}`}
+                color="error"
+                size="small"
+                onClick={() => handleRemoveReceiptFile(index)}
+              >
+                <DeleteOutlineRoundedIcon fontSize="small" />
+              </IconButton>
+            </Paper>
+          ))}
+        </Stack>
       ) : null}
       <FormControlLabel
         control={
