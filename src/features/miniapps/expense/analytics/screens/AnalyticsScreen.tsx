@@ -31,7 +31,6 @@ import { DEFAULT_CURRENCY, type Expense, type Category } from '../../../../../sh
 import {
   dateOnly,
   formatAmount,
-  formatAmountWithCurrency,
   formatDate,
   formatDateDots,
   formatPercent,
@@ -40,8 +39,6 @@ import {
 import { selectedCategories } from '../../../../../shared/lib/categoryUtils'
 import {
   DEFAULT_CATEGORY_COLOR,
-  getFirstCategoryColor,
-  getFirstCategoryEmoji,
   normalizeCategoryColor,
   normalizeCategoryEmoji,
   withCategoryEmoji,
@@ -50,13 +47,11 @@ import {
 import { PieChart as BreakdownChart } from '../components/PieChart'
 import { TimeseriesBarChart, type AnalyticsBarClickPayload } from '../components/TimeseriesBarChart'
 import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
-import { CategoryRow } from '../../../../../shared/ui/CategoryRow'
 import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
-import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { getAnalyticsByCategory, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
 import { listCurrencies, type CurrencyItem } from '../../api/currencies'
-import { formatExpenseBaseApproxAmount } from '../../expenses/lib/expenseBaseEquivalent'
+import { ExpenseList } from '../../expenses/components/ExpenseList'
 
 type AnalyticsScreenProps = {
   categories: Category[]
@@ -464,15 +459,6 @@ export function AnalyticsScreen({
 
   useEffect(() => {
     let isActive = true
-    if (readOnly) {
-      setLoading(false)
-      setLoadError('Оффлайн: аналитика недоступна.')
-      setSummary(null)
-      setByCategoryRows([])
-      return () => {
-        isActive = false
-      }
-    }
     const loadAnalytics = async () => {
       setLoading(true)
       setLoadError(null)
@@ -509,7 +495,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, range.from, range.to, selectedCurrencyForApi, categoryIdsForApi])
+  }, [range.from, range.to, selectedCurrencyForApi, categoryIdsForApi])
 
   useEffect(() => {
     let isActive = true
@@ -523,14 +509,6 @@ export function AnalyticsScreen({
     if (barGroupBy === 'category') {
       setTimeseriesLoading(false)
       setTimeseriesError(null)
-      return () => {
-        isActive = false
-      }
-    }
-    if (readOnly) {
-      setTimeseriesLoading(false)
-      setTimeseriesError('Оффлайн: столбчатая диаграмма недоступна.')
-      setTimeseriesRows([])
       return () => {
         isActive = false
       }
@@ -628,7 +606,6 @@ export function AnalyticsScreen({
   }, [
     chartType,
     barGroupBy,
-    readOnly,
     range.from,
     range.to,
     selectedCurrencyForApi,
@@ -648,18 +625,6 @@ export function AnalyticsScreen({
         isActive = false
       }
     }
-    if (readOnly) {
-      setFilteredExpenses([])
-      setFilteredTotal(0)
-      setFilteredOffset(0)
-      setListLoadingMore(false)
-      setListError('Оффлайн: список недоступен.')
-      setListLoading(false)
-      return () => {
-        isActive = false
-      }
-    }
-
     const loadList = async () => {
       setListLoading(true)
       setListLoadingMore(false)
@@ -692,9 +657,8 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, hasFilters, range.from, range.to, selectedCurrencyForApi, categoryIds, categoryIdsKey])
+  }, [hasFilters, range.from, range.to, selectedCurrencyForApi, categoryIds, categoryIdsKey])
 
-  const filteredSorted = useMemo(() => filteredExpenses, [filteredExpenses])
   const hasMoreFilteredExpenses = filteredOffset < filteredTotal
   const hasMoreDrilldownExpenses = drilldownOffset < drilldownTotal
 
@@ -786,7 +750,6 @@ export function AnalyticsScreen({
   }
 
   const openDrilldown = (slice: { id?: string; label: string }) => {
-    if (readOnly) return
     if (!slice.id) return
     const linkedCategory = categoryMap.get(slice.id)
     openDrilldownRoute({
@@ -802,7 +765,6 @@ export function AnalyticsScreen({
   }
 
   const openBarDrilldown = (payload: AnalyticsBarClickPayload) => {
-    if (readOnly) return
     if (payload.mode === 'category') {
       openDrilldownRoute({
         from: range.from,
@@ -845,17 +807,6 @@ export function AnalyticsScreen({
   useEffect(() => {
     if (!drilldownRouteState) return
     let isActive = true
-    if (readOnly) {
-      setDrilldownLoading(false)
-      setDrilldownLoadingMore(false)
-      setDrilldownError('Оффлайн: данные недоступны.')
-      setDrilldownExpenses([])
-      setDrilldownTotal(0)
-      setDrilldownOffset(0)
-      return () => {
-        isActive = false
-      }
-    }
     const loadDrilldown = async () => {
       setDrilldownLoading(true)
       setDrilldownLoadingMore(false)
@@ -888,7 +839,7 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, drilldownRouteState])
+  }, [drilldownRouteState])
 
   useEffect(() => {
     if (!drilldownRouteState) {
@@ -898,14 +849,6 @@ export function AnalyticsScreen({
       return
     }
     let isActive = true
-    if (readOnly) {
-      setDrilldownChartExpenses([])
-      setDrilldownChartLoading(false)
-      setDrilldownChartError('Оффлайн: диаграмма недоступна.')
-      return () => {
-        isActive = false
-      }
-    }
 
     const loadDrilldownChart = async () => {
       setDrilldownChartLoading(true)
@@ -932,10 +875,10 @@ export function AnalyticsScreen({
     return () => {
       isActive = false
     }
-  }, [readOnly, drilldownRouteState])
+  }, [drilldownRouteState])
 
   const handleLoadMoreFilteredExpenses = async () => {
-    if (readOnly || !hasFilters) return
+    if (!hasFilters) return
     if (isListLoading || isListLoadingMore) return
     if (!hasMoreFilteredExpenses) return
     setListLoadingMore(true)
@@ -959,7 +902,7 @@ export function AnalyticsScreen({
   }
 
   const handleLoadMoreDrilldownExpenses = async () => {
-    if (readOnly || !drilldownRouteState) return
+    if (!drilldownRouteState) return
     if (drilldownLoading || drilldownLoadingMore) return
     if (!hasMoreDrilldownExpenses) return
     setDrilldownLoadingMore(true)
@@ -1276,7 +1219,7 @@ export function AnalyticsScreen({
                     <ButtonBase
                       key={slice.id || slice.label}
                       onClick={() => openDrilldown(slice)}
-                      disabled={readOnly || !slice.id}
+                      disabled={!slice.id}
                       sx={{
                         width: '100%',
                         borderRadius: 1,
@@ -1287,7 +1230,7 @@ export function AnalyticsScreen({
                         textAlign: 'left',
                         '&:hover': {
                           bgcolor:
-                            readOnly || !slice.id
+                            !slice.id
                               ? 'transparent'
                               : alpha(theme.palette.primary.main, 0.08),
                         },
@@ -1346,67 +1289,21 @@ export function AnalyticsScreen({
                 <Typography color="error">{listError}</Typography>
               ) : isListLoading ? (
                 <Typography color="text.secondary">Загружаем список…</Typography>
-              ) : filteredSorted.length === 0 ? (
+              ) : filteredExpenses.length === 0 ? (
                 <Typography color="text.secondary">Нет подходящих записей</Typography>
               ) : (
-                <Stack spacing={1}>
-                  {filteredSorted.map((expense, index) => {
-                    const expenseCategories = expense.categoryIds
-                      .map((id) => categoryMap.get(id))
-                      .filter((category): category is Category => Boolean(category))
-                    const categoryItems = expenseCategories.map((category) => ({
-                      id: category.id,
-                      label: withCategoryEmoji(category),
-                      color: normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR,
-                    }))
-                    const iconEmoji = getFirstCategoryEmoji(expenseCategories)
-                    const iconColor = getFirstCategoryColor(expenseCategories)
-                    const baseApprox = formatExpenseBaseApproxAmount(expense, currencyLabels)
-                    return (
-                      <Box key={expense.id}>
-                        <Stack direction="row" justifyContent="space-between" spacing={2}>
-                          <Stack
-                            direction="row"
-                            spacing={1.5}
-                            alignItems="center"
-                            sx={{ minWidth: 0, flex: 1 }}
-                          >
-                            <ExpenseIcon size={32} emoji={iconEmoji} color={iconColor} />
-                            <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-                              <Typography fontWeight={600} noWrap>
-                                {expense.title}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {formatDateDots(parseDate(expense.date))}
-                              </Typography>
-                              {categoryItems.length > 0 ? <CategoryRow categories={categoryItems} maxVisible={3} /> : null}
-                            </Stack>
-                          </Stack>
-                          <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
-                            {baseApprox ? (
-                              <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
-                                {baseApprox}
-                              </Typography>
-                            ) : null}
-                            <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-                              {formatAmountWithCurrency(expense.amount, expense.currency, currencyLabels)}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                        {index < filteredSorted.length - 1 ? <Divider sx={{ mt: 1.5 }} /> : null}
-                      </Box>
-                    )
-                  })}
-                  {hasMoreFilteredExpenses ? (
-                    <Button
-                      size="small"
-                      onClick={() => void handleLoadMoreFilteredExpenses()}
-                      disabled={isListLoadingMore}
-                    >
-                      {isListLoadingMore ? 'Загружаем...' : 'Показать ещё'}
-                    </Button>
-                  ) : null}
-                </Stack>
+                <ExpenseList
+                  expenses={filteredExpenses}
+                  categories={categories}
+                  currencyLabels={currencyLabels}
+                  familyDefaultCurrency={familyDefaultCurrency}
+                  total={filteredTotal}
+                  hasMore={hasMoreFilteredExpenses}
+                  isLoadingMore={isListLoadingMore}
+                  onLoadMore={() => void handleLoadMoreFilteredExpenses()}
+                  stickyHeaders={false}
+                  loadMoreMode="button"
+                />
               )}
             </Stack>
           ) : (
@@ -1577,64 +1474,18 @@ export function AnalyticsScreen({
                 )}
               </Stack>
               <Divider />
-              {drilldownExpenses.map((expense) => {
-                const expenseCategories = expense.categoryIds
-                  .map((id) => categoryMap.get(id))
-                  .filter((category): category is Category => Boolean(category))
-                const categoryItems = expenseCategories.map((category) => ({
-                  id: category.id,
-                  label: withCategoryEmoji(category),
-                  color: normalizeCategoryColor(category.color) ?? DEFAULT_CATEGORY_COLOR,
-                }))
-                const iconEmoji = getFirstCategoryEmoji(expenseCategories)
-                const iconColor = getFirstCategoryColor(expenseCategories)
-                const baseApprox = formatExpenseBaseApproxAmount(expense, currencyLabels)
-                return (
-                  <Box
-                    key={expense.id}
-                    sx={{
-                      p: 1.5,
-                      border: 1,
-                      borderColor: 'divider',
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      <ExpenseIcon size={32} emoji={iconEmoji} color={iconColor} />
-                      <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
-                        <Stack direction="row" justifyContent="space-between" spacing={1}>
-                          <Typography variant="subtitle2" fontWeight={600} noWrap>
-                            {expense.title}
-                          </Typography>
-                          <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
-                            {baseApprox ? (
-                              <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
-                                {baseApprox}
-                              </Typography>
-                            ) : null}
-                            <Typography variant="subtitle2" fontWeight={600}>
-                              {formatAmountWithCurrency(expense.amount, expense.currency, currencyLabels)}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDateDots(parseDate(expense.date))}
-                        </Typography>
-                        {categoryItems.length > 0 ? <CategoryRow categories={categoryItems} maxVisible={3} /> : null}
-                      </Stack>
-                    </Stack>
-                  </Box>
-                )
-              })}
-              {hasMoreDrilldownExpenses ? (
-                <Button
-                  size="small"
-                  onClick={() => void handleLoadMoreDrilldownExpenses()}
-                  disabled={drilldownLoadingMore}
-                >
-                  {drilldownLoadingMore ? 'Загружаем...' : 'Показать ещё'}
-                </Button>
-              ) : null}
+              <ExpenseList
+                expenses={drilldownExpenses}
+                categories={categories}
+                currencyLabels={currencyLabels}
+                familyDefaultCurrency={familyDefaultCurrency}
+                total={drilldownTotal}
+                hasMore={hasMoreDrilldownExpenses}
+                isLoadingMore={drilldownLoadingMore}
+                onLoadMore={() => void handleLoadMoreDrilldownExpenses()}
+                stickyHeaders={false}
+                loadMoreMode="button"
+              />
             </Stack>
           )}
         </DialogContent>

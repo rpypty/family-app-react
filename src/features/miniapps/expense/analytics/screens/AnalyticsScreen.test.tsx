@@ -35,6 +35,7 @@ vi.mock('../../api/currencies', () => ({
 describe('AnalyticsScreen currency filter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     listCurrenciesMock.mockResolvedValue([
       { code: 'BYN', name: 'Belarusian Ruble' },
       { code: 'USD', name: 'US Dollar' },
@@ -120,5 +121,39 @@ describe('AnalyticsScreen currency filter', () => {
     const labels = options.map((option) => option.textContent?.trim())
 
     expect(labels).toEqual(['Все / BYN', '$ USD', '🇧🇾 BYN'])
+  })
+
+  it('shows filtered expenses as a read-only grouped list when analytics is read-only', async () => {
+    localStorage.setItem('expense:analytics:filters:v2', JSON.stringify({
+      fromDate: '2026-04-20',
+      toDate: '2026-04-20',
+      categoryIds: [],
+      currency: null,
+    }))
+    listExpensePageMock.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          id: 'expense-1',
+          date: '2026-04-20',
+          title: 'Coffee',
+          amount: 12,
+          currency: 'BYN',
+          baseCurrency: 'BYN',
+          amountInBase: 12,
+          categoryIds: [],
+        },
+      ],
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/miniapps/expenses/analytics']}>
+        <AnalyticsScreen categories={[]} familyDefaultCurrency="BYN" readOnly />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Coffee')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /12.00 BYN/ }).textContent).toContain('20 апреля')
+    expect(screen.queryByRole('button', { name: /Coffee/ })).toBeNull()
   })
 })
