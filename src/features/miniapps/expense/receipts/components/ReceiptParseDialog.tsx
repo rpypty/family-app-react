@@ -156,9 +156,33 @@ const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): s
   item.icon ? `${item.icon} ${item.code}` : item.code
 
 const MAX_RECEIPT_FILE_SIZE_BYTES = 8 * 1024 * 1024
-const RECEIPT_FILE_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp,.jpg,.jpeg,.png,.webp'
-const SUPPORTED_RECEIPT_FILE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
-const SUPPORTED_RECEIPT_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
+const RECEIPT_FILE_ACCEPT = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/heic-sequence',
+  'image/heif-sequence',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.heic',
+  '.heif',
+].join(',')
+const SUPPORTED_RECEIPT_FILE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/heic-sequence',
+  'image/heif-sequence',
+])
+const SUPPORTED_RECEIPT_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']
 
 const isSupportedReceiptFile = (file: File) => {
   if (SUPPORTED_RECEIPT_FILE_TYPES.has(file.type)) return true
@@ -372,7 +396,7 @@ export function ReceiptParseDialog({
     if (!receiptFile) return
     if (!isSupportedReceiptFile(receiptFile)) {
       setFormError(
-        `Неподдерживаемый формат файла${receiptFile.type ? ` (${receiptFile.type})` : ''}. Загрузите JPEG, PNG или WebP.`,
+        `Неподдерживаемый формат файла${receiptFile.type ? ` (${receiptFile.type})` : ''}. Загрузите JPEG, PNG, WebP, HEIC или HEIF.`,
       )
       return
     }
