@@ -19,6 +19,7 @@ export type Expense = {
   amountInBase?: number | null
   rateDate?: string | null
   rateSource?: string | null
+  updatedAt?: string | null
   title: string
   categoryIds: string[]
   syncState?: SyncState

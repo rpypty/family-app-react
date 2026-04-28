@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Card,
   CardContent,
@@ -19,11 +19,9 @@ import {
   normalizePathname,
   resolveExpensesRoute,
 } from '../../../../../app/routing/routes'
-import type { Expense, Category } from '../../../../../shared/types'
+import { DEFAULT_CURRENCY, type Expense, type Category } from '../../../../../shared/types'
 import {
-  aggregateByCurrency,
   formatDayHeader,
-  formatTotals,
   parseDate,
   formatAmount,
 } from '../../../../../shared/lib/formatters'
@@ -37,6 +35,10 @@ import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
 import { ExpenseFormModal } from '../components/ExpenseFormModal'
 import { useInfiniteScroll } from '../../../../../shared/hooks/useInfiniteScroll'
 import { formatExpenseBaseApproxAmount } from '../lib/expenseBaseEquivalent'
+import {
+  buildExpenseDaySummaryMemoKey,
+  createDayExpenseSummary,
+} from '../lib/dayExpenseSummary'
 import { ReceiptParseAction } from '../../receipts/components/ReceiptParseAction'
 import { ReceiptParseDialog } from '../../receipts/components/ReceiptParseDialog'
 import { useReceiptParseJob } from '../../receipts/hooks/useReceiptParseJob'
@@ -85,6 +87,7 @@ export function ExpensesScreen({
   const navigate = useNavigate()
   const theme = useTheme()
   const receiptParseJob = useReceiptParseJob()
+  const [expandedDayKeys, setExpandedDayKeys] = useState<Set<string>>(() => new Set())
   const currentPath = normalizePathname(location.pathname)
   const isBaseListRoute = currentPath === ROUTES.expenses
   const canCreate = !readOnly || allowOfflineCreate
@@ -105,8 +108,14 @@ export function ExpensesScreen({
     onLoadMore,
     rootMargin: '240px',
   })
+  const normalizedFamilyCurrency = useMemo(
+    () => familyDefaultCurrency?.trim().toUpperCase() || DEFAULT_CURRENCY,
+    [familyDefaultCurrency],
+  )
+  const expenseDaySummaryMemoKey = buildExpenseDaySummaryMemoKey(expenses)
 
-  const { groupedByDay, dayKeys } = useMemo(() => {
+  const { groupedByDay, dayKeys, daySummaries } = useMemo(() => {
+    void expenseDaySummaryMemoKey
     const grouped: Record<string, Expense[]> = {}
     const keys: string[] = []
     expenses.forEach((expense) => {
@@ -116,8 +125,14 @@ export function ExpensesScreen({
       }
       grouped[expense.date].push(expense)
     })
-    return { groupedByDay: grouped, dayKeys: keys }
-  }, [expenses])
+    const summaries = Object.fromEntries(
+      keys.map((dateKey) => [
+        dateKey,
+        createDayExpenseSummary(grouped[dateKey], normalizedFamilyCurrency),
+      ]),
+    )
+    return { groupedByDay: grouped, dayKeys: keys, daySummaries: summaries }
+  }, [expenseDaySummaryMemoKey, expenses, normalizedFamilyCurrency])
 
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
   const editingExpense = useMemo(() => {
@@ -266,6 +281,18 @@ export function ExpensesScreen({
     navigate(ROUTES.expenses, { replace: true })
   }
 
+  const toggleDayBreakdown = (dateKey: string) => {
+    setExpandedDayKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(dateKey)) {
+        next.delete(dateKey)
+      } else {
+        next.add(dateKey)
+      }
+      return next
+    })
+  }
+
   return (
     <>
       <Card elevation={0} sx={{ overflow: 'visible' }}>
@@ -282,7 +309,8 @@ export function ExpensesScreen({
               <Stack spacing={2}>
                 {dayKeys.map((dateKey) => {
                   const dayExpenses = groupedByDay[dateKey]
-                  const totals = aggregateByCurrency(dayExpenses)
+                  const daySummary = daySummaries[dateKey]
+                  const isBreakdownExpanded = expandedDayKeys.has(dateKey)
                   return (
                     <Stack key={dateKey} spacing={1.5}>
                       <Stack
@@ -290,6 +318,16 @@ export function ExpensesScreen({
                         justifyContent="space-between"
                         alignItems="center"
                         spacing={1}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isBreakdownExpanded}
+                        onClick={() => toggleDayBreakdown(dateKey)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            toggleDayBreakdown(dateKey)
+                          }
+                        }}
                         sx={(themeValue) => ({
                           position: 'sticky',
                           top: `calc(env(safe-area-inset-top) + ${themeValue.spacing(6.5)})`,
@@ -298,15 +336,46 @@ export function ExpensesScreen({
                           bgcolor: 'background.paper',
                           borderBottom: 1,
                           borderColor: 'divider',
+                          cursor: 'pointer',
                         })}
                       >
                         <Typography variant="subtitle1" fontWeight={700}>
                           {formatDayHeader(parseDate(dateKey))}
                         </Typography>
                         <Typography variant="subtitle1" fontWeight={700}>
-                          {formatTotals(totals)}
+                          {formatAmount(daySummary.convertedTotal)} {daySummary.currency}
                         </Typography>
                       </Stack>
+                      {isBreakdownExpanded ? (
+                        <Stack
+                          spacing={0.75}
+                          sx={{
+                            px: 0.5,
+                            pb: 0.5,
+                          }}
+                        >
+                          {daySummary.breakdown.map((item) => (
+                            <Stack
+                              key={item.currency}
+                              direction="row"
+                              justifyContent="space-between"
+                              spacing={1}
+                            >
+                              <Typography variant="body2" color="text.secondary">
+                                {item.currency}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {formatAmount(item.amount)} {item.currency}
+                              </Typography>
+                            </Stack>
+                          ))}
+                          {daySummary.hasUnconverted ? (
+                            <Typography variant="caption" color="warning.main">
+                              Часть расходов не включена в сумму: нет amount_in_base.
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      ) : null}
                       <Stack spacing={1}>
                         {dayExpenses.map((expense) => {
                           const expenseCategories = expense.categoryIds
