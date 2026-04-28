@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Autocomplete,
@@ -31,7 +31,7 @@ import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded'
 import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded'
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded'
 import type { Category } from '../../../../../shared/types'
-import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from '../../../../../shared/types'
+import { DEFAULT_CURRENCY } from '../../../../../shared/types'
 import { formatAmount, formatDate } from '../../../../../shared/lib/formatters'
 import {
   getFirstCategoryColor,
@@ -40,6 +40,7 @@ import {
   withCategoryEmoji,
 } from '../../../../../shared/lib/categoryAppearance'
 import { ExpenseIcon } from '../../../../../shared/ui/ExpenseIcon'
+import { listCurrencies, type CurrencyItem } from '../../api/currencies'
 import type {
   ApproveReceiptParseExpense,
   CreateReceiptParseInput,
@@ -133,10 +134,39 @@ const itemTitle = (item: ReceiptParseItem) => item.normalizedName || item.rawNam
 
 const amountsEqual = (left: number, right: number) => Math.abs(left - right) < 0.01
 
+const formatReceiptTotal = (value: number) =>
+  value.toLocaleString('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+
 const draftCategoryKey = (categoryId: string) => `category:${categoryId}`
 
 const resolveDefaultDate = (parse: ReceiptParse | null) =>
   parse?.receipt.requestedDate ?? parse?.receipt.purchasedAt ?? formatDate(new Date())
+
+const FALLBACK_CURRENCIES: CurrencyItem[] = [
+  { code: 'BYN', name: 'Belarusian Ruble' },
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'RUB', name: 'Russian Ruble' },
+]
+
+const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
+  item.icon ? `${item.icon} ${item.code}` : item.code
+
+const MAX_RECEIPT_FILE_SIZE_BYTES = 8 * 1024 * 1024
+const RECEIPT_FILE_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp,.jpg,.jpeg,.png,.webp'
+const SUPPORTED_RECEIPT_FILE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
+const SUPPORTED_RECEIPT_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
+
+const isSupportedReceiptFile = (file: File) => {
+  if (SUPPORTED_RECEIPT_FILE_TYPES.has(file.type)) return true
+  const name = file.name.toLowerCase()
+  return file.type === '' && SUPPORTED_RECEIPT_FILE_EXTENSIONS.some((extension) => name.endsWith(extension))
+}
+
+const formatFileSize = (sizeBytes: number) => `${(sizeBytes / 1024 / 1024).toFixed(1)} МБ`
 
 export function ReceiptParseDialog({
   open,
@@ -161,11 +191,15 @@ export function ReceiptParseDialog({
   const [manualDate, setManualDate] = useState<string | null>(null)
   const date = manualDate ?? defaultDate
   const [currency, setCurrency] = useState(parse?.receipt.currency ?? normalizedDefaultCurrency)
+  const [currencies, setCurrencies] = useState<CurrencyItem[]>([])
+  const [isCurrenciesLoading, setCurrenciesLoading] = useState(false)
+  const [currenciesError, setCurrenciesError] = useState<string | null>(null)
   const [expandedDraftIds, setExpandedDraftIds] = useState<string[]>([])
   const [draftOverrides, setDraftOverrides] = useState<Record<string, DraftOverride>>({})
   const [deletedDraftIds, setDeletedDraftIds] = useState<string[]>([])
   const [deletedDraftKeys, setDeletedDraftKeys] = useState<string[]>([])
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([])
+  const [hasManualAmountChanges, setHasManualAmountChanges] = useState(false)
   const [editingDraft, setEditingDraft] = useState<ReceiptDraftExpense | null>(null)
   const [draftTitleValue, setDraftTitleValue] = useState('')
   const [draftAmountValue, setDraftAmountValue] = useState('')
@@ -183,16 +217,58 @@ export function ReceiptParseDialog({
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const currentStatus = parse?.status ?? activeStatus
 
+  useEffect(() => {
+    if (!open) return
+    let isCancelled = false
+    setCurrenciesLoading(true)
+    setCurrenciesError(null)
+    ;(async () => {
+      try {
+        const response = await listCurrencies()
+        if (isCancelled) return
+        setCurrencies(response.length > 0 ? response : FALLBACK_CURRENCIES)
+      } catch {
+        if (isCancelled) return
+        setCurrencies(FALLBACK_CURRENCIES)
+        setCurrenciesError('Не удалось загрузить список валют. Доступен базовый набор.')
+      } finally {
+        if (!isCancelled) {
+          setCurrenciesLoading(false)
+        }
+      }
+    })()
+    return () => {
+      isCancelled = true
+    }
+  }, [open])
+
   const currencyOptions = useMemo(() => {
-    const unique = new Set<string>([
+    const map = new Map<string, CurrencyItem>()
+    currencies.forEach((item) => {
+      map.set(item.code, item)
+    })
+    ;[
       normalizedDefaultCurrency,
       currency,
       parse?.receipt.currency ?? '',
       ...(parse?.draftExpenses.map((draft) => draft.currency) ?? []),
-      ...SUPPORTED_CURRENCIES,
-    ])
-    return Array.from(unique).filter(Boolean)
-  }, [currency, normalizedDefaultCurrency, parse?.draftExpenses, parse?.receipt.currency])
+      draftCurrencyValue,
+    ]
+      .filter(Boolean)
+      .forEach((code) => {
+        if (!map.has(code)) {
+          map.set(code, { code, name: code })
+        }
+      })
+    return Array.from(map.values())
+  }, [
+    currencies,
+    currency,
+    draftCurrencyValue,
+    normalizedDefaultCurrency,
+    parse?.draftExpenses,
+    parse?.receipt.currency,
+  ])
 
   const categoryMap = useMemo(
     () => new Map(categories.map((category) => [category.id, category])),
@@ -294,6 +370,16 @@ export function ReceiptParseDialog({
 
   const handleUpload = async () => {
     if (!receiptFile) return
+    if (!isSupportedReceiptFile(receiptFile)) {
+      setFormError(
+        `Неподдерживаемый формат файла${receiptFile.type ? ` (${receiptFile.type})` : ''}. Загрузите JPEG, PNG или WebP.`,
+      )
+      return
+    }
+    if (receiptFile.size > MAX_RECEIPT_FILE_SIZE_BYTES) {
+      setFormError(`Фото слишком большое: ${formatFileSize(receiptFile.size)}. Максимум 8 МБ.`)
+      return
+    }
     if (!allCategories && selectedCategories.length === 0) {
       setFormError('Выберите хотя бы одну категорию.')
       return
@@ -332,6 +418,7 @@ export function ReceiptParseDialog({
     setFormError(null)
     const updated = await onUpdateItems([{ id: editingItem.id, amount, categoryId: itemCategoryId }])
     if (updated) {
+      setHasManualAmountChanges(true)
       setEditingItem(null)
     }
   }
@@ -367,6 +454,7 @@ export function ReceiptParseDialog({
         categoryId: draftCategoryId,
       },
     }))
+    setHasManualAmountChanges(true)
     setFormError(null)
     setEditingDraft(null)
   }
@@ -374,6 +462,7 @@ export function ReceiptParseDialog({
   const handleDeleteDraft = (draftId: string) => {
     const draft = parse?.draftExpenses.find((item) => item.id === draftId)
     setDeletedDraftIds((prev) => (prev.includes(draftId) ? prev : [...prev, draftId]))
+    setHasManualAmountChanges(true)
     if (draft) {
       const key = draftCategoryKey(draft.categoryId)
       setDeletedDraftKeys((prev) => (prev.includes(key) ? prev : [...prev, key]))
@@ -393,6 +482,7 @@ export function ReceiptParseDialog({
       }
       await onUpdateItems([{ id: item.id, amount: 0.01, categoryId: fallbackCategoryId }])
     }
+    setHasManualAmountChanges(true)
     setDeletedItemIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
     if (editingItem?.id === item.id) {
       setEditingItem(null)
@@ -428,14 +518,14 @@ export function ReceiptParseDialog({
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept={RECEIPT_FILE_ACCEPT}
         hidden
         onChange={handleReceiptFileChange}
       />
       <input
         ref={cameraInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept={RECEIPT_FILE_ACCEPT}
         capture="environment"
         hidden
         onChange={handleReceiptFileChange}
@@ -460,7 +550,8 @@ export function ReceiptParseDialog({
       </Stack>
       {receiptFile ? (
         <Alert severity="success" icon={<UploadFileRoundedIcon />}>
-          Файл прикреплен: {receiptFile.name}
+          Файл прикреплен: {receiptFile.name} · {formatFileSize(receiptFile.size)}
+          {receiptFile.type ? ` · ${receiptFile.type}` : ''}
         </Alert>
       ) : null}
       <FormControlLabel
@@ -503,10 +594,18 @@ export function ReceiptParseDialog({
           value={currency}
           onChange={(event) => setCurrency(event.target.value)}
           fullWidth
+          SelectProps={{
+            renderValue: (value) => {
+              const selected = currencyOptions.find((item) => item.code === value)
+              return selected ? formatCurrencyOptionLabel(selected) : String(value)
+            },
+          }}
+          disabled={isCurrenciesLoading}
+          helperText={currenciesError ?? (isCurrenciesLoading ? 'Загрузка...' : undefined)}
         >
           {currencyOptions.map((item) => (
-            <MenuItem key={item} value={item}>
-              {item}
+            <MenuItem key={item.code} value={item.code}>
+              {formatCurrencyOptionLabel(item)}
             </MenuItem>
           ))}
         </TextField>
@@ -748,19 +847,20 @@ export function ReceiptParseDialog({
 
   const renderReady = () => {
     const draftTotal = visibleDrafts.reduce((sum, draft) => sum + draft.amount, 0)
+    const detectedTotal = parse?.receipt.detectedTotal
+    const itemsTotal = parse?.receipt.itemsTotal
     const hasTotalsMismatch =
-      parse?.receipt.detectedTotal !== null &&
-      parse?.receipt.detectedTotal !== undefined &&
-      parse.receipt.itemsTotal !== null &&
-      parse.receipt.itemsTotal !== undefined &&
-      !amountsEqual(parse.receipt.detectedTotal, parse.receipt.itemsTotal)
+      typeof detectedTotal === 'number' &&
+      typeof itemsTotal === 'number' &&
+      !amountsEqual(detectedTotal, itemsTotal) &&
+      !hasManualAmountChanges
 
     return (
       <Stack spacing={2}>
         {hasTotalsMismatch ? (
           <Alert severity="warning">
-            Итого по чеку: {parse.receipt.detectedTotal ?? '—'}; по позициям:{' '}
-            {parse.receipt.itemsTotal ?? '—'}
+            Итого по чеку: {formatReceiptTotal(detectedTotal)}; по позициям:{' '}
+            {formatReceiptTotal(itemsTotal)}
           </Alert>
         ) : null}
         {parse?.warnings.length ? (
@@ -896,10 +996,17 @@ export function ReceiptParseDialog({
                   onChange={(event) => setDraftCurrencyValue(event.target.value)}
                   select
                   sx={{ width: 118, flexShrink: 0 }}
+                  SelectProps={{
+                    renderValue: (value) => {
+                      const selected = currencyOptions.find((item) => item.code === value)
+                      return selected ? formatCurrencyOptionLabel(selected) : String(value)
+                    },
+                  }}
+                  disabled={isCurrenciesLoading}
                 >
                   {currencyOptions.map((item) => (
-                    <MenuItem key={item} value={item}>
-                      {item}
+                    <MenuItem key={item.code} value={item.code}>
+                      {formatCurrencyOptionLabel(item)}
                     </MenuItem>
                   ))}
                 </TextField>
