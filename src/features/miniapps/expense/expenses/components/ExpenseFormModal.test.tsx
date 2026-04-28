@@ -115,7 +115,7 @@ describe('ExpenseFormModal', () => {
     const user = userEvent.setup()
     listCurrenciesMock.mockResolvedValue([
       { code: 'USD', name: 'US Dollar', icon: '$' },
-      { code: 'BYN', name: 'Belarusian Ruble', icon: 'Br' },
+      { code: 'BYN', name: 'Belarusian Ruble', icon: '🇧🇾', symbol: 'ƃ' },
     ])
 
     render(<ExpenseFormModal {...baseProps} />)
@@ -124,7 +124,7 @@ describe('ExpenseFormModal', () => {
     const options = await screen.findAllByRole('option')
     const labels = options.map((option) => option.textContent?.trim())
 
-    expect(labels).toEqual(['$ USD', 'Br BYN'])
+    expect(labels).toEqual(['$ USD', '🇧🇾 BYN'])
   })
 
   it('builds an expression with helper buttons, shows a result hint, and saves the resolved amount', async () => {

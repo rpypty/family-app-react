@@ -21,9 +21,9 @@ import {
 } from '../../../../../app/routing/routes'
 import { DEFAULT_CURRENCY, type Expense, type Category } from '../../../../../shared/types'
 import {
+  formatAmountWithCurrency,
   formatDayHeader,
   parseDate,
-  formatAmount,
 } from '../../../../../shared/lib/formatters'
 import {
   getFirstCategoryColor,
@@ -39,6 +39,7 @@ import {
   buildExpenseDaySummaryMemoKey,
   createDayExpenseSummary,
 } from '../lib/dayExpenseSummary'
+import { listCurrencies } from '../../api/currencies'
 import { ReceiptParseAction } from '../../receipts/components/ReceiptParseAction'
 import { ReceiptParseDialog } from '../../receipts/components/ReceiptParseDialog'
 import { useReceiptParseJob } from '../../receipts/hooks/useReceiptParseJob'
@@ -88,6 +89,7 @@ export function ExpensesScreen({
   const theme = useTheme()
   const receiptParseJob = useReceiptParseJob()
   const [expandedDayKeys, setExpandedDayKeys] = useState<Set<string>>(() => new Set())
+  const [currencyLabels, setCurrencyLabels] = useState<Record<string, string>>({})
   const currentPath = normalizePathname(location.pathname)
   const isBaseListRoute = currentPath === ROUTES.expenses
   const canCreate = !readOnly || allowOfflineCreate
@@ -156,6 +158,30 @@ export function ExpensesScreen({
     }
     wasBaseListRouteRef.current = isBaseListRoute
   }, [isBaseListRoute, onRefreshListData])
+
+  useEffect(() => {
+    let isCancelled = false
+    ;(async () => {
+      try {
+        const currencies = await listCurrencies()
+        if (isCancelled) return
+        const labels: Record<string, string> = {}
+        currencies.forEach((item) => {
+          if (item.symbol) {
+            labels[item.code] = item.symbol
+          }
+        })
+        setCurrencyLabels(labels)
+      } catch {
+        if (!isCancelled) {
+          setCurrencyLabels({})
+        }
+      }
+    })()
+    return () => {
+      isCancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const nextView = expenseRoute.view
@@ -343,7 +369,7 @@ export function ExpensesScreen({
                           {formatDayHeader(parseDate(dateKey))}
                         </Typography>
                         <Typography variant="subtitle1" fontWeight={700}>
-                          {formatAmount(daySummary.convertedTotal)} {daySummary.currency}
+                          {formatAmountWithCurrency(daySummary.convertedTotal, daySummary.currency, currencyLabels)}
                         </Typography>
                       </Stack>
                       {isBreakdownExpanded ? (
@@ -362,10 +388,10 @@ export function ExpensesScreen({
                               spacing={1}
                             >
                               <Typography variant="body2" color="text.secondary">
-                                {item.currency}
+                                {currencyLabels[item.currency] ?? item.currency}
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                {formatAmount(item.amount)} {item.currency}
+                                {formatAmountWithCurrency(item.amount, item.currency, currencyLabels)}
                               </Typography>
                             </Stack>
                           ))}
@@ -384,7 +410,7 @@ export function ExpensesScreen({
                           const expenseTitle = expense.title.trim() || expenseCategories[0]?.name || ''
                           const iconEmoji = getFirstCategoryEmoji(expenseCategories)
                           const iconColor = getFirstCategoryColor(expenseCategories)
-                          const baseApprox = formatExpenseBaseApproxAmount(expense)
+                          const baseApprox = formatExpenseBaseApproxAmount(expense, currencyLabels)
                           return (
                             <Paper
                               key={expense.id}
@@ -511,7 +537,7 @@ export function ExpensesScreen({
                                   color={theme.palette.mode === 'dark' ? 'common.white' : 'text.primary'}
                                   sx={{ whiteSpace: 'nowrap' }}
                                 >
-                                  {formatAmount(expense.amount)} {expense.currency}
+                                  {formatAmountWithCurrency(expense.amount, expense.currency, currencyLabels)}
                                 </Typography>
                                 {baseApprox ? (
                                   <Typography variant="body2" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>

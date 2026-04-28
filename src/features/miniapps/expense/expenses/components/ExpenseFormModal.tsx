@@ -27,7 +27,11 @@ import {
   type Category,
 } from '../../../../../shared/types'
 import { isApiError } from '../../../../../shared/api/client'
-import { formatAmount, formatDate } from '../../../../../shared/lib/formatters'
+import {
+  formatAmount,
+  formatAmountWithCurrency,
+  formatDate,
+} from '../../../../../shared/lib/formatters'
 import {
   normalizeCategoryColor,
   withCategoryEmoji,
@@ -64,10 +68,10 @@ type ExpenseFormModalProps = {
 }
 
 const FALLBACK_CURRENCIES: CurrencyItem[] = [
-  { code: 'BYN', name: 'Belarusian Ruble' },
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'RUB', name: 'Russian Ruble' },
+  { code: 'BYN', name: 'Belarusian Ruble', symbol: 'ƃ' },
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'RUB', name: 'Russian Ruble', symbol: '₽' },
 ]
 
 const formatCurrencyOptionLabel = (item: Pick<CurrencyItem, 'code' | 'icon'>): string =>
@@ -216,6 +220,15 @@ export function ExpenseFormModal({
     }
     return Array.from(map.values())
   }, [currencies, normalizedDefaultCurrency, currency])
+  const currencyLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    currencyOptions.forEach((item) => {
+      if (item.symbol) {
+        labels[item.code] = item.symbol
+      }
+    })
+    return labels
+  }, [currencyOptions])
 
   useEffect(() => {
     if (!isOpen) return
@@ -291,7 +304,7 @@ export function ExpenseFormModal({
   const basePreviewText =
     exchangePreview.amountInBase === null
       ? null
-      : `~${formatAmount(exchangePreview.amountInBase)} ${normalizedDefaultCurrency}`
+      : `~${formatAmountWithCurrency(exchangePreview.amountInBase, normalizedDefaultCurrency, currencyLabels)}`
   const shouldShowResolvedAmountHint = resolvedAmount.hasExpression && resolvedAmount.resolvedAmount !== null
   const resolvedAmountText =
     resolvedAmount.resolvedAmount === null

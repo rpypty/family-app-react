@@ -1,9 +1,15 @@
 import type { Expense } from '../../../../../shared/types'
-import { formatAmount } from '../../../../../shared/lib/formatters'
+import {
+  formatAmountWithCurrency,
+  type CurrencyLabels,
+} from '../../../../../shared/lib/formatters'
 
-export const formatExpenseBaseApproxAmount = (expense: Expense): string | null => {
+export const formatExpenseBaseApproxAmount = (
+  expense: Expense,
+  currencyLabels?: CurrencyLabels,
+): string | null => {
   if (expense.amountInBase === null || expense.amountInBase === undefined) return null
   if (!expense.baseCurrency) return null
   if (expense.currency === expense.baseCurrency) return null
-  return `~${formatAmount(expense.amountInBase)} ${expense.baseCurrency}`
+  return `~${formatAmountWithCurrency(expense.amountInBase, expense.baseCurrency, currencyLabels)}`
 }
