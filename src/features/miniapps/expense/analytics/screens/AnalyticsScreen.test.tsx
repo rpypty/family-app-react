@@ -4,11 +4,19 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnalyticsScreen } from './AnalyticsScreen'
 
-const getAnalyticsSummaryMock = vi.fn()
-const getAnalyticsByCategoryMock = vi.fn()
-const getAnalyticsTimeseriesMock = vi.fn()
-const listExpensePageMock = vi.fn()
-const listCurrenciesMock = vi.fn()
+const {
+  getAnalyticsSummaryMock,
+  getAnalyticsByCategoryMock,
+  getAnalyticsTimeseriesMock,
+  listExpensePageMock,
+  listCurrenciesMock,
+} = vi.hoisted(() => ({
+  getAnalyticsSummaryMock: vi.fn(),
+  getAnalyticsByCategoryMock: vi.fn(),
+  getAnalyticsTimeseriesMock: vi.fn(),
+  listExpensePageMock: vi.fn(),
+  listCurrenciesMock: vi.fn(),
+}))
 
 vi.mock('../api/analytics', () => ({
   getAnalyticsSummary: getAnalyticsSummaryMock,

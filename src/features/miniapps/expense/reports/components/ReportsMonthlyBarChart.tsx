@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Box } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import ReactEChartsCore from 'echarts-for-react/lib/core'
 import * as echarts from 'echarts/core'
@@ -12,6 +12,7 @@ import { formatAmount, formatMonthHeader, parseDate } from '../../../../../share
 echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const MONTH_SHORT_LABELS = ['Я', 'Ф', 'М', 'А', 'М', 'И', 'И', 'А', 'С', 'О', 'Н', 'Д']
+const TOOLTIP_CSS = 'max-width: min(220px, calc(100vw - 32px)); white-space: normal; overflow-wrap: anywhere; line-height: 1.35;'
 
 type ReportsMonthlyRow = {
   month: string
@@ -25,6 +26,7 @@ type ReportsMonthlyBarChartProps = {
 
 export function ReportsMonthlyBarChart({ rows }: ReportsMonthlyBarChartProps) {
   const theme = useTheme()
+  const compactTooltip = useMediaQuery(theme.breakpoints.down('sm'))
 
   const chartData = useMemo(() => {
     const sorted = [...rows].sort((a, b) => a.month.localeCompare(b.month))
@@ -50,6 +52,8 @@ export function ReportsMonthlyBarChart({ rows }: ReportsMonthlyBarChartProps) {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        confine: true,
+        extraCssText: TOOLTIP_CSS,
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params]
           const first = list[0] as { dataIndex?: number } | undefined
@@ -57,7 +61,8 @@ export function ReportsMonthlyBarChart({ rows }: ReportsMonthlyBarChartProps) {
           const row = chartData.sorted[index]
           const date = chartData.dates[index]
           if (!row || !date) return ''
-          return `${formatMonthHeader(date)}<br/><strong>${formatAmount(row.total)} BYN</strong>`
+          const monthLabel = compactTooltip ? MONTH_SHORT_LABELS[date.getMonth()] : formatMonthHeader(date)
+          return `${monthLabel}<br/><strong>${formatAmount(row.total)} BYN</strong>`
         },
       },
       xAxis: {
@@ -107,7 +112,7 @@ export function ReportsMonthlyBarChart({ rows }: ReportsMonthlyBarChartProps) {
       ],
       animationDuration: 250,
     }
-  }, [chartData.sorted, chartData.dates, chartData.values, chartData.labels, theme])
+  }, [chartData.sorted, chartData.dates, chartData.values, chartData.labels, compactTooltip, theme])
 
   return (
     <Box sx={{ width: '100%' }}>

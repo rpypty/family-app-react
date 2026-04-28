@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Box } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import ReactEChartsCore from 'echarts-for-react/lib/core'
 import * as echarts from 'echarts/core'
@@ -10,6 +10,42 @@ import type { EChartsCoreOption } from 'echarts/core'
 import { formatAmount, formatDateDots, parseDate } from '../../../../../shared/lib/formatters'
 
 echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
+
+const TOOLTIP_CSS = 'max-width: min(220px, calc(100vw - 32px)); white-space: normal; overflow-wrap: anywhere; line-height: 1.35;'
+const GRAPHEME_SEGMENTER =
+  typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null
+
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+
+const getGraphemes = (value: string): string[] => {
+  if (GRAPHEME_SEGMENTER) {
+    return Array.from(GRAPHEME_SEGMENTER.segment(value), (segment) => segment.segment)
+  }
+  return Array.from(value)
+}
+
+const extractLeadingEmoji = (value: string): string | undefined => {
+  const [first] = getGraphemes(value.trim())
+  if (!first || !/\p{Extended_Pictographic}/u.test(first)) return undefined
+  return first
+}
+
+const compactLabel = (label: string, compactTooltip: boolean) => {
+  if (!compactTooltip) return escapeHtml(label)
+  const emoji = extractLeadingEmoji(label)
+  if (emoji) return escapeHtml(emoji)
+  const graphemes = getGraphemes(label.trim())
+  const shortened = graphemes.length > 14 ? `${graphemes.slice(0, 14).join('')}...` : label
+  return escapeHtml(shortened)
+}
 
 type TimeseriesRow = {
   period: string
@@ -49,6 +85,7 @@ export function TimeseriesBarChart({
   onBarClick,
 }: TimeseriesBarChartProps) {
   const theme = useTheme()
+  const compactTooltip = useMediaQuery(theme.breakpoints.down('sm')) || compact
 
   const timeChartData = useMemo(() => {
     const sorted = [...rows].sort((a, b) => a.period.localeCompare(b.period))
@@ -121,13 +158,15 @@ export function TimeseriesBarChart({
         },
         tooltip: {
           trigger: 'item',
+          confine: true,
+          extraCssText: TOOLTIP_CSS,
           formatter: (params: unknown) => {
             const item = params as { dataIndex?: number } | undefined
             const dataIndex = item?.dataIndex ?? 0
             const row = categoryChartData.sorted[dataIndex]
             if (!row) return ''
             const amount = currency ? `${formatAmount(row.value)} ${currency}` : formatAmount(row.value)
-            return `${row.label}<br/><strong>${amount}</strong>`
+            return `${compactLabel(row.label, compactTooltip)}<br/><strong>${amount}</strong>`
           },
         },
         xAxis: {
@@ -187,6 +226,8 @@ export function TimeseriesBarChart({
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        confine: true,
+        extraCssText: TOOLTIP_CSS,
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params]
           const first = list[0] as { dataIndex?: number; value?: number } | undefined
@@ -201,14 +242,15 @@ export function TimeseriesBarChart({
           if (useStackedTimeSeries && row.breakdown && row.breakdown.length > 0) {
             const sortedBreakdown = [...row.breakdown].sort((a, b) => b.value - a.value)
             const details = sortedBreakdown
-              .slice(0, 6)
+              .slice(0, compactTooltip ? 3 : 6)
               .map((slice) => {
                 const part = currency ? `${formatAmount(slice.value)} ${currency}` : formatAmount(slice.value)
                 const share = row.total > 0 ? ((slice.value / row.total) * 100).toFixed(0) : '0'
-                return `${slice.label}: ${part} (${share}%)`
+                return `${compactLabel(slice.label, compactTooltip)}: ${part} (${share}%)`
               })
               .join('<br/>')
-            const restCount = sortedBreakdown.length - 6
+            const visibleCount = compactTooltip ? 3 : 6
+            const restCount = sortedBreakdown.length - visibleCount
             const restLine = restCount > 0 ? `<br/>И ещё ${restCount} кат.` : ''
             return `${periodLabel}<br/><strong>${amount}</strong><br/>${details}${restLine}`
           }
@@ -283,6 +325,7 @@ export function TimeseriesBarChart({
     groupBy,
     currency,
     compact,
+    compactTooltip,
     theme,
   ])
 
