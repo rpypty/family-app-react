@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { isApiError } from '../../../../../shared/api/client'
 import {
   cancelReceiptParse,
   createReceiptParse,
@@ -18,6 +19,27 @@ const POLL_INTERVAL_MS = 2000
 
 const shouldPoll = (status: ReceiptParseStatus | undefined) =>
   status === 'queued' || status === 'processing'
+
+const resolveCreateErrorMessage = (error: unknown): string => {
+  if (!isApiError(error)) {
+    return 'Не удалось подключиться к API. Проверьте, что телефон открыт на адресе dev-сервера, а Vite проксирует /api на запущенный backend.'
+  }
+
+  if (error.code === 'invalid_receipt_file') {
+    return 'Файл не похож на поддерживаемое фото. Загрузите JPEG, PNG или WebP.'
+  }
+  if (error.code === 'receipt_file_too_large') {
+    return 'Фото слишком большое. Сожмите его или выберите файл меньше 8 МБ.'
+  }
+  if (error.code === 'active_receipt_parse_exists') {
+    return 'Уже есть активное распознавание чека. Завершите или отмените его.'
+  }
+  if (error.code === 'category_selection_required') {
+    return 'Выберите хотя бы одну категорию или включите все категории.'
+  }
+
+  return error.message || 'Не удалось отправить чек на распознавание.'
+}
 
 export function useReceiptParseJob() {
   const [summary, setSummary] = useState<ReceiptParseSummary | null>(null)
@@ -74,8 +96,8 @@ export function useReceiptParseJob() {
       setParse(details)
       setSummary(details)
       return details
-    } catch {
-      setError('Не удалось отправить чек на распознавание.')
+    } catch (error) {
+      setError(resolveCreateErrorMessage(error))
       return null
     } finally {
       setLoading(false)

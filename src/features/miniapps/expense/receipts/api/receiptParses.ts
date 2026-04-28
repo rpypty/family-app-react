@@ -135,6 +135,19 @@ type ApiReceiptParse = ApiReceiptParseSummary & {
   error?: ReceiptParseError | null
 }
 
+const normalizeReceiptFileForUpload = (file: File): File => {
+  const name = file.name.toLowerCase()
+  const isJpegByName = name.endsWith('.jpg') || name.endsWith('.jpeg')
+  const shouldNormalizeJpeg = file.type === 'image/jpg' || (file.type === '' && isJpegByName)
+
+  if (!shouldNormalizeJpeg) return file
+
+  return new File([file], file.name, {
+    type: 'image/jpeg',
+    lastModified: file.lastModified,
+  })
+}
+
 type ActiveReceiptParseResponse = {
   item: ApiReceiptParseSummary | null
 }
@@ -218,7 +231,7 @@ const mapExpense = (expense: ApproveReceiptParseResponse['expenses'][number]): E
 
 export const createReceiptParse = async (input: CreateReceiptParseInput): Promise<ReceiptParseSummary> => {
   const body = new FormData()
-  body.append('receipt', input.receipt)
+  body.append('receipt', normalizeReceiptFileForUpload(input.receipt))
   body.append('all_categories', input.allCategories ? 'true' : 'false')
   input.categoryIds.forEach((categoryId) => body.append('category_ids', categoryId))
   if (input.date) body.append('date', input.date)
