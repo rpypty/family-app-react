@@ -48,10 +48,20 @@ import { PieChart as BreakdownChart } from '../components/PieChart'
 import { TimeseriesBarChart, type AnalyticsBarClickPayload } from '../components/TimeseriesBarChart'
 import { QuickFilterChip } from '../../../../../shared/ui/QuickFilterChip'
 import { CategorySearchDialog } from '../../../../../shared/ui/CategorySearchDialog'
-import { getAnalyticsByCategory, getAnalyticsSummary, getAnalyticsTimeseries } from '../api/analytics'
+import {
+  getAnalyticsByCategory,
+  getAnalyticsSummary,
+  getAnalyticsTimeseries,
+  type AnalyticsSummary,
+} from '../api/analytics'
 import { listExpensePage } from '../../expenses/api/expenses'
 import { listCurrencies, type CurrencyItem } from '../../api/currencies'
 import { ExpenseList } from '../../expenses/components/ExpenseList'
+import {
+  buildCompleteTimeseriesRows,
+  resolveTimeseriesCompletionBounds,
+  resolveTimeseriesPeriod,
+} from '../lib/timeseries'
 
 type AnalyticsScreenProps = {
   categories: Category[]
@@ -176,19 +186,6 @@ const resolveCrossMonthRange = (startDay: number, endDay: number, today: Date): 
   return { from, to }
 }
 
-const resolveWeekStart = (value: Date): Date => {
-  const start = dateOnly(value)
-  const day = start.getDay()
-  const offset = day === 0 ? -6 : 1 - day
-  start.setDate(start.getDate() + offset)
-  return start
-}
-
-const resolveTimeseriesPeriod = (date: string, groupBy: 'week' | 'day'): string => {
-  if (groupBy === 'day') return date
-  return formatDate(resolveWeekStart(parseDate(date)))
-}
-
 const resolveExpenseAnalyticsAmount = (expense: Expense, selectedCurrency: string | undefined): number => {
   if (selectedCurrency) return expense.amount
   if (typeof expense.amountInBase === 'number') return expense.amountInBase
@@ -295,6 +292,9 @@ export function AnalyticsScreen({
   const [drilldownChartExpenses, setDrilldownChartExpenses] = useState<Expense[]>([])
   const [drilldownChartLoading, setDrilldownChartLoading] = useState(false)
   const [drilldownChartError, setDrilldownChartError] = useState<string | null>(null)
+  const [drilldownSummary, setDrilldownSummary] = useState<AnalyticsSummary | null>(null)
+  const [drilldownSummaryLoading, setDrilldownSummaryLoading] = useState(false)
+  const [drilldownSummaryError, setDrilldownSummaryError] = useState<string | null>(null)
   const wasCategoryRouteRef = useRef(false)
   const normalizedFamilyCurrency = (familyDefaultCurrency?.trim().toUpperCase() || DEFAULT_CURRENCY)
 
@@ -571,7 +571,16 @@ export function AnalyticsScreen({
           })
         })
 
-        const rowsWithBreakdown: TimeseriesBreakdownRow[] = response.map((row) => {
+        const completionBounds = resolveTimeseriesCompletionBounds(
+          response,
+          { from: range.from, to: range.to },
+          fromDate !== null,
+          toDate !== null,
+        )
+        const completeRows = completionBounds
+          ? buildCompleteTimeseriesRows<TimeseriesBreakdownSlice>(response, completionBounds, resolvedGroupBy)
+          : []
+        const rowsWithBreakdown: TimeseriesBreakdownRow[] = completeRows.map((row) => {
           const periodEntries = breakdownByPeriod.get(row.period)
           if (!periodEntries) return row
           const breakdown = Array.from(periodEntries.values()).sort((a, b) => b.value - a.value)
@@ -608,6 +617,8 @@ export function AnalyticsScreen({
     barGroupBy,
     range.from,
     range.to,
+    fromDate,
+    toDate,
     selectedCurrencyForApi,
     categoryIdsForApi,
     categoryMap,
@@ -747,6 +758,8 @@ export function AnalyticsScreen({
     setDrilldownError(null)
     setDrilldownChartExpenses([])
     setDrilldownChartError(null)
+    setDrilldownSummary(null)
+    setDrilldownSummaryError(null)
   }
 
   const openDrilldown = (slice: { id?: string; label: string }) => {
@@ -877,6 +890,42 @@ export function AnalyticsScreen({
     }
   }, [drilldownRouteState])
 
+  useEffect(() => {
+    if (!drilldownRouteState) {
+      setDrilldownSummary(null)
+      setDrilldownSummaryLoading(false)
+      setDrilldownSummaryError(null)
+      return
+    }
+    let isActive = true
+
+    const loadDrilldownSummary = async () => {
+      setDrilldownSummaryLoading(true)
+      setDrilldownSummaryError(null)
+      try {
+        const response = await getAnalyticsSummary({
+          from: drilldownRouteState.from,
+          to: drilldownRouteState.to,
+          currency: drilldownRouteState.currency,
+          categoryIds: drilldownRouteState.categoryIds,
+        })
+        if (!isActive) return
+        setDrilldownSummary(response)
+      } catch {
+        if (!isActive) return
+        setDrilldownSummary(null)
+        setDrilldownSummaryError('Не удалось загрузить сводку.')
+      } finally {
+        if (isActive) setDrilldownSummaryLoading(false)
+      }
+    }
+
+    void loadDrilldownSummary()
+    return () => {
+      isActive = false
+    }
+  }, [drilldownRouteState])
+
   const handleLoadMoreFilteredExpenses = async () => {
     if (!hasFilters) return
     if (isListLoading || isListLoadingMore) return
@@ -934,6 +983,17 @@ export function AnalyticsScreen({
     }
     return 'категорий'
   }
+
+  const drilldownFallbackTotalAmount = drilldownChartExpenses.reduce(
+    (sum, expense) => sum + resolveExpenseAnalyticsAmount(expense, drilldownRouteState?.currency),
+    0,
+  )
+  const drilldownStatsCount = drilldownSummary?.count ?? drilldownTotal
+  const drilldownStatsTotalAmount = drilldownSummary?.totalAmount ?? drilldownFallbackTotalAmount
+  const drilldownStatsCurrency = drilldownSummary?.currency ?? drilldownCurrencyLabel
+  const drilldownStatsCurrencyLabel = currencyLabels[drilldownStatsCurrency] ?? drilldownStatsCurrency
+  const drilldownAverageCheck = drilldownStatsCount > 0 ? drilldownStatsTotalAmount / drilldownStatsCount : 0
+  const shouldShowDrilldownCategoryChart = drilldownCategorySlices.length > 1
 
   return (
     <Stack spacing={1}>
@@ -1384,95 +1444,134 @@ export function AnalyticsScreen({
             </Typography>
           ) : (
             <Stack spacing={1.5}>
-              <Stack spacing={1.25}>
-                <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
-                  <Typography variant="subtitle2" fontWeight={700}>
-                    Разбивка по категориям
-                  </Typography>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={drilldownChartType}
-                    onChange={(_, value: ChartType | null) => {
-                      if (value) setDrilldownChartType(value)
-                    }}
-                    aria-label="Вид диаграммы разбивки"
-                  >
-                    <ToggleButton value="bar" title="Столбчатая" aria-label="Столбчатая">
-                      <BarChartIcon fontSize="small" />
-                    </ToggleButton>
-                    <ToggleButton value="donut" title="Круговая" aria-label="Круговая">
-                      <DonutLargeIcon fontSize="small" />
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Stack>
-                {drilldownChartLoading ? (
-                  <Stack alignItems="center" sx={{ py: 2 }}>
-                    <CircularProgress size={24} />
-                  </Stack>
-                ) : drilldownChartError ? (
-                  <Alert severity="warning">{drilldownChartError}</Alert>
-                ) : drilldownCategorySlices.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Нет данных для разбивки.
-                  </Typography>
-                ) : drilldownChartType === 'bar' ? (
-                  <TimeseriesBarChart
-                    mode="category"
-                    categoryRows={drilldownCategorySlices.map((slice) => ({
-                      id: slice.id,
-                      label: slice.label,
-                      value: slice.value,
-                      color: slice.color,
-                    }))}
-                    currency={drilldownCurrencyDisplayLabel}
-                    compact={fullScreen}
-                  />
-                ) : (
-                  <Stack spacing={1.5} alignItems="center">
-                    <BreakdownChart
-                      slices={drilldownCategorySlices}
-                      size={fullScreen ? 190 : 220}
-                      centerValue={formatAmount(drilldownCategoryTotal)}
-                      centerLabel={drilldownCurrencyDisplayLabel}
-                    />
-                    <Stack spacing={0.75} sx={{ width: '100%' }}>
-                      {drilldownCategoryVisible.map((slice) => (
-                        <Stack
-                          key={slice.id || slice.label}
-                          direction="row"
-                          spacing={1.25}
-                          alignItems="center"
-                          justifyContent="space-between"
-                        >
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-                            <Box
-                              sx={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                bgcolor: slice.color,
-                                flex: '0 0 auto',
-                              }}
-                            />
-                            <Typography variant="body2" noWrap>
-                              {slice.label}
-                            </Typography>
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatPercent(slice.value, drilldownCategoryTotal)}%
-                            </Typography>
-                            <Typography variant="body2" fontWeight={600}>
-                              {formatAmount(slice.value)}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                      ))}
-                    </Stack>
-                  </Stack>
-                )}
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Card variant="outlined" sx={{ flex: '1 1 140px', borderRadius: 1 }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Всего трат
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700}>
+                      {drilldownSummaryLoading ? '...' : drilldownStatsCount}
+                    </Typography>
+                  </CardContent>
+                </Card>
+                <Card variant="outlined" sx={{ flex: '1 1 140px', borderRadius: 1 }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Сумма трат
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} sx={{ wordBreak: 'break-word' }}>
+                      {drilldownSummaryLoading
+                        ? '...'
+                        : `${formatAmount(drilldownStatsTotalAmount)} ${drilldownStatsCurrencyLabel}`}
+                    </Typography>
+                  </CardContent>
+                </Card>
+                <Card variant="outlined" sx={{ flex: '1 1 140px', borderRadius: 1 }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Средний чек
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} sx={{ wordBreak: 'break-word' }}>
+                      {drilldownSummaryLoading
+                        ? '...'
+                        : `${formatAmount(drilldownAverageCheck)} ${drilldownStatsCurrencyLabel}`}
+                    </Typography>
+                  </CardContent>
+                </Card>
               </Stack>
+              {drilldownSummaryError ? <Alert severity="warning">{drilldownSummaryError}</Alert> : null}
+              {shouldShowDrilldownCategoryChart ? (
+                <Stack spacing={1.25}>
+                  <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Разбивка по категориям
+                    </Typography>
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={drilldownChartType}
+                      onChange={(_, value: ChartType | null) => {
+                        if (value) setDrilldownChartType(value)
+                      }}
+                      aria-label="Вид диаграммы разбивки"
+                    >
+                      <ToggleButton value="bar" title="Столбчатая" aria-label="Столбчатая">
+                        <BarChartIcon fontSize="small" />
+                      </ToggleButton>
+                      <ToggleButton value="donut" title="Круговая" aria-label="Круговая">
+                        <DonutLargeIcon fontSize="small" />
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </Stack>
+                  {drilldownChartLoading ? (
+                    <Stack alignItems="center" sx={{ py: 2 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : drilldownChartError ? (
+                    <Alert severity="warning">{drilldownChartError}</Alert>
+                  ) : drilldownCategorySlices.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Нет данных для разбивки.
+                    </Typography>
+                  ) : drilldownChartType === 'bar' ? (
+                    <TimeseriesBarChart
+                      mode="category"
+                      categoryRows={drilldownCategorySlices.map((slice) => ({
+                        id: slice.id,
+                        label: slice.label,
+                        value: slice.value,
+                        color: slice.color,
+                      }))}
+                      currency={drilldownCurrencyDisplayLabel}
+                      compact={fullScreen}
+                    />
+                  ) : (
+                    <Stack spacing={1.5} alignItems="center">
+                      <BreakdownChart
+                        slices={drilldownCategorySlices}
+                        size={fullScreen ? 190 : 220}
+                        centerValue={formatAmount(drilldownCategoryTotal)}
+                        centerLabel={drilldownCurrencyDisplayLabel}
+                      />
+                      <Stack spacing={0.75} sx={{ width: '100%' }}>
+                        {drilldownCategoryVisible.map((slice) => (
+                          <Stack
+                            key={slice.id || slice.label}
+                            direction="row"
+                            spacing={1.25}
+                            alignItems="center"
+                            justifyContent="space-between"
+                          >
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  bgcolor: slice.color,
+                                  flex: '0 0 auto',
+                                }}
+                              />
+                              <Typography variant="body2" noWrap>
+                                {slice.label}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={1} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {formatPercent(slice.value, drilldownCategoryTotal)}%
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600}>
+                                {formatAmount(slice.value)}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
+                </Stack>
+              ) : null}
               <Divider />
               <ExpenseList
                 expenses={drilldownExpenses}

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildCompleteTimeseriesRows } from '../lib/timeseries'
 import { AnalyticsScreen } from './AnalyticsScreen'
 
 const {
@@ -30,6 +31,10 @@ vi.mock('../../expenses/api/expenses', () => ({
 
 vi.mock('../../api/currencies', () => ({
   listCurrencies: listCurrenciesMock,
+}))
+
+vi.mock('../components/TimeseriesBarChart', () => ({
+  TimeseriesBarChart: ({ mode }: { mode: string }) => <div data-testid={`timeseries-chart-${mode}`} />,
 }))
 
 describe('AnalyticsScreen currency filter', () => {
@@ -155,5 +160,78 @@ describe('AnalyticsScreen currency filter', () => {
     expect(await screen.findByText('Coffee')).toBeTruthy()
     expect(screen.getByRole('button', { name: /12.00 BYN/ }).textContent).toContain('20 апреля')
     expect(screen.queryByRole('button', { name: /Coffee/ })).toBeNull()
+  })
+
+  it('fills missing daily periods with zero totals for the bar chart', () => {
+    const rows = buildCompleteTimeseriesRows(
+      [
+        { period: '2026-04-20', total: 10, count: 1 },
+        { period: '2026-04-22', total: 30, count: 2 },
+      ],
+      { from: '2026-04-20', to: '2026-04-22' },
+      'day',
+    )
+
+    expect(rows).toEqual([
+      { period: '2026-04-20', total: 10, count: 1 },
+      { period: '2026-04-21', total: 0, count: 0, breakdown: [] },
+      { period: '2026-04-22', total: 30, count: 2 },
+    ])
+  })
+
+  it('fills missing weekly periods with zero totals for the bar chart', () => {
+    const rows = buildCompleteTimeseriesRows(
+      [
+        { period: '2026-04-13', total: 10, count: 1 },
+        { period: '2026-04-27', total: 30, count: 2 },
+      ],
+      { from: '2026-04-13', to: '2026-04-27' },
+      'week',
+    )
+
+    expect(rows).toEqual([
+      { period: '2026-04-13', total: 10, count: 1 },
+      { period: '2026-04-20', total: 0, count: 0, breakdown: [] },
+      { period: '2026-04-27', total: 30, count: 2 },
+    ])
+  })
+
+  it('shows drilldown stat cards and hides category chart when there is only one category', async () => {
+    listExpensePageMock.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          id: 'expense-1',
+          date: '2026-04-20',
+          title: 'Coffee',
+          amount: 12,
+          currency: 'BYN',
+          baseCurrency: 'BYN',
+          amountInBase: 12,
+          categoryIds: ['category-1'],
+        },
+      ],
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/miniapps/expenses/analytics/drilldown?from=2026-04-20&to=2026-04-20&title=Coffee&categoryId=category-1',
+        ]}
+      >
+        <AnalyticsScreen
+          categories={[{ id: 'category-1', name: 'Food', color: '#00aa88' }]}
+          familyDefaultCurrency="BYN"
+          readOnly={false}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Всего трат')).toBeTruthy()
+    expect(screen.getByText('Сумма трат')).toBeTruthy()
+    expect(screen.getByText('Средний чек')).toBeTruthy()
+    expect(await screen.findAllByText('Coffee')).toHaveLength(2)
+    expect(screen.queryByText('Разбивка по категориям')).toBeNull()
+    expect(screen.queryByTestId('timeseries-chart-category')).toBeNull()
   })
 })
