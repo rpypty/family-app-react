@@ -1483,93 +1483,93 @@ export function AnalyticsScreen({
               {drilldownSummaryError ? <Alert severity="warning">{drilldownSummaryError}</Alert> : null}
               {shouldShowDrilldownCategoryChart ? (
                 <Stack spacing={1.25}>
-                <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
-                  <Typography variant="subtitle2" fontWeight={700}>
-                    Разбивка по категориям
-                  </Typography>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={drilldownChartType}
-                    onChange={(_, value: ChartType | null) => {
-                      if (value) setDrilldownChartType(value)
-                    }}
-                    aria-label="Вид диаграммы разбивки"
-                  >
-                    <ToggleButton value="bar" title="Столбчатая" aria-label="Столбчатая">
-                      <BarChartIcon fontSize="small" />
-                    </ToggleButton>
-                    <ToggleButton value="donut" title="Круговая" aria-label="Круговая">
-                      <DonutLargeIcon fontSize="small" />
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Stack>
-                {drilldownChartLoading ? (
-                  <Stack alignItems="center" sx={{ py: 2 }}>
-                    <CircularProgress size={24} />
+                  <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Разбивка по категориям
+                    </Typography>
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={drilldownChartType}
+                      onChange={(_, value: ChartType | null) => {
+                        if (value) setDrilldownChartType(value)
+                      }}
+                      aria-label="Вид диаграммы разбивки"
+                    >
+                      <ToggleButton value="bar" title="Столбчатая" aria-label="Столбчатая">
+                        <BarChartIcon fontSize="small" />
+                      </ToggleButton>
+                      <ToggleButton value="donut" title="Круговая" aria-label="Круговая">
+                        <DonutLargeIcon fontSize="small" />
+                      </ToggleButton>
+                    </ToggleButtonGroup>
                   </Stack>
-                ) : drilldownChartError ? (
-                  <Alert severity="warning">{drilldownChartError}</Alert>
-                ) : drilldownCategorySlices.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Нет данных для разбивки.
-                  </Typography>
-                ) : drilldownChartType === 'bar' ? (
-                  <TimeseriesBarChart
-                    mode="category"
-                    categoryRows={drilldownCategorySlices.map((slice) => ({
-                      id: slice.id,
-                      label: slice.label,
-                      value: slice.value,
-                      color: slice.color,
-                    }))}
-                    currency={drilldownCurrencyDisplayLabel}
-                    compact={fullScreen}
-                  />
-                ) : (
-                  <Stack spacing={1.5} alignItems="center">
-                    <BreakdownChart
-                      slices={drilldownCategorySlices}
-                      size={fullScreen ? 190 : 220}
-                      centerValue={formatAmount(drilldownCategoryTotal)}
-                      centerLabel={drilldownCurrencyDisplayLabel}
-                    />
-                    <Stack spacing={0.75} sx={{ width: '100%' }}>
-                      {drilldownCategoryVisible.map((slice) => (
-                        <Stack
-                          key={slice.id || slice.label}
-                          direction="row"
-                          spacing={1.25}
-                          alignItems="center"
-                          justifyContent="space-between"
-                        >
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-                            <Box
-                              sx={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                bgcolor: slice.color,
-                                flex: '0 0 auto',
-                              }}
-                            />
-                            <Typography variant="body2" noWrap>
-                              {slice.label}
-                            </Typography>
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatPercent(slice.value, drilldownCategoryTotal)}%
-                            </Typography>
-                            <Typography variant="body2" fontWeight={600}>
-                              {formatAmount(slice.value)}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                      ))}
+                  {drilldownChartLoading ? (
+                    <Stack alignItems="center" sx={{ py: 2 }}>
+                      <CircularProgress size={24} />
                     </Stack>
-                  </Stack>
-                )}
+                  ) : drilldownChartError ? (
+                    <Alert severity="warning">{drilldownChartError}</Alert>
+                  ) : drilldownCategorySlices.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Нет данных для разбивки.
+                    </Typography>
+                  ) : drilldownChartType === 'bar' ? (
+                    <TimeseriesBarChart
+                      mode="category"
+                      categoryRows={drilldownCategorySlices.map((slice) => ({
+                        id: slice.id,
+                        label: slice.label,
+                        value: slice.value,
+                        color: slice.color,
+                      }))}
+                      currency={drilldownCurrencyDisplayLabel}
+                      compact={fullScreen}
+                    />
+                  ) : (
+                    <Stack spacing={1.5} alignItems="center">
+                      <BreakdownChart
+                        slices={drilldownCategorySlices}
+                        size={fullScreen ? 190 : 220}
+                        centerValue={formatAmount(drilldownCategoryTotal)}
+                        centerLabel={drilldownCurrencyDisplayLabel}
+                      />
+                      <Stack spacing={0.75} sx={{ width: '100%' }}>
+                        {drilldownCategoryVisible.map((slice) => (
+                          <Stack
+                            key={slice.id || slice.label}
+                            direction="row"
+                            spacing={1.25}
+                            alignItems="center"
+                            justifyContent="space-between"
+                          >
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  bgcolor: slice.color,
+                                  flex: '0 0 auto',
+                                }}
+                              />
+                              <Typography variant="body2" noWrap>
+                                {slice.label}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" spacing={1} alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {formatPercent(slice.value, drilldownCategoryTotal)}%
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600}>
+                                {formatAmount(slice.value)}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
                 </Stack>
               ) : null}
               <Divider />
