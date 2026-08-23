@@ -1,7 +1,4 @@
-import { AnalyticsScreen } from '../../../features/miniapps/expense/analytics/screens/AnalyticsScreen'
-import { ExpensesScreen } from '../../../features/miniapps/expense/expenses/screens/ExpensesScreen'
-import { ReportsScreen } from '../../../features/miniapps/expense/reports/screens/ReportsScreen'
-import { ExpenseSettingsScreen } from '../../../features/miniapps/expense/settings/screens/ExpenseSettingsScreen'
+import { ExpensesMovedScreen } from '../../../features/miniapps/expense/screens/ExpensesMovedScreen'
 import { TodoScreen } from '../../../features/miniapps/todo/screens/TodoScreen'
 import { WorkoutsScreen } from '../../../features/miniapps/workouts/screens/WorkoutsScreen'
 import { MiniAppsScreen } from '../../../features/home/screens/MiniAppsScreen'
@@ -40,52 +37,9 @@ export function AppShellMainContent({ model }: AppShellMainContentProps) {
         />
       ) : null}
 
-      {model.activeApp === 'expenses' && model.activeTab === 'expenses' ? (
-        <ExpensesScreen
-          expenses={model.state.expenses}
-          categories={model.state.categories}
-          familyDefaultCurrency={model.family?.defaultCurrency}
-          total={model.expensesTotal}
-          hasMore={!model.isReadOnly && model.state.expenses.length < model.expensesTotal}
-          isLoadingMore={model.isExpensesLoadingMore}
-          onLoadMore={model.onLoadMoreExpenses}
-          onCreateExpense={model.onCreateExpense}
-          onUpdateExpense={model.onUpdateExpense}
-          onDeleteExpense={model.onDeleteExpense}
-          onCreateCategory={model.onCreateCategory}
-          onRefreshListData={model.onRefreshActiveScreen}
-          onRefreshCategories={model.onRefreshExpenseCategories}
-          readOnly={model.isReadOnly}
-          allowOfflineCreate={model.isOfflineLike}
-        />
-      ) : null}
-
-      {model.activeApp === 'expenses' && model.activeTab === 'analytics' ? (
-        <AnalyticsScreen
-          categories={model.state.categories}
-          familyDefaultCurrency={model.family?.defaultCurrency}
-          readOnly={model.isReadOnly}
-          onCreateCategory={model.onCreateCategory}
-          onUpdateCategory={model.onUpdateCategory}
-          onDeleteCategory={model.onDeleteCategory}
-          onRefreshCategories={model.onRefreshExpenseCategories}
-        />
-      ) : null}
-
-      {model.activeApp === 'expenses' && model.activeTab === 'reports' ? (
-        <ReportsScreen readOnly={model.isReadOnly} />
-      ) : null}
-
-      {model.activeApp === 'expenses' && model.activeTab === 'settings' ? (
-        <ExpenseSettingsScreen
-          themeMode={model.themeMode}
-          familyDefaultCurrency={model.family?.defaultCurrency}
-          isReadOnly={model.isReadOnly}
-          onToggleTheme={model.onToggleTheme}
-          onOpenFamilyDialog={model.onOpenFamilyDialog}
-          onUpdateFamilyDefaultCurrency={model.onUpdateFamilyDefaultCurrency}
-        />
-      ) : null}
+      {/* Расходы переехали в «Купилку» на kupilka.site: весь мини-апп, на любой
+          его вкладке и по любой старой ссылке, показывает только объявление. */}
+      {model.activeApp === 'expenses' ? <ExpensesMovedScreen /> : null}
 
       {model.activeApp === 'workouts' ? (
         <WorkoutsScreen />
